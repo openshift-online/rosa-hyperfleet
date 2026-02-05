@@ -48,6 +48,12 @@ terraform-upgrade:
 	done
 	@echo "✅ Terraform upgrade complete"
 
+terraform-output-management:
+	@cd terraform/config/management-cluster && terraform output -json
+
+terraform-output-regional:
+	@cd terraform/config/regional-cluster && terraform output -json
+
 # =============================================================================
 # Cluster Provisioning/Deprovisioning Targets
 # =============================================================================
