@@ -226,7 +226,9 @@ Expected: ArgoCD applications "Synced" and "Healthy".
 Register the Management Cluster as a consumer with the Regional Cluster's Maestro server.
 
 ```bash
-awscurl -X POST https://$API_GATEWAY_URL/prod/api/v0/management_clusters \
+API_GATEWAY_URL=$(make terraform-output-regional | jq -r '.api_gateway_invoke_url.value')
+
+awscurl -X POST $API_GATEWAY_URL/api/v0/management_clusters \
 --service execute-api \
 --region $REGION \
 -H "Content-Type: application/json" \
@@ -247,9 +249,11 @@ This section provides comprehensive validation that both Regional and Management
 # Verify the Management Cluster is properly registered
 # Access the Platform API, and query the registered consumers.
 # You can get the gateway api from the regional cluster terraform output
-✗ awscurl --service execute-api --region $REGION https://$API_GATEWAY_URL/prod/api/v0/management_clusters
 
-awscurl --service execute-api --region us-east-2 https://z0l5l43or4.execute-api.us-east-2.amazonaws.com/prod/api/v0/management_clusters | jq -r '.items[] | "- \(.name) (labels: \(.labels))"'
+awscurl --service execute-api --region $REGION $API_GATEWAY_URL/api/v0/management_clusters
+
+# example:
+# awscurl --service execute-api --region us-east-2 https://z0l5l43or4.execute-api.us-east-2.amazonaws.com/prod/api/v0/management_clusters | jq -r '.items[] | "- \(.name) (labels: \(.labels))"'
 ```
 
 **Expected Results:**
@@ -263,6 +267,14 @@ awscurl --service execute-api --region us-east-2 https://z0l5l43or4.execute-api.
 <summary>🔍 Complete Maestro Payload Distribution Test</summary>
 
 This comprehensive test validates end-to-end Maestro payload distribution from Regional to Management Cluster via AWS IoT Core MQTT using the proper gRPC client interface:
+
+**Step 0: Ensure environment variables**
+
+```bash
+export API_GATEWAY_URL=$(make terraform-output-regional | jq -r '.api_gateway_invoke_url.value')
+export REGION=<aws region goes here>
+
+```
 
 **Step 1: Create Test ManifestWork File**
 
@@ -346,22 +358,22 @@ EOF
 **Step 2: Post the payload**
 
 ```bash
-awscurl -X POST https://$API_GATEWAY_URL/prod/api/v0/work --service execute-api --region $REGION -d @payload.json
+awscurl -X POST $API_GATEWAY_URL/api/v0/work --service execute-api --region $REGION -d @payload.json
 ```
 
 **Step 3: Monitor Distribution Status**
 
 ```bash
 # List the current management_clusters
-awscurl --service execute-api --region $REGION https://$API_GATEWAY_API/prod/api/v0/management_clusters
+awscurl --service execute-api --region $REGION $API_GATEWAY_API/api/v0/management_clusters
 
 # List all ManifestWorks, jq to filter by consumer
-awscurl --service execute-api --region $REGION https://$API_GATEWAY_API/prod/api/v0/resource_bundles
+awscurl --service execute-api --region $REGION $API_GATEWAY_API/api/v0/resource_bundles
 
-# Example:
-awscurl --service execute-api --region us-east-2 https://z0l5l43or4.execute-api.us-east-2.amazonaws.com/prod/api/v0/management_clusters
+# Examples:
+# awscurl --service execute-api --region us-east-2 https://z0l5l43or4.execute-api.us-east-2.amazonaws.com/prod/api/v0/management_clusters
 
-awscurl --service execute-api --region us-east-2 https://z0l5l43or4.execute-api.us-east-2.amazonaws.com/prod/api/v0/resource_bundles | jq -r '.items[].status.resourceStatus[]'
+# awscurl --service execute-api --region us-east-2 https://z0l5l43or4.execute-api.us-east-2.amazonaws.com/prod/api/v0/resource_bundles | jq -r '.items[].status.resourceStatus[]'
 ```
 
 </details>
