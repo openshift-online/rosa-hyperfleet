@@ -12,7 +12,7 @@ set -euo pipefail
 # - awscurl installed (pip install awscurl)
 # - Regional cluster infrastructure provisioned (API Gateway available)
 # - Management cluster registered as a consumer
-# - yq installed for YAML processing (optional, falls back to JSON-only)
+# - kubectl installed for YAML to JSON conversion
 #
 # Usage:
 #   ./scripts/deploy-manifest-to-management.sh <manifest-file> <management-tfvars>
@@ -69,15 +69,12 @@ extract_tfvar() {
     tr -d '\n'
 }
 
-# Convert YAML to JSON (requires yq - mikefarah/yq)
+# Convert YAML to JSON using kubectl (client-side only, no cluster required)
 yaml_to_json() {
   local file="$1"
-  if command -v yq &> /dev/null; then
-    yq eval -j '.' "$file"
-  else
-    log_error "yq is required for YAML files but not installed"
-    log_info "Install with: brew install yq  (or dnf install yq)"
-    log_info "Alternatively, provide a JSON file instead"
+  if ! kubectl apply -f "$file" --dry-run=client -o json 2>/tmp/kubectl-convert-err; then
+    log_error "kubectl failed to convert YAML to JSON"
+    cat /tmp/kubectl-convert-err >&2
     exit 1
   fi
 }
@@ -148,6 +145,12 @@ fi
 if ! command -v jq &> /dev/null; then
   log_error "jq is required but not installed"
   log_info "Install with: sudo dnf install jq  (or apt-get install jq)"
+  exit 1
+fi
+
+if ! command -v kubectl &> /dev/null; then
+  log_error "kubectl is required but not installed"
+  log_info "Install from: https://kubernetes.io/docs/tasks/tools/"
   exit 1
 fi
 

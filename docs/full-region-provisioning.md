@@ -221,17 +221,28 @@ Expected: ArgoCD applications "Synced" and "Healthy".
 
 ---
 
-## 6. Consumer Registration & Verification
+## 6. Consumer Registration
 
 Register the Management Cluster as a consumer with the Regional Cluster's Maestro server.
 
+**Ensure you're authenticated with the regional account:**
+
 ```bash
-awscurl -X POST https://$API_GATEWAY_URL/prod/api/v0/management_clusters \
---service execute-api \
---region $REGION \
--H "Content-Type: application/json" \
--d '{"name": "management-01", "labels": {"cluster_type": "management", "cluster_id": "management-01"}}'
+# Choose your preferred authentication method
+export AWS_PROFILE=<regional-profile>
+# OR: use --profile flag, SSO, assume role, etc.
 ```
+
+**Register the management cluster:**
+
+```bash
+make register-management-consumer MGMT_TFVARS=terraform/config/management-cluster/terraform.tfvars
+```
+
+This script will:
+- Read the `cluster_id` from your management cluster tfvars
+- Retrieve the API Gateway URL from regional terraform state
+- Register the management cluster as a Maestro consumer with appropriate labels
 
 ---
 
@@ -242,14 +253,13 @@ This section provides comprehensive validation that both Regional and Management
 <details>
 <summary>🔍 Consumer Registration Verification</summary>
 
-
 ```bash
-# Verify the Management Cluster is properly registered
-# Access the Frontend API, and query the registered consumers.
-# You can get the gateway api from the regional cluster terraform output
-✗ awscurl --service execute-api --region $REGION https://$API_GATEWAY_URL/prod/api/v0/management_clusters
+# Get the API Gateway URL from terraform output
+API_GATEWAY_URL=$(cd terraform/config/regional-cluster && terraform output -raw api_gateway_invoke_url)
 
-awscurl --service execute-api --region us-east-2 https://z0l5l43or4.execute-api.us-east-2.amazonaws.com/prod/api/v0/management_clusters | jq -r '.items[] | "- \(.name) (labels: \(.labels))"'
+# Verify the Management Cluster is properly registered
+awscurl --service execute-api --region $AWS_REGION \
+  "${API_GATEWAY_URL}/api/v0/management_clusters" | jq -r '.items[] | "- \(.name) (labels: \(.labels))"'
 ```
 
 **Expected Results:**
@@ -262,13 +272,44 @@ awscurl --service execute-api --region us-east-2 https://z0l5l43or4.execute-api.
 <details>
 <summary>🔍 Complete Maestro Payload Distribution Test</summary>
 
-This comprehensive test validates end-to-end Maestro payload distribution from Regional to Management Cluster via AWS IoT Core MQTT using the proper gRPC client interface:
+This test validates end-to-end Maestro payload distribution from Regional to Management Cluster via AWS IoT Core MQTT.
 
-**Step 1: Create Test ManifestWork File**
+**Step 1: Create a test manifest**
 
 ```bash
-# Create a test ManifestWork JSON file
+cat > /tmp/maestro-test-configmap.yaml << 'EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: maestro-payload-test
+  namespace: default
+  labels:
+    test: maestro-distribution
+data:
+  message: "Hello from Regional Cluster via Maestro MQTT"
+  transport: "aws-iot-core-mqtt"
+EOF
+```
+
+**Step 2: Deploy to management cluster via Maestro**
+
+```bash
+make deploy-manifest \
+  MANIFEST=/tmp/maestro-test-configmap.yaml \
+  MGMT_TFVARS=terraform/config/management-cluster/terraform.tfvars
+```
+
+> **Note:** The `deploy-manifest` target wraps your manifest in a ManifestWork with default options (`deleteOption: Foreground`, no `manifestConfigs`). For full control over ManifestWork options like `feedbackRules` or `updateStrategy`, see the detailed example below.
+
+<details>
+<summary>📋 Detailed Example: Full ManifestWork with all options</summary>
+
+For full control over the ManifestWork, you can construct the payload manually. This example shows all available options including `manifestConfigs` for feedback rules and update strategies:
+
+```bash
 TIMESTAMP=$(date +%s)
+MANAGEMENT_CLUSTER="management-01"  # Your cluster_id from tfvars
+API_GATEWAY_URL=$(cd terraform/config/regional-cluster && terraform output -raw api_gateway_invoke_url)
 
 cat > /tmp/maestro-test-manifestwork.json << EOF
 {
@@ -296,8 +337,7 @@ cat > /tmp/maestro-test-manifestwork.json << EOF
             "cluster_source": "regional-cluster",
             "cluster_destination": "${MANAGEMENT_CLUSTER}",
             "transport": "aws-iot-core-mqtt",
-            "test_id": "${TIMESTAMP}",
-            "payload_size": "This tests MQTT payload distribution through AWS IoT Core"
+            "test_id": "${TIMESTAMP}"
           }
         }
       ]
@@ -333,35 +373,44 @@ cat > /tmp/maestro-test-manifestwork.json << EOF
 }
 EOF
 
-echo "Created ManifestWork file: maestro-payload-test-${TIMESTAMP}"
-
-cat > payload.json << EOF
+# Wrap in the API payload format and post
+cat > /tmp/payload.json << EOF
 {
-  "cluster_id": "management-01",
-  "data": $(cat /tmp/maestro-test-manifestwork.json )
+  "cluster_id": "${MANAGEMENT_CLUSTER}",
+  "data": $(cat /tmp/maestro-test-manifestwork.json)
 }
 EOF
+
+awscurl -X POST "${API_GATEWAY_URL}/api/v0/work" \
+  --service execute-api \
+  --region $AWS_REGION \
+  -H "Content-Type: application/json" \
+  -d @/tmp/payload.json
 ```
 
-**Step 2: Post the payload**
-
-```bash
-awscurl -X POST https://$API_GATEWAY_URL/prod/api/v0/work --service execute-api --region $REGION -d @payload.json
-```
+</details>
 
 **Step 3: Monitor Distribution Status**
 
 ```bash
+# Get the API Gateway URL
+API_GATEWAY_URL=$(cd terraform/config/regional-cluster && terraform output -raw api_gateway_invoke_url)
+
 # List the current management_clusters
-awscurl --service execute-api --region $REGION https://$API_GATEWAY_API/prod/api/v0/management_clusters
+awscurl --service execute-api --region $AWS_REGION \
+  "${API_GATEWAY_URL}/api/v0/management_clusters"
 
-# List all ManifestWorks, jq to filter by consumer
-awscurl --service execute-api --region $REGION https://$API_GATEWAY_API/prod/api/v0/resource_bundles
+# List all resource bundles and check status
+awscurl --service execute-api --region $AWS_REGION \
+  "${API_GATEWAY_URL}/api/v0/resource_bundles" | jq '.items[].status.resourceStatus[]'
+```
 
-# Example:
-awscurl --service execute-api --region us-east-2 https://z0l5l43or4.execute-api.us-east-2.amazonaws.com/prod/api/v0/management_clusters
+**Step 4: Verify on Management Cluster**
 
-awscurl --service execute-api --region us-east-2 https://z0l5l43or4.execute-api.us-east-2.amazonaws.com/prod/api/v0/resource_bundles | jq -r '.items[].status.resourceStatus[]'
+```bash
+# Connect to management cluster and verify the ConfigMap was created
+./scripts/dev/bastion-connect.sh management
+kubectl get configmap maestro-payload-test -n default -o yaml
 ```
 
 </details>
