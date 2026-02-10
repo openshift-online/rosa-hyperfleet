@@ -1,4 +1,4 @@
-.PHONY: help terraform-fmt terraform-upgrade provision-management provision-regional apply-infra-management apply-infra-regional provision-maestro-agent-iot-regional provision-maestro-agent-iot-management cleanup-maestro-agent-iot destroy-management destroy-regional test test-e2e
+.PHONY: help terraform-fmt terraform-upgrade terraform-output-management terraform-output-regional provision-management provision-regional apply-infra-management apply-infra-regional provision-maestro-agent-iot-regional provision-maestro-agent-iot-management cleanup-maestro-agent-iot destroy-management destroy-regional test test-e2e
 
 # Default target
 help:
@@ -20,6 +20,8 @@ help:
 	@echo "🛠️  Terraform Utilities:"
 	@echo "  terraform-fmt                    - Format all Terraform files"
 	@echo "  terraform-upgrade                - Upgrade provider versions"
+	@echo "  terraform-output-management	  - Get the Terraform output for the Management Cluster"
+	@echo "  terraform-output-regional		  - Get the Terraform output for the Regional Cluster"
 	@echo ""
 	@echo "🧪 Testing:"
 	@echo "  test                             - Run tests"
