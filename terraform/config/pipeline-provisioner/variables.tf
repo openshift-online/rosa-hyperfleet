@@ -19,3 +19,9 @@ variable "region" {
   description = "AWS Region for the Pipeline Provisioner"
   default     = "us-east-1"
 }
+
+variable "environment" {
+  type        = string
+  description = "Environment to monitor (e.g., integration, staging, production)"
+  default     = "staging"
+}

@@ -24,7 +24,7 @@ set -euo pipefail
 # Show usage
 show_usage() {
     cat <<EOF
-Usage: $0 [OPTIONS] [GITHUB_REPO_OWNER] [GITHUB_REPO_NAME] [GITHUB_BRANCH]
+Usage: $0 [OPTIONS] [GITHUB_REPO_OWNER] [GITHUB_REPO_NAME] [GITHUB_BRANCH] [ENVIRONMENT]
 
 Bootstrap the central AWS account with pipeline infrastructure.
 
@@ -32,6 +32,7 @@ ARGUMENTS:
     GITHUB_REPO_OWNER    GitHub organization or user (default: 'openshift-online')
     GITHUB_REPO_NAME     Repository name (e.g., 'rosa-regional-platform')
     GITHUB_BRANCH        Branch name (default: 'main')
+    ENVIRONMENT          Environment to monitor (e.g., integration, staging, production) (default: 'staging')
 
 OPTIONS:
     -h, --help          Show this help message
@@ -40,18 +41,19 @@ ENVIRONMENT VARIABLES:
     GITHUB_REPO_OWNER   GitHub repository owner (default: openshift-online)
     GITHUB_REPO_NAME    GitHub repository name
     GITHUB_BRANCH       Git branch to track (default: main)
+    TARGET_ENVIRONMENT  Environment to monitor (default: staging)
     AWS_PROFILE         AWS CLI profile to use
 
 EXAMPLES:
     $0
 
-    # With command-line arguments (custom owner and branch)
-    $0 custom-org rosa-regional-platform feature-branch
+    # With command-line arguments (custom owner, branch, and environment)
+    $0 custom-org rosa-regional-platform feature-branch staging
 
     # With environment variables
-    GITHUB_REPO_NAME=rosa-regional-platform $0  # Uses default owner: openshift-online
+    TARGET_ENVIRONMENT=integration GITHUB_REPO_NAME=rosa-regional-platform $0
 
-    # Override only the owner (uses default branch: main)
+    # Override only the owner (uses default branch: main, environment: staging)
     $0 custom-org rosa-regional-platform
 EOF
 }
@@ -124,11 +126,13 @@ if [ $# -ge 1 ]; then
     GITHUB_REPO_OWNER="$1"
     GITHUB_REPO_NAME="${2:-}"
     GITHUB_BRANCH="${3:-main}"
+    TARGET_ENVIRONMENT="${4:-}"
 fi
 
 # Set defaults for optional parameters
 GITHUB_REPO_OWNER="${GITHUB_REPO_OWNER:-openshift-online}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
+TARGET_ENVIRONMENT="${TARGET_ENVIRONMENT:-staging}"
 
 # Validate required inputs
 if [ -z "$GITHUB_REPO_NAME" ]; then
@@ -143,6 +147,7 @@ echo "  Central Account ID: $ACCOUNT_ID"
 echo "  AWS Region:         $REGION"
 echo "  GitHub Repo:        $GITHUB_REPO_OWNER/$GITHUB_REPO_NAME"
 echo "  GitHub Branch:      $GITHUB_BRANCH"
+echo "  Target Environment: $TARGET_ENVIRONMENT"
 echo ""
 echo "✅ Proceeding with bootstrap..."
 
@@ -178,6 +183,7 @@ github_repo_owner = "${GITHUB_REPO_OWNER}"
 github_repo_name  = "${GITHUB_REPO_NAME}"
 github_branch     = "${GITHUB_BRANCH}"
 region            = "${REGION}"
+environment       = "${TARGET_ENVIRONMENT}"
 EOF
 
 echo "Terraform configuration created:"
@@ -196,10 +202,6 @@ echo ""
 echo "==================================================="
 echo "✅ Bootstrap Complete!"
 echo "==================================================="
-echo ""
-
-terraform output -raw next_steps
-echo ""
 echo ""
 echo "🔗 GitHub Connection Authorization:"
 echo "   1. Open AWS Console: https://console.aws.amazon.com/codesuite/settings/connections"

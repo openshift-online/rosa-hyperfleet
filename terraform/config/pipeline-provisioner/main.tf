@@ -210,6 +210,10 @@ resource "aws_codebuild_project" "provisioner" {
       name  = "GITHUB_BRANCH"
       value = var.github_branch
     }
+    environment_variable {
+      name  = "TARGET_ENVIRONMENT"
+      value = var.environment
+    }
   }
 
   source {
@@ -239,7 +243,12 @@ resource "aws_codepipeline" "provisioner" {
           includes = [var.github_branch]
         }
         file_paths {
-          includes = ["deploy/**", "terraform/config/pipeline-regional-cluster/**", "terraform/config/pipeline-management-cluster/**"]
+          includes = [
+            "deploy/${var.environment}/*/terraform/regional.json",
+            "deploy/${var.environment}/*/terraform/management/*.json",
+            "terraform/config/pipeline-regional-cluster/**",
+            "terraform/config/pipeline-management-cluster/**"
+          ]
         }
       }
     }

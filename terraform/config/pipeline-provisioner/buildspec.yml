@@ -98,8 +98,13 @@ phases:
             done
         }
 
-        # Process each environment/region_alias directory in deploy/
-        for region_dir in deploy/*/*/; do
+        # Determine which environment to process
+        TARGET_ENV="${TARGET_ENVIRONMENT:-staging}"
+        echo "Processing environment: $TARGET_ENV"
+        echo ""
+
+        # Process each region_alias directory in the target environment
+        for region_dir in deploy/${TARGET_ENV}/*/; do
             [ -d "$region_dir" ] || continue
 
             # Extract environment and region_alias from directory path

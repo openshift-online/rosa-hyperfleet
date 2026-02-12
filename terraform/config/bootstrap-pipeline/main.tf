@@ -12,4 +12,5 @@ module "pipeline_provisioner" {
   github_repo_name  = var.github_repo_name
   github_branch     = var.github_branch
   region            = var.region
+  environment       = var.environment
 }
