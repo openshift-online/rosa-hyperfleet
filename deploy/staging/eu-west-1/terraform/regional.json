@@ -1,0 +1,10 @@
+{
+  "account_id": "REMOVED",
+  "region": "eu-west-1",
+  "alias": "regional-eu-west-1",
+  "region_alias": "eu-west-1",
+  "environment": "staging",
+  "app_code": "infra",
+  "service_phase": "staging",
+  "cost_center": "000"
+}

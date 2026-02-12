@@ -8,7 +8,7 @@ phases:
     commands:
       - echo "Installing dependencies..."
       - yum install -y unzip python3 jq gnupg2
-      - pip3 install boto3 pyyaml
+      - pip3 install boto3
       - echo "Installing Terraform..."
       - |
         set -euo pipefail
@@ -171,21 +171,21 @@ phases:
             echo "Processing: $ENV_NAME / $REGION_ALIAS"
             echo "=========================================="
 
-            # 1. Check for regional.yaml in this region
-            if [ -f "${region_dir}terraform/regional.yaml" ]; then
-                echo "Found regional.yaml for $REGION_NAME"
+            # 1. Check for regional.json in this region
+            if [ -f "${region_dir}terraform/regional.json" ]; then
+                echo "Found regional.json for $REGION_NAME"
 
-                REGIONAL_CONFIG="${region_dir}terraform/regional.yaml"
+                REGIONAL_CONFIG="${region_dir}terraform/regional.json"
 
-                # Extract configuration from YAML
-                TARGET_REGION=$(python3 -c "import yaml; config = yaml.safe_load(open('$REGIONAL_CONFIG')); print(config.get('region', config.get('target_region', 'us-east-1')))")
-                TARGET_ACCOUNT_ID=$(python3 -c "import yaml; config = yaml.safe_load(open('$REGIONAL_CONFIG')); print(config.get('account_id', ''))")
-                TARGET_ALIAS=$(python3 -c "import yaml; config = yaml.safe_load(open('$REGIONAL_CONFIG')); print(config.get('alias', ''))")
+                # Extract configuration from JSON
+                TARGET_REGION=$(jq -r '.region // .target_region // "us-east-1"' "$REGIONAL_CONFIG")
+                TARGET_ACCOUNT_ID=$(jq -r '.account_id // ""' "$REGIONAL_CONFIG")
+                TARGET_ALIAS=$(jq -r '.alias // ""' "$REGIONAL_CONFIG")
 
                 # Extract terraform vars with defaults
-                APP_CODE=$(python3 -c "import yaml; config = yaml.safe_load(open('$REGIONAL_CONFIG')); print(config.get('terraform_vars', {}).get('app_code', 'infra'))")
-                SERVICE_PHASE=$(python3 -c "import yaml; config = yaml.safe_load(open('$REGIONAL_CONFIG')); print(config.get('terraform_vars', {}).get('service_phase', 'dev'))")
-                COST_CENTER=$(python3 -c "import yaml; config = yaml.safe_load(open('$REGIONAL_CONFIG')); print(config.get('terraform_vars', {}).get('cost_center', '000'))")
+                APP_CODE=$(jq -r '.app_code // "infra"' "$REGIONAL_CONFIG")
+                SERVICE_PHASE=$(jq -r '.service_phase // "dev"' "$REGIONAL_CONFIG")
+                COST_CENTER=$(jq -r '.cost_center // "000"' "$REGIONAL_CONFIG")
 
                 echo "  Target Region: $TARGET_REGION"
                 [ -n "$TARGET_ACCOUNT_ID" ] && echo "  Target Account ID: $TARGET_ACCOUNT_ID"
@@ -224,32 +224,32 @@ phases:
                     continue
                 fi
             else
-                echo "No terraform/regional.yaml found in $region_dir, skipping regional pipeline..."
+                echo "No terraform/regional.json found in $region_dir, skipping regional pipeline..."
             fi
 
-            # 2. Check for management/*.yaml files in this region
+            # 2. Check for management/*.json files in this region
             if [ -d "${region_dir}terraform/management" ]; then
                 echo "Checking for management cluster configs in $REGION_NAME..."
 
-                for mc_config in ${region_dir}terraform/management/*.yaml; do
+                for mc_config in ${region_dir}terraform/management/*.json; do
                     [ -e "$mc_config" ] || continue
 
-                    # Extract cluster name from filename (e.g., mc01-us-east-1.yaml -> mc01-us-east-1)
-                    CLUSTER_NAME=$(basename "$mc_config" .yaml)
+                    # Extract cluster name from filename (e.g., mc01-us-east-1.json -> mc01-us-east-1)
+                    CLUSTER_NAME=$(basename "$mc_config" .json)
 
                     echo "Found management cluster config: $CLUSTER_NAME"
 
-                    # Extract configuration from YAML
-                    TARGET_REGION=$(python3 -c "import yaml; config = yaml.safe_load(open('$mc_config')); print(config.get('region', config.get('target_region', 'us-east-1')))")
-                    TARGET_ACCOUNT_ID=$(python3 -c "import yaml; config = yaml.safe_load(open('$mc_config')); print(config.get('account_id', ''))")
-                    TARGET_ALIAS=$(python3 -c "import yaml; config = yaml.safe_load(open('$mc_config')); print(config.get('alias', ''))")
+                    # Extract configuration from JSON
+                    TARGET_REGION=$(jq -r '.region // .target_region // "us-east-1"' "$mc_config")
+                    TARGET_ACCOUNT_ID=$(jq -r '.account_id // ""' "$mc_config")
+                    TARGET_ALIAS=$(jq -r '.alias // ""' "$mc_config")
 
                     # Extract terraform vars with defaults
-                    APP_CODE=$(python3 -c "import yaml; config = yaml.safe_load(open('$mc_config')); print(config.get('terraform_vars', {}).get('app_code', 'infra'))")
-                    SERVICE_PHASE=$(python3 -c "import yaml; config = yaml.safe_load(open('$mc_config')); print(config.get('terraform_vars', {}).get('service_phase', 'dev'))")
-                    COST_CENTER=$(python3 -c "import yaml; config = yaml.safe_load(open('$mc_config')); print(config.get('terraform_vars', {}).get('cost_center', '000'))")
-                    CLUSTER_ID=$(python3 -c "import yaml; config = yaml.safe_load(open('$mc_config')); print(config.get('terraform_vars', {}).get('cluster_id', ''))")
-                    REGIONAL_AWS_ACCOUNT_ID=$(python3 -c "import yaml; config = yaml.safe_load(open('$mc_config')); print(config.get('terraform_vars', {}).get('regional_aws_account_id', ''))")
+                    APP_CODE=$(jq -r '.app_code // "infra"' "$mc_config")
+                    SERVICE_PHASE=$(jq -r '.service_phase // "dev"' "$mc_config")
+                    COST_CENTER=$(jq -r '.cost_center // "000"' "$mc_config")
+                    CLUSTER_ID=$(jq -r '.cluster_id // ""' "$mc_config")
+                    REGIONAL_AWS_ACCOUNT_ID=$(jq -r '.regional_aws_account_id // ""' "$mc_config")
 
                     # Use TARGET_ALIAS as cluster_id default if not specified
                     [ -z "$CLUSTER_ID" ] && CLUSTER_ID="${TARGET_ALIAS}"

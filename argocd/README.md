@@ -30,9 +30,9 @@ deploy/                                  # Generated outputs (DO NOT EDIT)
     │   └── {cluster_type}-manifests/
     │       └── applicationset.yaml
     └── terraform/
-        ├── regional.yaml
+        ├── regional.json
         └── management/
-            └── {cluster_id}.yaml
+            └── {cluster_id}.json
 ```
 
 ## Configuration Modes

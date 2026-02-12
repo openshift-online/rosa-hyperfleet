@@ -21,8 +21,8 @@ flowchart LR
 
     TF -->|one-time setup| PP
     G1 -->|triggers| PP
-    PP -->|"reads terraform/regional.yaml<br/>creates pipeline"| RC_PIPE
-    PP -->|"reads terraform/management/*.yaml<br/>creates pipeline"| MC_PIPE
+    PP -->|"reads terraform/regional.json<br/>creates pipeline"| RC_PIPE
+    PP -->|"reads terraform/management/*.json<br/>creates pipeline"| MC_PIPE
     G2 -->|triggers| RC_PIPE
     G3 -->|triggers| MC_PIPE
 
@@ -41,8 +41,8 @@ Seeds the initial CodePipeline that watches the `deploy/` directory in the repos
 
 Cluster configurations follow this directory structure:
 
-- `deploy/<env>/<region_alias>/terraform/regional.yaml` — regional cluster pipelines
-- `deploy/<env>/<region_alias>/terraform/management/<cluster>.yaml` — management cluster pipelines
+- `deploy/<env>/<region_alias>/terraform/regional.json` — regional cluster pipelines
+- `deploy/<env>/<region_alias>/terraform/management/<cluster>.json` — management cluster pipelines
 
 After deploying, the GitHub CodeStar connection must be authorized manually:
 
@@ -51,7 +51,7 @@ After deploying, the GitHub CodeStar connection must be authorized manually:
 
 ### `pipeline-provisioner/`
 
-Meta-pipeline that dynamically creates per-cluster CodePipelines when regional or management cluster YAML files are committed to `deploy/`.
+Meta-pipeline that dynamically creates per-cluster CodePipelines when regional or management cluster JSON files are committed to `deploy/`.
 
 ### `pipeline-regional-cluster/`
 

@@ -1,0 +1,10 @@
+{
+  "account_id": "REMOVED",
+  "region": "us-east-1",
+  "alias": "regional-us-east-1",
+  "region_alias": "us-east-1",
+  "environment": "integration",
+  "app_code": "infra",
+  "service_phase": "dev",
+  "cost_center": "000"
+}

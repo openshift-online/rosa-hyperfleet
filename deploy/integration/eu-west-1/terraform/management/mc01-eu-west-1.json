@@ -1,0 +1,12 @@
+{
+  "account_id": "REMOVED",
+  "region": "eu-west-1",
+  "alias": "mc01-eu-west-1",
+  "region_alias": "eu-west-1",
+  "environment": "integration",
+  "app_code": "infra",
+  "service_phase": "dev",
+  "cost_center": "000",
+  "cluster_id": "mc01-eu-west-1",
+  "regional_aws_account_id": "REMOVED"
+}

@@ -1,0 +1,10 @@
+{
+  "account_id": "REMOVED",
+  "region": "eu-west-1",
+  "alias": "regional-eu-west-1",
+  "region_alias": "eu-west-1",
+  "environment": "integration",
+  "app_code": "infra",
+  "service_phase": "dev",
+  "cost_center": "000"
+}
