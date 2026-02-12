@@ -26,9 +26,9 @@ locals {
   pipeline_name = "rc-pipe-${local.resource_hash}"  # 20 chars
 }
 
-resource "aws_codestarconnections_connection" "github" {
-  name          = local.github_connection_name
-  provider_type = "GitHub"
+# Use shared GitHub Connection (passed from pipeline-provisioner)
+data "aws_codestarconnections_connection" "github" {
+  arn = var.github_connection_arn
 }
 
 # IAM Role for CodeBuild
@@ -128,7 +128,7 @@ resource "aws_iam_role_policy" "codepipeline_policy" {
         Action = [
           "codestar-connections:UseConnection"
         ]
-        Resource = aws_codestarconnections_connection.github.arn
+        Resource = data.aws_codestarconnections_connection.github.arn
       },
       {
         Effect = "Allow"
@@ -398,7 +398,7 @@ resource "aws_codepipeline" "central_pipeline" {
       output_artifacts = ["source_output"]
 
       configuration = {
-        ConnectionArn    = aws_codestarconnections_connection.github.arn
+        ConnectionArn    = data.aws_codestarconnections_connection.github.arn
         FullRepositoryId = "${var.github_repo_owner}/${var.github_repo_name}"
         BranchName       = var.github_branch
         DetectChanges    = "true"

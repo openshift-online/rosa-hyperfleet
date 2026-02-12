@@ -205,6 +205,7 @@ phases:
 
                 # Build terraform apply command with variables
                 TF_VARS="-var=github_repo_owner=${GITHUB_REPO_OWNER} -var=github_repo_name=${GITHUB_REPO_NAME} -var=github_branch=${GITHUB_BRANCH} -var=region=${TARGET_REGION}"
+                [ -n "$GITHUB_CONNECTION_ARN" ] && TF_VARS="$TF_VARS -var=github_connection_arn=${GITHUB_CONNECTION_ARN}"
                 [ -n "$TARGET_ACCOUNT_ID" ] && TF_VARS="$TF_VARS -var=target_account_id=${TARGET_ACCOUNT_ID}"
                 [ -n "$TARGET_REGION" ] && TF_VARS="$TF_VARS -var=target_region=${TARGET_REGION}"
                 [ -n "$TARGET_ALIAS" ] && TF_VARS="$TF_VARS -var=target_alias=${TARGET_ALIAS}"
@@ -273,6 +274,7 @@ phases:
 
                     # Build terraform apply command with variables
                     TF_VARS="-var=github_repo_owner=${GITHUB_REPO_OWNER} -var=github_repo_name=${GITHUB_REPO_NAME} -var=github_branch=${GITHUB_BRANCH} -var=region=${TARGET_REGION}"
+                    [ -n "$GITHUB_CONNECTION_ARN" ] && TF_VARS="$TF_VARS -var=github_connection_arn=${GITHUB_CONNECTION_ARN}"
                     [ -n "$TARGET_ACCOUNT_ID" ] && TF_VARS="$TF_VARS -var=target_account_id=${TARGET_ACCOUNT_ID}"
                     [ -n "$TARGET_REGION" ] && TF_VARS="$TF_VARS -var=target_region=${TARGET_REGION}"
                     [ -n "$TARGET_ALIAS" ] && TF_VARS="$TF_VARS -var=target_alias=${TARGET_ALIAS}"

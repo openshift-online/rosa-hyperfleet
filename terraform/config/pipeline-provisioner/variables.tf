@@ -29,3 +29,8 @@ variable "environment" {
     error_message = "environment must be a single path segment (lowercase letters, digits, hyphen)."
   }
 }
+
+variable "github_connection_arn" {
+  type        = string
+  description = "ARN of the shared GitHub CodeStar connection"
+}

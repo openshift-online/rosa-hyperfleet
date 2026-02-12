@@ -5,10 +5,9 @@ provider "aws" {
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
-# GitHub Connection
-resource "aws_codestarconnections_connection" "github" {
-  name          = "pipeline-provisioner-github"
-  provider_type = "GitHub"
+# Use shared GitHub Connection (created in bootstrap-pipeline)
+data "aws_codestarconnections_connection" "github" {
+  arn = var.github_connection_arn
 }
 
 # IAM Role for CodeBuild
@@ -119,7 +118,7 @@ resource "aws_iam_role_policy" "codepipeline_policy" {
         Action = [
           "codestar-connections:UseConnection"
         ]
-        Resource = aws_codestarconnections_connection.github.arn
+        Resource = data.aws_codestarconnections_connection.github.arn
       },
       {
         Effect = "Allow"
@@ -214,6 +213,10 @@ resource "aws_codebuild_project" "provisioner" {
       name  = "TARGET_ENVIRONMENT"
       value = var.environment
     }
+    environment_variable {
+      name  = "GITHUB_CONNECTION_ARN"
+      value = data.aws_codestarconnections_connection.github.arn
+    }
   }
 
   source {
@@ -266,7 +269,7 @@ resource "aws_codepipeline" "provisioner" {
       output_artifacts = ["source_output"]
 
       configuration = {
-        ConnectionArn    = aws_codestarconnections_connection.github.arn
+        ConnectionArn    = data.aws_codestarconnections_connection.github.arn
         FullRepositoryId = "${var.github_repo_owner}/${var.github_repo_name}"
         BranchName       = var.github_branch
         DetectChanges    = "true"

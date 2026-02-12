@@ -14,6 +14,11 @@ variable "github_branch" {
   default     = "main"
 }
 
+variable "github_connection_arn" {
+  type        = string
+  description = "ARN of the shared GitHub CodeStar connection"
+}
+
 variable "region" {
   type        = string
   description = "AWS Region for the Pipeline"

@@ -13,13 +13,18 @@ output "provisioner_pipeline_arn" {
 }
 
 output "github_connection_arn" {
-  description = "ARN of the GitHub connection for Pipeline Provisioner"
-  value       = module.pipeline_provisioner.github_connection_arn
+  description = "ARN of the shared GitHub connection (used by all pipelines)"
+  value       = aws_codestarconnections_connection.github_shared.arn
+}
+
+output "github_connection_name" {
+  description = "Name of the shared GitHub connection"
+  value       = aws_codestarconnections_connection.github_shared.name
 }
 
 output "github_connection_status" {
-  description = "Status of the GitHub connection (requires manual authorization)"
-  value       = module.pipeline_provisioner.github_connection_status
+  description = "Status of the shared GitHub connection (requires manual authorization if PENDING)"
+  value       = aws_codestarconnections_connection.github_shared.connection_status
 }
 
 output "provisioner_role_arn" {
