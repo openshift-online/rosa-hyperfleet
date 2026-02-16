@@ -64,30 +64,149 @@ phases:
       - |
         set -euo pipefail
 
+        # Function to ensure state bucket exists with proper security settings
+        ensure_state_bucket() {
+            local BUCKET_NAME=$1
+            local BUCKET_REGION=$2
+            local TARGET_ACCOUNT=$3
+
+            echo "Ensuring state bucket exists: $BUCKET_NAME in account $TARGET_ACCOUNT"
+
+            # Assume role in target account to create bucket
+            TEMP_CREDS=$(aws sts assume-role \
+                --role-arn "arn:aws:iam::${TARGET_ACCOUNT}:role/OrganizationAccountAccessRole" \
+                --role-session-name "terraform-state-bucket-creation" \
+                --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+                --output text)
+
+            export AWS_ACCESS_KEY_ID=$(echo $TEMP_CREDS | awk '{print $1}')
+            export AWS_SECRET_ACCESS_KEY=$(echo $TEMP_CREDS | awk '{print $2}')
+            export AWS_SESSION_TOKEN=$(echo $TEMP_CREDS | awk '{print $3}')
+
+            # Check if bucket exists
+            if ! aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
+                echo "Creating state bucket $BUCKET_NAME in $BUCKET_REGION..."
+
+                if [ "$BUCKET_REGION" == "us-east-1" ]; then
+                    aws s3api create-bucket --bucket "$BUCKET_NAME" --region "$BUCKET_REGION"
+                else
+                    aws s3api create-bucket --bucket "$BUCKET_NAME" --region "$BUCKET_REGION" \
+                        --create-bucket-configuration LocationConstraint="$BUCKET_REGION"
+                fi
+
+                # Enable versioning
+                aws s3api put-bucket-versioning --bucket "$BUCKET_NAME" \
+                    --versioning-configuration Status=Enabled
+
+                # Enable encryption
+                aws s3api put-bucket-encryption --bucket "$BUCKET_NAME" \
+                    --server-side-encryption-configuration \
+                    '{"Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]}'
+
+                # Block public access
+                aws s3api put-public-access-block --bucket "$BUCKET_NAME" \
+                    --public-access-block-configuration \
+                    "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+
+                echo "✓ State bucket created and configured"
+            else
+                echo "✓ State bucket already exists"
+            fi
+
+            # Unset assumed role credentials
+            unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+        }
+
         process_target() {
             local MANAGEMENT_ACCOUNT_ID=$1
             local REGION=$2
             local ALIAS=$3
 
-            echo "---------------------------------------------------"
-            echo "Processing Target: $ALIAS ($MANAGEMENT_ACCOUNT_ID) in $REGION"
+            # Validate parameter formats
+            if [[ ! "$MANAGEMENT_ACCOUNT_ID" =~ ^[0-9]{12}$ ]]; then
+                echo "❌ ERROR: Invalid AWS Account ID format: $MANAGEMENT_ACCOUNT_ID" >&2
+                echo "   Expected: 12-digit number" >&2
+                return 1
+            fi
 
-            # Get Central Account ID BEFORE assuming role
-            CENTRAL_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-            echo "Central Account ID: $CENTRAL_ACCOUNT_ID"
+            if [[ ! "$REGION" =~ ^[a-z]{2}-[a-z]+-[0-9]{1}$ ]]; then
+                echo "⚠️  WARNING: REGION may be invalid: $REGION"
+                echo "   Expected format: xx-xxxx-N (e.g., us-east-1, eu-west-2)"
+            fi
+
+            if [[ ! "$ALIAS" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+                echo "❌ ERROR: Invalid alias format: $ALIAS" >&2
+                echo "   Expected: alphanumeric, hyphens, underscores only" >&2
+                return 1
+            fi
+
+            echo "===================================================="
+            echo "Step 1: Pre-flight Check - Testing Assume Role"
+            echo "===================================================="
+            echo "Target: $ALIAS ($MANAGEMENT_ACCOUNT_ID) in $REGION"
 
             # Define Role ARN
             local ROLE_ARN="arn:aws:iam::${MANAGEMENT_ACCOUNT_ID}:role/OrganizationAccountAccessRole"
 
-            # Export Variables for Makefile / Terraform Backend
-            # State is stored in the Central Account (Current Account), but we use the Management Alias in the key
-            export TF_STATE_BUCKET="terraform-state-${CENTRAL_ACCOUNT_ID}"
-            export TF_STATE_KEY="management-cluster/${ALIAS}.tfstate"
+            # Test assume role capability
+            echo "Testing assume role capability..."
+            echo "Role ARN: $ROLE_ARN"
 
-            # Dynamically detect bucket region (uses Central Account Creds)
-            BUCKET_REGION=$(aws s3api get-bucket-location --bucket $TF_STATE_BUCKET --query LocationConstraint --output text)
-            if [ "$BUCKET_REGION" == "None" ] || [ "$BUCKET_REGION" == "null" ] || [ -z "$BUCKET_REGION" ]; then BUCKET_REGION="us-east-1"; fi
-            export TF_STATE_REGION=$BUCKET_REGION
+            if ! ASSUMED_CREDS=$(aws sts assume-role \
+                --role-arn "$ROLE_ARN" \
+                --role-session-name "pipeline-preflight-check" \
+                --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+                --output text 2>&1); then
+                echo "❌ FAILED: Cannot assume role $ROLE_ARN"
+                echo ""
+                echo "Error details:"
+                echo "$ASSUMED_CREDS"
+                echo ""
+                echo "Common causes:"
+                echo "  • OrganizationAccountAccessRole does not exist in target account"
+                echo "  • Trust policy does not allow central account to assume role"
+                echo "  • CodeBuild role lacks sts:AssumeRole permission"
+                echo ""
+                return 1
+            fi
+
+            # Temporarily assume role to verify
+            export AWS_ACCESS_KEY_ID=$(echo $ASSUMED_CREDS | awk '{print $1}')
+            export AWS_SECRET_ACCESS_KEY=$(echo $ASSUMED_CREDS | awk '{print $2}')
+            export AWS_SESSION_TOKEN=$(echo $ASSUMED_CREDS | awk '{print $3}')
+
+            if ! ASSUMED_IDENTITY=$(aws sts get-caller-identity --query 'Account' --output text 2>&1); then
+                echo "❌ FAILED: Can assume role but cannot make API calls"
+                echo "Error: $ASSUMED_IDENTITY"
+                unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+                return 1
+            fi
+
+            if [ "$ASSUMED_IDENTITY" != "$MANAGEMENT_ACCOUNT_ID" ]; then
+                echo "❌ FAILED: Assumed role in wrong account"
+                echo "  Expected: $MANAGEMENT_ACCOUNT_ID"
+                echo "  Got: $ASSUMED_IDENTITY"
+                unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+                return 1
+            fi
+
+            echo "✅ Successfully assumed role in account $MANAGEMENT_ACCOUNT_ID"
+            echo ""
+
+            # Clean up - unset for next steps
+            unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+
+            echo "===================================================="
+            echo "Step 2: Terraform Configuration"
+            echo "===================================================="
+
+            # Set Terraform backend configuration (state stored in management account)
+            export TF_STATE_BUCKET="terraform-state-${MANAGEMENT_ACCOUNT_ID}"
+            export TF_STATE_KEY="management-cluster/${ALIAS}.tfstate"
+            export TF_STATE_REGION=$REGION
+
+            # Ensure state bucket exists in target account
+            ensure_state_bucket "$TF_STATE_BUCKET" "$TF_STATE_REGION" "$MANAGEMENT_ACCOUNT_ID"
 
             # Export Terraform Variables for Management Cluster
             export TF_VAR_app_code="${APP_CODE}"
@@ -110,38 +229,17 @@ phases:
             echo "  }" >> terraform/config/management-cluster/override.tf
             echo "}" >> terraform/config/management-cluster/override.tf
 
-            # Create placeholder Maestro agent secrets in MANAGEMENT account
+            echo "===================================================="
+            echo "Step 3: Create Maestro Agent Secrets"
+            echo "===================================================="
             echo "Ensuring Maestro agent secrets exist in management account ${MANAGEMENT_ACCOUNT_ID}..."
 
-            # Get temporary credentials by assuming the management account role
-            echo "Assuming role: ${ROLE_ARN}"
-            if ! CREDS=$(aws sts assume-role --role-arn "${ROLE_ARN}" --role-session-name "secret-creation" --output json 2>&1); then
-                echo "❌ Failed to assume role: ${ROLE_ARN}"
-                echo "AWS CLI error output:"
-                echo "$CREDS"
-                exit 1
-            fi
-
-            # Validate credentials were returned
-            if ! echo "$CREDS" | jq -e '.Credentials' >/dev/null 2>&1; then
-                echo "❌ Role assumption succeeded but credentials not found in response"
-                echo "Role ARN: ${ROLE_ARN}"
-                echo "Response:"
-                echo "$CREDS"
-                exit 1
-            fi
+            # Assume role again for secret creation (verified working in Step 1)
+            CREDS=$(aws sts assume-role --role-arn "${ROLE_ARN}" --role-session-name "secret-creation" --output json)
 
             MGMT_ACCESS_KEY=$(echo "$CREDS" | jq -r '.Credentials.AccessKeyId')
             MGMT_SECRET_KEY=$(echo "$CREDS" | jq -r '.Credentials.SecretAccessKey')
             MGMT_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.Credentials.SessionToken')
-
-            # Final validation that credentials are not null/empty
-            if [[ -z "$MGMT_ACCESS_KEY" || "$MGMT_ACCESS_KEY" == "null" ]]; then
-                echo "❌ Failed to extract valid credentials from assume-role response"
-                exit 1
-            fi
-
-            echo "✓ Successfully assumed role and extracted credentials"
 
             for SECRET_NAME in "maestro/agent-cert" "maestro/agent-config"; do
                 # Check if secret exists in management account
@@ -177,9 +275,12 @@ phases:
             done
 
             echo "Maestro agent placeholder secrets verified in management account"
+            echo ""
 
+            echo "===================================================="
+            echo "Step 4: Terraform Apply"
+            echo "===================================================="
             # Run Infrastructure Provision (without ArgoCD bootstrap)
-            echo "Running Infrastructure Provisioning..."
             make pipeline-provision-management-infra
             PROVISION_STATUS=$?
 
