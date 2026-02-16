@@ -10,6 +10,7 @@ sectors:
       app_code: "infra"
       service_phase: "dev"
       cost_center: "000"
+      environment: "{{ environment }}"
     values:
       management-cluster:
         hypershift:
@@ -26,6 +27,7 @@ sectors:
       app_code: "infra"
       service_phase: "staging"
       cost_center: "000"
+      environment: "{{ environment }}"
     values:
       management-cluster:
         hypershift:
@@ -36,18 +38,15 @@ sectors:
             domain: "dev.{{ aws_region }}.rosa.example.com"
 
 shards:
-  - region_alias: "eu-west-1"
-    aws_region: "eu-west-1"
-    sector: "integration"
-    account_id: "REMOVED"
-    management_clusters:
-      - cluster_id: "mc01-{{ region_alias }}"
-        account_id: "REMOVED"
-
   - region_alias: "us-east-1"
     aws_region: "us-east-1"
     sector: "integration"
     account_id: "REMOVED"
+    terraform_vars:
+      account_id: "{{ account_id }}"
+      region: "{{ aws_region }}"
+      alias: "regional-{{region_alias}}"
+      region_alias: "{{ region_alias }}"
     management_clusters:
       - cluster_id: "mc01-{{ region_alias }}"
         account_id: "REMOVED"
@@ -56,6 +55,11 @@ shards:
     aws_region: "us-east-2"
     sector: "integration"
     account_id: "REMOVED"
+    terraform_vars:
+      account_id: "{{ account_id }}"
+      region: "{{ aws_region }}"
+      alias: "regional-{{region_alias}}"
+      region_alias: "{{ region_alias }}"
     management_clusters:
       - cluster_id: "mc01-{{ region_alias }}"
         account_id: "REMOVED"
@@ -67,11 +71,31 @@ shards:
 
   - region_alias: "eu-west-1"
     aws_region: "eu-west-1"
-    sector: "staging"
+    sector: "integration"
     account_id: "REMOVED"
+    terraform_vars:
+      account_id: "{{ account_id }}"
+      region: "{{ aws_region }}"
+      alias: "regional-{{region_alias}}"
+      region_alias: "{{ region_alias }}"
     management_clusters:
       - cluster_id: "mc01-{{ region_alias }}"
         account_id: "REMOVED"
     config_revision:
       management-cluster: "826fa76d08fc2ce87c863196e52d5a4fa9259a82"
       regional-cluster: "826fa76d08fc2ce87c863196e52d5a4fa9259a82"
+
+  - region_alias: "us-east-1"
+    aws_region: "us-east-1"
+    sector: "staging"
+    account_id: "REMOVED"
+    terraform_vars:
+      account_id: "{{ account_id }}"
+      region: "{{ aws_region }}"
+      alias: "regional-{{region_alias}}"
+      region_alias: "{{ region_alias }}"
+    management_clusters:
+      - cluster_id: "mc01-{{ region_alias }}"
+        account_id: "REMOVED"
+      - cluster_id: "mc02-{{ region_alias }}"
+        account_id: "REMOVED"
