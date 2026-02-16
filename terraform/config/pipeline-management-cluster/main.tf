@@ -17,7 +17,6 @@ locals {
 
   # Resource naming patterns (all under 32 chars)
   artifact_bucket_name = "mc-${local.resource_hash}-${local.account_suffix}"  # 24 chars
-  github_connection_name = "mc-gh-${local.resource_hash}"  # 18 chars
   codebuild_role_name = "mc-cb-${local.resource_hash}"  # 18 chars
   codepipeline_role_name = "mc-cp-${local.resource_hash}"  # 18 chars
   validate_project_name = "mc-val-${local.resource_hash}"  # 19 chars
