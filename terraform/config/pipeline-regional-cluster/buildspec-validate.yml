@@ -113,7 +113,7 @@ phases:
             export AWS_SESSION_TOKEN="$AWS_TOKEN"
 
             # Check if bucket exists
-            if ! aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
+            if ! aws s3api head-bucket --bucket "$BUCKET_NAME" --region "$BUCKET_REGION" 2>/dev/null; then
                 echo "Creating state bucket $BUCKET_NAME in $BUCKET_REGION..."
 
                 # Create bucket with region-specific configuration
