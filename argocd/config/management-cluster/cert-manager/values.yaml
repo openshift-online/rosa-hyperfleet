@@ -1,0 +1,4 @@
+cert-manager:
+  crds:
+    enabled: true
+    keep: true # Prevents Helm from deleting CRDs if the chart is uninstalled

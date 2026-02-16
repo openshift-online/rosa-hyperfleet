@@ -21,3 +21,5 @@ Chart.lock
 .maestro-certs/
 
 node_modules/
+
+.DS_Store
