@@ -431,7 +431,13 @@ def render_shard_terraform(
         management_dir.mkdir(parents=True, exist_ok=True)
 
         for mc in management_clusters:
-            cluster_id = mc.get('cluster_id', '')
+            # Validate cluster_id is present and non-empty
+            cluster_id = mc.get('cluster_id')
+            if not cluster_id:
+                raise ValueError(
+                    f"Management cluster missing 'cluster_id' in shard {environment}/{region_alias}. "
+                    f"Management cluster config: {mc}"
+                )
 
             mc_file = management_dir / f'{cluster_id}.json'
 
@@ -478,7 +484,8 @@ def cleanup_stale_files(shards: List[Dict[str, Any]], deploy_dir: Path) -> None:
     shard_mc_map = {}
     for shard in shards:
         key = (shard['environment'], shard['region_alias'])
-        mc_ids = {mc.get('cluster_id', '') for mc in shard.get('management_clusters', []) if mc.get('cluster_id')}
+        # Only include non-empty cluster IDs
+        mc_ids = {mc['cluster_id'] for mc in shard.get('management_clusters', []) if mc.get('cluster_id')}
         shard_mc_map[key] = mc_ids
 
     removed_count = 0
