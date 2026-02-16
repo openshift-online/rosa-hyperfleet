@@ -13,7 +13,7 @@
 resource "aws_secretsmanager_secret" "maestro_server_cert" {
   name                    = "maestro/server-cert"
   description             = "MQTT certificate material for Maestro Server"
-  recovery_window_in_days = 0  # Force immediate deletion to allow quick recreation
+  recovery_window_in_days = 0 # Force immediate deletion to allow quick recreation
 
   tags = merge(
     local.common_tags,
@@ -38,7 +38,7 @@ resource "aws_secretsmanager_secret_version" "maestro_server_cert" {
 resource "aws_secretsmanager_secret" "maestro_server_config" {
   name                    = "maestro/server-config"
   description             = "MQTT configuration for Maestro Server"
-  recovery_window_in_days = 0  # Force immediate deletion to allow quick recreation
+  recovery_window_in_days = 0 # Force immediate deletion to allow quick recreation
 
   tags = merge(
     local.common_tags,
@@ -75,7 +75,7 @@ resource "aws_secretsmanager_secret_version" "maestro_server_config" {
 resource "aws_secretsmanager_secret" "maestro_db_credentials" {
   name                    = "maestro/db-credentials"
   description             = "PostgreSQL database credentials for Maestro Server"
-  recovery_window_in_days = 0  # Force immediate deletion to allow quick recreation
+  recovery_window_in_days = 0 # Force immediate deletion to allow quick recreation
 
   tags = merge(
     local.common_tags,

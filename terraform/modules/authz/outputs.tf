@@ -90,7 +90,7 @@ output "authz_configuration_summary" {
   description = "Summary of authz infrastructure configuration for application config"
   value = {
     dynamodb = {
-      region     = data.aws_region.current.id
+      region = data.aws_region.current.id
       tables = {
         accounts    = aws_dynamodb_table.accounts.name
         admins      = aws_dynamodb_table.admins.name

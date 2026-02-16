@@ -464,6 +464,10 @@ resource "aws_codebuild_project" "management_bootstrap" {
       value = var.target_alias
     }
     environment_variable {
+      name  = "TARGET_REGION"
+      value = var.target_region
+    }
+    environment_variable {
       name  = "ENVIRONMENT"
       value = var.target_environment
     }
