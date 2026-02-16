@@ -170,16 +170,45 @@ phases:
 
             echo "Ensuring state bucket exists: $BUCKET_NAME in account $TARGET_ACCOUNT"
 
+            # Set up trap to ensure credentials are always unset
+            trap 'unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN' RETURN
+
             # Assume role in target account to create bucket
-            TEMP_CREDS=$(aws sts assume-role \
+            local TEMP_CREDS
+            local AWS_CLI_ERROR
+            if ! TEMP_CREDS=$(aws sts assume-role \
                 --role-arn "arn:aws:iam::${TARGET_ACCOUNT}:role/OrganizationAccountAccessRole" \
                 --role-session-name "terraform-state-bucket-creation" \
                 --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
-                --output text)
+                --output text 2>&1); then
+                AWS_CLI_ERROR="$TEMP_CREDS"
+                echo "❌ ERROR: Failed to assume role in account ${TARGET_ACCOUNT}" >&2
+                echo "   Role ARN: arn:aws:iam::${TARGET_ACCOUNT}:role/OrganizationAccountAccessRole" >&2
+                echo "   AWS CLI Error: ${AWS_CLI_ERROR}" >&2
+                return 1
+            fi
 
-            export AWS_ACCESS_KEY_ID=$(echo $TEMP_CREDS | awk '{print $1}')
-            export AWS_SECRET_ACCESS_KEY=$(echo $TEMP_CREDS | awk '{print $2}')
-            export AWS_SESSION_TOKEN=$(echo $TEMP_CREDS | awk '{print $3}')
+            # Validate credentials were returned
+            if [[ -z "$TEMP_CREDS" ]]; then
+                echo "❌ ERROR: assume-role returned empty credentials for account ${TARGET_ACCOUNT}" >&2
+                return 1
+            fi
+
+            # Safely parse credentials without word-splitting
+            local AWS_KEY AWS_SECRET AWS_TOKEN
+            read -r AWS_KEY AWS_SECRET AWS_TOKEN <<< "$TEMP_CREDS"
+
+            # Validate all three credential components are present
+            if [[ -z "$AWS_KEY" || -z "$AWS_SECRET" || -z "$AWS_TOKEN" ]]; then
+                echo "❌ ERROR: Incomplete credentials from assume-role for account ${TARGET_ACCOUNT}" >&2
+                echo "   Expected: AccessKeyId SecretAccessKey SessionToken" >&2
+                return 1
+            fi
+
+            # Export credentials for use in subsequent AWS CLI calls
+            export AWS_ACCESS_KEY_ID="$AWS_KEY"
+            export AWS_SECRET_ACCESS_KEY="$AWS_SECRET"
+            export AWS_SESSION_TOKEN="$AWS_TOKEN"
 
             # Check if bucket exists
             if ! aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
@@ -211,8 +240,7 @@ phases:
                 echo "✓ State bucket already exists"
             fi
 
-            # Unset assumed role credentials
-            unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+            # Credentials will be unset by trap on function return
         }
 
         # Set Terraform backend configuration variables (stored in TARGET account)
