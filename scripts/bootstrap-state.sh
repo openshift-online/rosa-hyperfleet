@@ -39,6 +39,55 @@ apply_bucket_security() {
         --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" \
         --region "$REGION"
 
+    # Apply bucket policy to allow cross-account access from AWS Organizations
+    echo "Applying bucket policy for cross-account access..."
+    cat > /tmp/bucket-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowCrossAccountAccessFromOrganization",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::${BUCKET_NAME}",
+        "arn:aws:s3:::${BUCKET_NAME}/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:PrincipalOrgID": "\${ORGANIZATION_ID}"
+        }
+      }
+    }
+  ]
+}
+EOF
+
+    # Get Organization ID (if account is part of an organization)
+    if ORGANIZATION_ID=$(aws organizations describe-organization --query 'Organization.Id' --output text 2>/dev/null); then
+        echo "  Organization ID: $ORGANIZATION_ID"
+        # Substitute the org ID in the policy
+        sed -i "s/\${ORGANIZATION_ID}/${ORGANIZATION_ID}/g" /tmp/bucket-policy.json
+
+        aws s3api put-bucket-policy \
+            --bucket "$BUCKET_NAME" \
+            --policy file:///tmp/bucket-policy.json \
+            --region "$REGION"
+
+        echo "✅ Cross-account bucket policy applied (AWS Organizations)"
+        rm -f /tmp/bucket-policy.json
+    else
+        echo "⚠️  Account not in AWS Organization - skipping cross-account policy"
+        echo "   Note: Cross-account Terraform state access will not work without manual bucket policy"
+        rm -f /tmp/bucket-policy.json
+    fi
+
     echo "✅ Security settings applied"
 }
 

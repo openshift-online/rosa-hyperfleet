@@ -58,6 +58,55 @@ phases:
         terraform version
         echo "✓ Terraform installation verified"
 
+  pre_build:
+    commands:
+      - echo "=========================================="
+      - echo "Pre-flight Setup"
+      - echo "=========================================="
+      - |
+        set -euo pipefail
+
+        # If TARGET_* variables are set, assume role once
+        if [[ -n "${TARGET_ACCOUNT_ID:-}" && -n "${TARGET_REGION:-}" && -n "${TARGET_ALIAS:-}" ]]; then
+            echo "TARGET_* variables detected - assuming role to target account"
+
+            # Get central account ID before assuming role
+            CENTRAL_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+            export CENTRAL_ACCOUNT_ID
+
+            ROLE_ARN="arn:aws:iam::${TARGET_ACCOUNT_ID}:role/OrganizationAccountAccessRole"
+            echo "Assuming role: $ROLE_ARN"
+
+            if ! TEMP_CREDS=$(aws sts assume-role \
+                --role-arn "$ROLE_ARN" \
+                --role-session-name "pipeline-validate-${TARGET_ALIAS}" \
+                --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+                --output text 2>&1); then
+                echo "❌ ERROR: Failed to assume role $ROLE_ARN"
+                echo "Error: $TEMP_CREDS"
+                exit 1
+            fi
+
+            # Export credentials
+            export AWS_ACCESS_KEY_ID=$(echo "$TEMP_CREDS" | awk '{print $1}')
+            export AWS_SECRET_ACCESS_KEY=$(echo "$TEMP_CREDS" | awk '{print $2}')
+            export AWS_SESSION_TOKEN=$(echo "$TEMP_CREDS" | awk '{print $3}')
+
+            # Verify
+            ASSUMED_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+            if [ "$ASSUMED_ACCOUNT" != "$TARGET_ACCOUNT_ID" ]; then
+                echo "❌ ERROR: Assumed wrong account"
+                exit 1
+            fi
+
+            echo "✅ Assumed role in account $TARGET_ACCOUNT_ID"
+        else
+            echo "No TARGET_* variables set - using current credentials"
+            CENTRAL_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+            export CENTRAL_ACCOUNT_ID
+        fi
+        echo ""
+
   build:
     commands:
       - echo "Validating Regional Cluster Configurations..."
@@ -70,15 +119,15 @@ phases:
 
             echo "---------------------------------------------------"
             echo "Validating Target: $ALIAS ($ACCOUNT_ID) in $REGION"
+            echo "  Using assumed credentials (if TARGET_* was set)"
+            echo ""
 
-            local ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/OrganizationAccountAccessRole"
-
-            export TF_VAR_assume_role_arn=$ROLE_ARN
-            export TF_STATE_BUCKET="terraform-state-$(aws sts get-caller-identity --query Account --output text)"
+            # State bucket is in central account
+            export TF_STATE_BUCKET="terraform-state-${CENTRAL_ACCOUNT_ID}"
             export TF_STATE_KEY="regional-cluster/${ALIAS}.tfstate"
 
-            # Dynamically detect bucket region
-            BUCKET_REGION=$(aws s3api get-bucket-location --bucket $TF_STATE_BUCKET --query LocationConstraint --output text)
+            # Detect bucket region
+            BUCKET_REGION=$(aws s3api get-bucket-location --bucket $TF_STATE_BUCKET --region us-east-1 --query LocationConstraint --output text)
             if [ "$BUCKET_REGION" == "None" ] || [ "$BUCKET_REGION" == "null" ] || [ -z "$BUCKET_REGION" ]; then BUCKET_REGION="us-east-1"; fi
             export TF_STATE_REGION=$BUCKET_REGION
 

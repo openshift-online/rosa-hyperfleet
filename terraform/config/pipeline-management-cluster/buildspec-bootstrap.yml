@@ -83,53 +83,102 @@ phases:
         terraform version
         echo "✓ Terraform installation verified"
 
+  pre_build:
+    commands:
+      - echo "=========================================="
+      - echo "Assuming Role to Target Account"
+      - echo "=========================================="
+      - |
+        set -euo pipefail
+
+        # Validate required environment variables
+        if [[ -z "$TARGET_ACCOUNT_ID" || -z "$TARGET_REGION" || -z "$TARGET_ALIAS" ]]; then
+            echo "❌ ERROR: Required environment variables not set"
+            echo "   TARGET_ACCOUNT_ID: ${TARGET_ACCOUNT_ID:-not set}"
+            echo "   TARGET_REGION: ${TARGET_REGION:-not set}"
+            echo "   TARGET_ALIAS: ${TARGET_ALIAS:-not set}"
+            exit 1
+        fi
+
+        # Get central account ID BEFORE assuming role
+        CENTRAL_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        export CENTRAL_ACCOUNT_ID
+
+        echo "Configuration:"
+        echo "  Central Account: $CENTRAL_ACCOUNT_ID"
+        echo "  Target Account: $TARGET_ACCOUNT_ID"
+        echo "  Target Region: $TARGET_REGION"
+        echo "  Target Alias: $TARGET_ALIAS"
+        echo ""
+
+        # Assume role to target account ONCE
+        ROLE_ARN="arn:aws:iam::${TARGET_ACCOUNT_ID}:role/OrganizationAccountAccessRole"
+        echo "Assuming role: $ROLE_ARN"
+
+        if ! TEMP_CREDS=$(aws sts assume-role \
+            --role-arn "$ROLE_ARN" \
+            --role-session-name "pipeline-bootstrap-${TARGET_ALIAS}" \
+            --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+            --output text 2>&1); then
+            echo "❌ ERROR: Failed to assume role $ROLE_ARN"
+            echo "Error: $TEMP_CREDS"
+            exit 1
+        fi
+
+        # Export credentials
+        export AWS_ACCESS_KEY_ID=$(echo "$TEMP_CREDS" | awk '{print $1}')
+        export AWS_SECRET_ACCESS_KEY=$(echo "$TEMP_CREDS" | awk '{print $2}')
+        export AWS_SESSION_TOKEN=$(echo "$TEMP_CREDS" | awk '{print $3}')
+
+        # Verify
+        ASSUMED_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+        if [ "$ASSUMED_ACCOUNT" != "$TARGET_ACCOUNT_ID" ]; then
+            echo "❌ ERROR: Assumed wrong account"
+            exit 1
+        fi
+
+        echo "✅ Successfully assumed role in account $TARGET_ACCOUNT_ID"
+        echo "✅ All subsequent operations will use target account credentials"
+        echo ""
+
   build:
     commands:
       - echo "=========================================="
       - echo "ArgoCD Bootstrap for Management Cluster"
       - echo "=========================================="
       - |
-        # Validate required environment variables
-        if [[ -z "$TARGET_ACCOUNT_ID" || -z "$TARGET_REGION" || -z "$TARGET_ALIAS" ]]; then
-            echo "❌ ERROR: Required environment variables not set"
-            echo "   TARGET_ACCOUNT_ID: ${TARGET_ACCOUNT_ID}"
-            echo "   TARGET_REGION: ${TARGET_REGION}"
-            echo "   TARGET_ALIAS: ${TARGET_ALIAS}"
-            exit 1
-        fi
+        set -euo pipefail
 
-        echo "Target Account: ${TARGET_ACCOUNT_ID}"
-        echo "Target Region: ${TARGET_REGION}"
-        echo "Target Alias: ${TARGET_ALIAS}"
-        echo "Target Environment: ${TARGET_ENVIRONMENT:-integration}"
+        # Using assumed role credentials from pre_build phase
+        echo "Bootstrapping Management Cluster: ${TARGET_ALIAS}"
+        echo "  Account: ${TARGET_ACCOUNT_ID}"
+        echo "  Region: ${TARGET_REGION}"
+        echo "  Environment: ${TARGET_ENVIRONMENT:-integration}"
+        echo ""
 
-        # Get central account ID
-        CENTRAL_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-        echo "Central Account: ${CENTRAL_ACCOUNT_ID}"
-
-        # Define role ARN for cross-account access
-        ROLE_ARN="arn:aws:iam::${TARGET_ACCOUNT_ID}:role/OrganizationAccountAccessRole"
-
-        # Generate override.tf for cross-account access
-        echo "Generating override.tf for cross-account access..."
+        # Generate override.tf (no assume_role needed)
+        echo "Generating override.tf..."
         echo 'provider "aws" {' > terraform/config/management-cluster/override.tf
         echo "  region = \"${TARGET_REGION}\"" >> terraform/config/management-cluster/override.tf
-        echo '  assume_role {' >> terraform/config/management-cluster/override.tf
-        echo "    role_arn = \"${ROLE_ARN}\"" >> terraform/config/management-cluster/override.tf
-        echo '  }' >> terraform/config/management-cluster/override.tf
         echo '}' >> terraform/config/management-cluster/override.tf
 
-        # Set Terraform backend config
+        # Configure Terraform backend (state in central account)
         export TF_STATE_BUCKET="terraform-state-${CENTRAL_ACCOUNT_ID}"
         export TF_STATE_KEY="management-cluster/${TARGET_ALIAS}.tfstate"
 
-        # Dynamically detect bucket region (uses central account creds)
-        BUCKET_REGION=$(aws s3api get-bucket-location --bucket $TF_STATE_BUCKET --query LocationConstraint --output text)
+        # Detect bucket region
+        BUCKET_REGION=$(aws s3api get-bucket-location --bucket $TF_STATE_BUCKET --region us-east-1 --query LocationConstraint --output text)
         if [ "$BUCKET_REGION" == "None" ] || [ "$BUCKET_REGION" == "null" ] || [ -z "$BUCKET_REGION" ]; then BUCKET_REGION="us-east-1"; fi
         export TF_STATE_REGION=$BUCKET_REGION
 
-        # Initialize Terraform to read state
-        echo "Initializing Terraform to read outputs..."
+        echo "Terraform backend:"
+        echo "  Bucket: $TF_STATE_BUCKET (central account: $CENTRAL_ACCOUNT_ID)"
+        echo "  Key: $TF_STATE_KEY"
+        echo "  Region: $TF_STATE_REGION"
+        echo ""
+
+        # Initialize Terraform
+        echo "Initializing Terraform..."
         cd terraform/config/management-cluster
         terraform init -reconfigure \
             -backend-config="bucket=${TF_STATE_BUCKET}" \
@@ -138,11 +187,9 @@ phases:
             -backend-config="use_lockfile=true"
         cd ../../..
 
-        # Export ASSUME_ROLE_ARN for bootstrap script
-        export ASSUME_ROLE_ARN="${ROLE_ARN}"
-
+        # No need to set ASSUME_ROLE_ARN - already using target account credentials
         echo "Bootstrapping ArgoCD..."
-        # Export standardized environment variables (prefer existing, fall back to TARGET_* vars)
+        # Export standardized environment variables
         export ENVIRONMENT="${ENVIRONMENT:-${TARGET_ENVIRONMENT:-integration}}"
         export REGION_ALIAS="${REGION_ALIAS:-${TARGET_ALIAS}}"
         export AWS_REGION="${AWS_REGION:-${TARGET_REGION}}"
