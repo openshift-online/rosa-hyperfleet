@@ -7,13 +7,13 @@
 # - Then run: scripts/render.py
 #
 # Cluster Type: management-cluster
-# Shard: eu-west-1 (staging)
+# Shard: us-east-1 (staging)
 # Generated: render.py
 #
 
 hypershift:
   oidcStorageS3Bucket:
-    name: hypershift-mc-eu-west-1
-    region: eu-west-1
+    name: hypershift-mc-us-east-1
+    region: us-east-1
   externalDns:
-    domain: dev.eu-west-1.rosa.example.com
+    domain: dev.us-east-1.rosa.example.com

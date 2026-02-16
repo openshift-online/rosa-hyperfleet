@@ -7,7 +7,7 @@
 #
 # Cluster Type: regional-cluster
 # Shard: eu-west-1 (integration)
-# Config Revision: metadata.annotations.git_revision
+# Config Revision: 826fa76d
 # Generated: render.py
 #
 
@@ -30,7 +30,7 @@ spec:
           - path: argocd/config/{{ .metadata.labels.cluster_type }}/*
           - path: argocd/config/shared/*
           repoURL: '{{ .metadata.annotations.git_repo }}'
-          revision: '{{ .metadata.annotations.git_revision }}'
+          revision: 826fa76d08fc2ce87c863196e52d5a4fa9259a82
   template:
     metadata:
       name: '{{ .path.basename }}'
@@ -70,7 +70,7 @@ spec:
                   dynamodbPrefix: '{{ .metadata.annotations.dynamodb_prefix }}'
         path: '{{ .path.path }}'
         repoURL: '{{ .metadata.annotations.git_repo }}'
-        targetRevision: '{{ .metadata.annotations.git_revision }}'
+        targetRevision: 826fa76d08fc2ce87c863196e52d5a4fa9259a82
       - repoURL: '{{ .metadata.annotations.git_repo | replace "github.com" "github.com:443" }}'
         targetRevision: '{{ .metadata.annotations.git_revision }}'
         ref: values

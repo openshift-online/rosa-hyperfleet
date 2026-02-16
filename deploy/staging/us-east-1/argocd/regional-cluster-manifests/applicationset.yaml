@@ -5,9 +5,9 @@
 # - Edit config.yaml for config_revision references
 # - Then run: scripts/render.py
 #
-# Cluster Type: management-cluster
-# Shard: eu-west-1 (staging)
-# Config Revision: 826fa76d
+# Cluster Type: regional-cluster
+# Shard: us-east-1 (staging)
+# Config Revision: metadata.annotations.git_revision
 # Generated: render.py
 #
 
@@ -30,7 +30,7 @@ spec:
           - path: argocd/config/{{ .metadata.labels.cluster_type }}/*
           - path: argocd/config/shared/*
           repoURL: '{{ .metadata.annotations.git_repo }}'
-          revision: 826fa76d08fc2ce87c863196e52d5a4fa9259a82
+          revision: '{{ .metadata.annotations.git_revision }}'
   template:
     metadata:
       name: '{{ .path.basename }}'
@@ -70,7 +70,7 @@ spec:
                   dynamodbPrefix: '{{ .metadata.annotations.dynamodb_prefix }}'
         path: '{{ .path.path }}'
         repoURL: '{{ .metadata.annotations.git_repo }}'
-        targetRevision: 826fa76d08fc2ce87c863196e52d5a4fa9259a82
+        targetRevision: '{{ .metadata.annotations.git_revision }}'
       - repoURL: '{{ .metadata.annotations.git_repo | replace "github.com" "github.com:443" }}'
         targetRevision: '{{ .metadata.annotations.git_revision }}'
         ref: values
