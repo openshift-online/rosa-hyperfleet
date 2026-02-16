@@ -100,6 +100,37 @@ phases:
 
         # Determine which environment to process
         TARGET_ENV="${TARGET_ENVIRONMENT:-staging}"
+
+        # Validate and sanitize TARGET_ENV to prevent path traversal and injection
+        if [[ -z "$TARGET_ENV" ]]; then
+            echo "❌ ERROR: TARGET_ENV is empty" >&2
+            exit 1
+        fi
+
+        # Check for path traversal attempts
+        if [[ "$TARGET_ENV" == *"/"* ]]; then
+            echo "❌ ERROR: TARGET_ENV contains invalid character '/': $TARGET_ENV" >&2
+            exit 1
+        fi
+
+        if [[ "$TARGET_ENV" == *".."* ]]; then
+            echo "❌ ERROR: TARGET_ENV contains path traversal sequence '..': $TARGET_ENV" >&2
+            exit 1
+        fi
+
+        # Check for whitespace
+        if [[ "$TARGET_ENV" =~ [[:space:]] ]]; then
+            echo "❌ ERROR: TARGET_ENV contains whitespace: $TARGET_ENV" >&2
+            exit 1
+        fi
+
+        # Enforce allowlist: only alphanumeric, dot, underscore, and hyphen
+        if [[ ! "$TARGET_ENV" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "❌ ERROR: TARGET_ENV contains invalid characters: $TARGET_ENV" >&2
+            echo "   Only alphanumeric, dot (.), underscore (_), and hyphen (-) are allowed" >&2
+            exit 1
+        fi
+
         echo "Processing environment: $TARGET_ENV"
         echo ""
 
@@ -113,7 +144,7 @@ phases:
 
         # Validate at least one region directory exists
         shopt -s nullglob
-        region_dirs=(deploy/${TARGET_ENV}/*/)
+        region_dirs=("deploy/${TARGET_ENV}"/*/)
         shopt -u nullglob
 
         if [ ${#region_dirs[@]} -eq 0 ]; then
