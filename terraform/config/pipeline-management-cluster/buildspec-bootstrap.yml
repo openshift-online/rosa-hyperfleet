@@ -120,9 +120,9 @@ phases:
             fi
 
             # Export credentials
-            export AWS_ACCESS_KEY_ID=$(echo $TEMP_CREDS | awk '{print $1}')
-            export AWS_SECRET_ACCESS_KEY=$(echo $TEMP_CREDS | awk '{print $2}')
-            export AWS_SESSION_TOKEN=$(echo $TEMP_CREDS | awk '{print $3}')
+            export AWS_ACCESS_KEY_ID=$(echo "$TEMP_CREDS" | awk '{print $1}')
+            export AWS_SECRET_ACCESS_KEY=$(echo "$TEMP_CREDS" | awk '{print $2}')
+            export AWS_SESSION_TOKEN=$(echo "$TEMP_CREDS" | awk '{print $3}')
 
             # Validate all three parts are present
             if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ] || [ -z "$AWS_SESSION_TOKEN" ]; then
@@ -202,7 +202,7 @@ phases:
         # Define role ARN for cross-account access
         ROLE_ARN="arn:aws:iam::${TARGET_ACCOUNT_ID}:role/OrganizationAccountAccessRole"
 
-        # Set Terraform backend config (state stored in management account)
+        # Set Terraform backend config (state stored in target account)
         export TF_STATE_BUCKET="terraform-state-${TARGET_ACCOUNT_ID}"
         export TF_STATE_KEY="management-cluster/${TARGET_ALIAS}.tfstate"
         export TF_STATE_REGION=$TARGET_REGION
