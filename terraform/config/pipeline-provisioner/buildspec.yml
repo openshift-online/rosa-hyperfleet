@@ -103,6 +103,29 @@ phases:
         echo "Processing environment: $TARGET_ENV"
         echo ""
 
+        # Validate environment directory exists
+        if [ ! -d "deploy/${TARGET_ENV}" ]; then
+            echo "❌ ERROR: Environment directory does not exist: deploy/${TARGET_ENV}" >&2
+            echo "   Available environments:" >&2
+            ls -d deploy/*/ 2>/dev/null | sed 's|deploy/||g; s|/$||g' | sed 's/^/   - /' >&2 || echo "   (none found)" >&2
+            exit 1
+        fi
+
+        # Validate at least one region directory exists
+        shopt -s nullglob
+        region_dirs=(deploy/${TARGET_ENV}/*/)
+        shopt -u nullglob
+
+        if [ ${#region_dirs[@]} -eq 0 ]; then
+            echo "❌ ERROR: No region directories found in deploy/${TARGET_ENV}/" >&2
+            echo "   Expected at least one directory matching: deploy/${TARGET_ENV}/*/" >&2
+            echo "   Ensure config.yaml has shards for environment '${TARGET_ENV}' and run scripts/render.py" >&2
+            exit 1
+        fi
+
+        echo "Found ${#region_dirs[@]} region(s) in environment '${TARGET_ENV}'"
+        echo ""
+
         # Process each region_alias directory in the target environment
         for region_dir in deploy/${TARGET_ENV}/*/; do
             [ -d "$region_dir" ] || continue
