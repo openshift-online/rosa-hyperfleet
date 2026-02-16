@@ -58,10 +58,14 @@ phases:
         terraform version
         echo "✓ Terraform installation verified"
 
-  build:
+  pre_build:
     commands:
-      - echo "Provisioning Regional Cluster Infrastructure..."
+      - echo "=========================================="
+      - echo "Pre-flight Checks"
+      - echo "=========================================="
       - |
+        set -euo pipefail
+
         # Validate required environment variables
         if [[ -z "$TARGET_ACCOUNT_ID" || -z "$TARGET_REGION" || -z "$TARGET_ALIAS" ]]; then
             echo "❌ ERROR: Required environment variables not set"
@@ -71,17 +75,175 @@ phases:
             exit 1
         fi
 
-        # Set Terraform backend configuration variables (stored in CENTRAL account)
-        CENTRAL_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-        export TF_STATE_BUCKET="terraform-state-${CENTRAL_ACCOUNT_ID}"
+        echo "Configuration:"
+        echo "  Target Account: $TARGET_ACCOUNT_ID"
+        echo "  Target Region: $TARGET_REGION"
+        echo "  Target Alias: $TARGET_ALIAS"
+        echo ""
+
+        # Test assume role capability
+        ROLE_ARN="arn:aws:iam::${TARGET_ACCOUNT_ID}:role/OrganizationAccountAccessRole"
+
+        echo "Testing assume role capability..."
+        echo "Role ARN: $ROLE_ARN"
+
+        # Try to assume the role
+        if ! ASSUMED_CREDS=$(aws sts assume-role \
+            --role-arn "$ROLE_ARN" \
+            --role-session-name "pipeline-preflight-check" \
+            --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+            --output text 2>&1); then
+            echo "❌ FAILED: Cannot assume role $ROLE_ARN"
+            echo ""
+            echo "Error details:"
+            echo "$ASSUMED_CREDS"
+            echo ""
+            echo "Common causes:"
+            echo "  • OrganizationAccountAccessRole does not exist in target account"
+            echo "  • Trust policy does not allow central account to assume role"
+            echo "  • CodeBuild role lacks sts:AssumeRole permission"
+            echo ""
+            exit 1
+        fi
+
+        # Set temporary credentials
+        export AWS_ACCESS_KEY_ID=$(echo $ASSUMED_CREDS | awk '{print $1}')
+        export AWS_SECRET_ACCESS_KEY=$(echo $ASSUMED_CREDS | awk '{print $2}')
+        export AWS_SESSION_TOKEN=$(echo $ASSUMED_CREDS | awk '{print $3}')
+
+        # Verify we can make API calls with assumed role
+        if ! ASSUMED_IDENTITY=$(aws sts get-caller-identity --query 'Account' --output text 2>&1); then
+            echo "❌ FAILED: Can assume role but cannot make API calls"
+            echo "Error: $ASSUMED_IDENTITY"
+            unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+            exit 1
+        fi
+
+        # Verify we're in the correct account
+        if [ "$ASSUMED_IDENTITY" != "$TARGET_ACCOUNT_ID" ]; then
+            echo "❌ FAILED: Assumed role in wrong account"
+            echo "  Expected: $TARGET_ACCOUNT_ID"
+            echo "  Got: $ASSUMED_IDENTITY"
+            unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+            exit 1
+        fi
+
+        echo "✅ Successfully assumed role in account $TARGET_ACCOUNT_ID"
+        echo "✅ Pre-flight checks passed"
+        echo ""
+
+        # Clean up - unset assumed credentials for build phase
+        unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+
+  build:
+    commands:
+      - echo "Provisioning Regional Cluster Infrastructure..."
+      - |
+        set -euo pipefail
+
+        # Function to assume role and export credentials with error handling
+        assume_role_and_export_creds() {
+            local ROLE_ARN=$1
+            local SESSION_NAME=$2
+
+            echo "Assuming role: $ROLE_ARN"
+
+            # Capture both stdout and stderr
+            local TEMP_FILE=$(mktemp)
+            if ! TEMP_CREDS=$(aws sts assume-role \
+                --role-arn "$ROLE_ARN" \
+                --role-session-name "$SESSION_NAME" \
+                --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+                --output text 2>"$TEMP_FILE"); then
+                echo "ERROR: Failed to assume role $ROLE_ARN" >&2
+                echo "AWS CLI error output:" >&2
+                cat "$TEMP_FILE" >&2
+                rm -f "$TEMP_FILE"
+                return 1
+            fi
+            rm -f "$TEMP_FILE"
+
+            # Validate credentials are not empty
+            if [ -z "$TEMP_CREDS" ]; then
+                echo "ERROR: Received empty credentials from assume-role for $ROLE_ARN" >&2
+                return 1
+            fi
+
+            # Export credentials
+            export AWS_ACCESS_KEY_ID=$(echo $TEMP_CREDS | awk '{print $1}')
+            export AWS_SECRET_ACCESS_KEY=$(echo $TEMP_CREDS | awk '{print $2}')
+            export AWS_SESSION_TOKEN=$(echo $TEMP_CREDS | awk '{print $3}')
+
+            # Validate all three parts are present
+            if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ] || [ -z "$AWS_SESSION_TOKEN" ]; then
+                echo "ERROR: Failed to parse credentials from assume-role output for $ROLE_ARN" >&2
+                echo "Credentials format may be invalid" >&2
+                return 1
+            fi
+
+            echo "Successfully assumed role: $ROLE_ARN"
+            return 0
+        }
+
+        # Function to ensure state bucket exists with proper security settings
+        ensure_state_bucket() {
+            local BUCKET_NAME=$1
+            local BUCKET_REGION=$2
+            local TARGET_ACCOUNT=$3
+
+            echo "Ensuring state bucket exists: $BUCKET_NAME in account $TARGET_ACCOUNT"
+
+            # Assume role in target account to create bucket
+            if ! assume_role_and_export_creds \
+                "arn:aws:iam::${TARGET_ACCOUNT}:role/OrganizationAccountAccessRole" \
+                "terraform-state-bucket-creation"; then
+                echo "ERROR: Cannot proceed without valid credentials for account $TARGET_ACCOUNT" >&2
+                return 1
+            fi
+
+            # Check if bucket exists
+            if ! aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
+                echo "Creating state bucket $BUCKET_NAME in $BUCKET_REGION..."
+
+                if [ "$BUCKET_REGION" == "us-east-1" ]; then
+                    aws s3api create-bucket --bucket "$BUCKET_NAME" --region "$BUCKET_REGION"
+                else
+                    aws s3api create-bucket --bucket "$BUCKET_NAME" --region "$BUCKET_REGION" \
+                        --create-bucket-configuration LocationConstraint="$BUCKET_REGION"
+                fi
+
+                # Enable versioning
+                aws s3api put-bucket-versioning --bucket "$BUCKET_NAME" \
+                    --versioning-configuration Status=Enabled
+
+                # Enable encryption
+                aws s3api put-bucket-encryption --bucket "$BUCKET_NAME" \
+                    --server-side-encryption-configuration \
+                    '{"Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]}'
+
+                # Block public access
+                aws s3api put-public-access-block --bucket "$BUCKET_NAME" \
+                    --public-access-block-configuration \
+                    "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+
+                echo "✓ State bucket created and configured"
+            else
+                echo "✓ State bucket already exists"
+            fi
+
+            # Note: Credentials remain set for Terraform to use for S3 backend access
+            echo "✓ Credentials configured for Terraform operations"
+        }
+
+        # Set Terraform backend configuration variables (stored in TARGET account)
+        export TF_STATE_BUCKET="terraform-state-${TARGET_ACCOUNT_ID}"
         export TF_STATE_KEY="regional-cluster/${TARGET_ALIAS}.tfstate"
+        export TF_STATE_REGION=$TARGET_REGION
 
-        # Dynamically detect bucket region
-        BUCKET_REGION=$(aws s3api get-bucket-location --bucket $TF_STATE_BUCKET --query LocationConstraint --output text)
-        if [ "$BUCKET_REGION" == "None" ] || [ "$BUCKET_REGION" == "null" ] || [ -z "$BUCKET_REGION" ]; then BUCKET_REGION="us-east-1"; fi
-        export TF_STATE_REGION=$BUCKET_REGION
+        # Ensure state bucket exists in target account
+        ensure_state_bucket "$TF_STATE_BUCKET" "$TF_STATE_REGION" "$TARGET_ACCOUNT_ID"
 
-        echo "Using Terraform state (stored in central account):"
+        echo "Using Terraform state (stored in regional account):"
         echo "  Bucket: $TF_STATE_BUCKET"
         echo "  Key: $TF_STATE_KEY"
         echo "  Region: $TF_STATE_REGION"
@@ -182,4 +344,3 @@ phases:
 artifacts:
   files:
     - '**/*'
-    - terraform/config/regional-cluster/outputs.json
