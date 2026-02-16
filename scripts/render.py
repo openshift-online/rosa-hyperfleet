@@ -504,6 +504,13 @@ def main() -> int:
         keep_trailing_newline=True,
     )
 
+    # Add tojson filter for proper JSON serialization
+    def tojson_filter(value):
+        """Convert value to JSON with proper escaping and type preservation."""
+        return json.dumps(value, ensure_ascii=False)
+
+    jinja_env.filters['tojson'] = tojson_filter
+
     print(f"Found {len(shards)} shard(s)")
     print(f"Found cluster types: {', '.join(cluster_types)}")
     print()
