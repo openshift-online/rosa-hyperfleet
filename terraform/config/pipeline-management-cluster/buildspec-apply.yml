@@ -157,9 +157,9 @@ phases:
                 return 1
             fi
 
-            if [[ ! "$REGION" =~ ^[a-z]{2}-[a-z]+-[0-9]{1}$ ]]; then
+            if [[ ! "$REGION" =~ ^[a-z]{2}(-[a-z]+)*-[0-9]+$ ]]; then
                 echo "⚠️  WARNING: REGION may be invalid: $REGION"
-                echo "   Expected format: xx-xxxx-N (e.g., us-east-1, eu-west-2)"
+                echo "   Expected format: xx-xxxx-N (e.g., us-east-1, ap-southeast-1)"
             fi
 
             if [[ ! "$ALIAS" =~ ^[a-zA-Z0-9_-]+$ ]]; then
