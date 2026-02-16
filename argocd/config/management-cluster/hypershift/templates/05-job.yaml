@@ -3,6 +3,11 @@ kind: Job
 metadata:
   name: hypershift-install
   namespace: hypershift-install
+  annotations:
+    # 1. Run this during the sync process
+    argocd.argoproj.io/hook: Sync
+    # 2. Delete the old job before starting the new one
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   activeDeadlineSeconds: 1800
   backoffLimit: 1
