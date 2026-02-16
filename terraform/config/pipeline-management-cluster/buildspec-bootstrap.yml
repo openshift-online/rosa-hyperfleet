@@ -166,12 +166,21 @@ phases:
                 if echo "$ERROR_OUTPUT" | grep -q -E "(NoSuchBucket|404)"; then
                     echo "Creating state bucket $BUCKET_NAME in $BUCKET_REGION..."
 
+                    # Create bucket
                     if [ "$BUCKET_REGION" == "us-east-1" ]; then
                         aws s3api create-bucket --bucket "$BUCKET_NAME" --region "$BUCKET_REGION"
                     else
                         aws s3api create-bucket --bucket "$BUCKET_NAME" --region "$BUCKET_REGION" \
                             --create-bucket-configuration LocationConstraint="$BUCKET_REGION"
                     fi
+
+                    # Set up cleanup trap in case configuration fails
+                    # This ensures we don't leave a partially configured bucket
+                    cleanup_bucket() {
+                        echo "ERROR: Bucket configuration failed, cleaning up bucket $BUCKET_NAME..." >&2
+                        aws s3api delete-bucket --bucket "$BUCKET_NAME" --region "$BUCKET_REGION" 2>/dev/null || true
+                    }
+                    trap cleanup_bucket ERR
 
                     # Enable versioning
                     aws s3api put-bucket-versioning --bucket "$BUCKET_NAME" \
@@ -186,6 +195,9 @@ phases:
                     aws s3api put-public-access-block --bucket "$BUCKET_NAME" \
                         --public-access-block-configuration \
                         "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+
+                    # Configuration successful, remove cleanup trap
+                    trap - ERR
 
                     echo "✓ State bucket created and configured"
                 elif echo "$ERROR_OUTPUT" | grep -q -E "(403|Forbidden|AccessDenied)"; then
@@ -254,10 +266,10 @@ phases:
         export ASSUME_ROLE_ARN="${ROLE_ARN}"
 
         echo "Bootstrapping ArgoCD..."
-        # Export standardized environment variables (Phase 2 migration)
-        export ENVIRONMENT="${TARGET_ENVIRONMENT:-integration}"
-        export REGION_ALIAS="${TARGET_ALIAS}"
-        export AWS_REGION="${TARGET_REGION}"
+        # Export standardized environment variables (prefer existing, fall back to TARGET_*)
+        export ENVIRONMENT="${ENVIRONMENT:-${TARGET_ENVIRONMENT:-integration}}"
+        export REGION_ALIAS="${REGION_ALIAS:-${TARGET_ALIAS}}"
+        export AWS_REGION="${AWS_REGION:-${TARGET_REGION}}"
         scripts/bootstrap-argocd.sh management-cluster
 
         # Cleanup

@@ -98,8 +98,8 @@ phases:
             done
         }
 
-        # Determine which environment to process
-        ENVIRONMENT="${TARGET_ENVIRONMENT:-staging}"
+        # Determine which environment to process (prefer existing, fall back to TARGET_ENVIRONMENT, then staging)
+        ENVIRONMENT="${ENVIRONMENT:-${TARGET_ENVIRONMENT:-staging}}"
 
         # Validate and sanitize ENVIRONMENT to prevent path traversal and injection
         if [[ -z "$ENVIRONMENT" ]]; then
