@@ -8,8 +8,29 @@
 #
 # Usage:
 #   ./scripts/build-platform-image.sh
+#
+# Set CONTAINER_RUNTIME=docker or CONTAINER_RUNTIME=podman to override auto-detection.
 
 set -euo pipefail
+
+# Detect container runtime: honor CONTAINER_RUNTIME env var, otherwise auto-detect
+if [ -n "${CONTAINER_RUNTIME:-}" ]; then
+  if ! command -v "$CONTAINER_RUNTIME" &>/dev/null; then
+    echo "Error: CONTAINER_RUNTIME='$CONTAINER_RUNTIME' not found in PATH."
+    exit 1
+  fi
+else
+  if command -v docker &>/dev/null; then
+    CONTAINER_RUNTIME="docker"
+  elif command -v podman &>/dev/null; then
+    CONTAINER_RUNTIME="podman"
+  else
+    echo "Error: Neither docker nor podman found. Install one or set CONTAINER_RUNTIME."
+    exit 1
+  fi
+fi
+
+echo "Using container runtime: $CONTAINER_RUNTIME"
 
 DOCKERFILE_DIR="terraform/modules/platform-image"
 DOCKERFILE="${DOCKERFILE_DIR}/Dockerfile"
@@ -66,17 +87,17 @@ echo ""
 
 # Authenticate with ECR
 echo "Authenticating with ECR..."
-aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+aws ecr get-login-password --region "$REGION" | $CONTAINER_RUNTIME login --username AWS --password-stdin "$ECR_REGISTRY"
 echo ""
 
 # Build the image
 echo "Building platform image from ${DOCKERFILE}..."
-docker build --platform linux/amd64 -t "${ECR_URL}:${IMAGE_TAG}" "$DOCKERFILE_DIR"
+$CONTAINER_RUNTIME build --platform linux/amd64 -t "${ECR_URL}:${IMAGE_TAG}" "$DOCKERFILE_DIR"
 echo ""
 
 # Push the image
 echo "Pushing image to ECR..."
-docker push "${ECR_URL}:${IMAGE_TAG}"
+$CONTAINER_RUNTIME push "${ECR_URL}:${IMAGE_TAG}"
 echo ""
 
 echo "Done. Image pushed to: ${ECR_URL}:${IMAGE_TAG}"
