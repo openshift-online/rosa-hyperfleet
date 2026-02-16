@@ -250,7 +250,13 @@ phases:
             export TF_STATE_REGION=$REGION
 
             # Ensure state bucket exists in target account
-            ensure_state_bucket "$TF_STATE_BUCKET" "$TF_STATE_REGION" "$ACCOUNT_ID"
+            if ! ensure_state_bucket "$TF_STATE_BUCKET" "$TF_STATE_REGION" "$ACCOUNT_ID"; then
+                echo "❌ ERROR: Failed to ensure state bucket exists" >&2
+                echo "   Bucket: $TF_STATE_BUCKET" >&2
+                echo "   Region: $TF_STATE_REGION" >&2
+                echo "   Account: $ACCOUNT_ID" >&2
+                return 1
+            fi
 
             export TF_VAR_region_name=$REGION
             export TF_VAR_app_code="infra"
