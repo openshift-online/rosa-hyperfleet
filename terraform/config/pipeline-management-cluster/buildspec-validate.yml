@@ -58,10 +58,19 @@ phases:
         terraform version
         echo "✓ Terraform installation verified"
 
-  build:
+  pre_build:
     commands:
-      - echo "Validating Management Cluster Configuration..."
+      - echo "=========================================="
+      - echo "Pre-flight Setup"
+      - echo "=========================================="
       - |
+        set -euo pipefail
+
+        # Get central account ID before any role assumption
+        CENTRAL_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        export CENTRAL_ACCOUNT_ID
+        echo "Central Account: $CENTRAL_ACCOUNT_ID"
+
         # Validate required environment variables
         if [[ -z "$TARGET_ACCOUNT_ID" || -z "$TARGET_REGION" || -z "$TARGET_ALIAS" ]]; then
             echo "❌ ERROR: Required environment variables not set"
@@ -71,34 +80,70 @@ phases:
             exit 1
         fi
 
-        echo "Target Account: ${TARGET_ACCOUNT_ID}"
-        echo "Target Region: ${TARGET_REGION}"
-        echo "Target Alias: ${TARGET_ALIAS}"
+        echo "Target Account: $TARGET_ACCOUNT_ID"
+        echo "Target Region: $TARGET_REGION"
+        echo "Target Alias: $TARGET_ALIAS"
 
-        # Get central account ID
-        CENTRAL_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-        echo "Central Account: ${CENTRAL_ACCOUNT_ID}"
+        # Only assume role if target account differs from central account
+        if [ "$TARGET_ACCOUNT_ID" != "$CENTRAL_ACCOUNT_ID" ]; then
+            ROLE_ARN="arn:aws:iam::${TARGET_ACCOUNT_ID}:role/OrganizationAccountAccessRole"
+            echo "Assuming role: $ROLE_ARN"
 
-        # Define role ARN
-        ROLE_ARN="arn:aws:iam::${TARGET_ACCOUNT_ID}:role/OrganizationAccountAccessRole"
+            if ! TEMP_CREDS=$(aws sts assume-role \
+                --role-arn "$ROLE_ARN" \
+                --role-session-name "pipeline-validate-${TARGET_ALIAS}" \
+                --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+                --output text 2>&1); then
+                echo "❌ ERROR: Failed to assume role $ROLE_ARN"
+                echo "Error: $TEMP_CREDS"
+                exit 1
+            fi
 
-        # Set Terraform backend config
+            # Export credentials
+            export AWS_ACCESS_KEY_ID=$(echo "$TEMP_CREDS" | awk '{print $1}')
+            export AWS_SECRET_ACCESS_KEY=$(echo "$TEMP_CREDS" | awk '{print $2}')
+            export AWS_SESSION_TOKEN=$(echo "$TEMP_CREDS" | awk '{print $3}')
+
+            # Verify
+            ASSUMED_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+            if [ "$ASSUMED_ACCOUNT" != "$TARGET_ACCOUNT_ID" ]; then
+                echo "❌ ERROR: Assumed wrong account"
+                exit 1
+            fi
+
+            echo "✅ Assumed role in account $TARGET_ACCOUNT_ID"
+        else
+            echo "✅ Target account same as central - using current credentials"
+        fi
+        echo ""
+
+  build:
+    commands:
+      - echo "Validating Management Cluster Configuration..."
+      - |
+        set -euo pipefail
+
+        echo "Using credentials from pre_build phase"
+        echo "  Current identity: $(aws sts get-caller-identity --query Arn --output text)"
+        echo ""
+
+        # Set Terraform backend config (state bucket is in central account)
         export TF_STATE_BUCKET="terraform-state-${CENTRAL_ACCOUNT_ID}"
         export TF_STATE_KEY="management-cluster/${TARGET_ALIAS}.tfstate"
 
-        # Dynamically detect bucket region (uses central account creds)
-        BUCKET_REGION=$(aws s3api get-bucket-location --bucket $TF_STATE_BUCKET --query LocationConstraint --output text)
+        # Dynamically detect bucket region
+        BUCKET_REGION=$(aws s3api get-bucket-location --bucket $TF_STATE_BUCKET --region us-east-1 --query LocationConstraint --output text)
         if [ "$BUCKET_REGION" == "None" ] || [ "$BUCKET_REGION" == "null" ] || [ -z "$BUCKET_REGION" ]; then BUCKET_REGION="us-east-1"; fi
         export TF_STATE_REGION=$BUCKET_REGION
 
-        # Generate override.tf for cross-account access
-        echo "Generating override.tf for validation..."
-        echo 'provider "aws" {' > terraform/config/management-cluster/override.tf
-        echo "  region = \"${TARGET_REGION}\"" >> terraform/config/management-cluster/override.tf
-        echo '  assume_role {' >> terraform/config/management-cluster/override.tf
-        echo "    role_arn = \"${ROLE_ARN}\"" >> terraform/config/management-cluster/override.tf
-        echo '  }' >> terraform/config/management-cluster/override.tf
-        echo '}' >> terraform/config/management-cluster/override.tf
+        # Export required Terraform variables
+        export TF_VAR_app_code="${APP_CODE}"
+        export TF_VAR_service_phase="${SERVICE_PHASE}"
+        export TF_VAR_cost_center="${COST_CENTER}"
+        export TF_VAR_repository_url="${REPOSITORY_URL}"
+        export TF_VAR_repository_branch="${REPOSITORY_BRANCH}"
+        export TF_VAR_cluster_id="${CLUSTER_ID:-mgmt-cluster-01}"
+        export TF_VAR_regional_aws_account_id="${REGIONAL_AWS_ACCOUNT_ID:-${CENTRAL_ACCOUNT_ID}}"
 
         # Initialize Terraform
         echo "Initializing Terraform..."
@@ -112,19 +157,9 @@ phases:
         echo "Validating Terraform configuration..."
         terraform validate
 
-        # Export required Terraform variables
-        export TF_VAR_app_code="${APP_CODE}"
-        export TF_VAR_service_phase="${SERVICE_PHASE}"
-        export TF_VAR_cost_center="${COST_CENTER}"
-        export TF_VAR_repository_url="${REPOSITORY_URL}"
-        export TF_VAR_repository_branch="${REPOSITORY_BRANCH}"
-        export TF_VAR_cluster_id="${CLUSTER_ID:-mgmt-cluster-01}"
-        export TF_VAR_regional_aws_account_id="${REGIONAL_AWS_ACCOUNT_ID:-${CENTRAL_ACCOUNT_ID}}"
-
         echo "Running Terraform plan..."
         if ! terraform plan -out=tfplan; then
             echo "❌ Terraform plan failed"
-            rm -f override.tf
             cd ../../..
             exit 1
         fi
@@ -132,9 +167,6 @@ phases:
         # Save plan summary
         terraform show -no-color tfplan > plan-summary.txt
         echo "✓ Plan summary saved to plan-summary.txt"
-
-        # Cleanup
-        rm -f override.tf
 
         cd ../../..
 

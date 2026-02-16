@@ -61,7 +61,7 @@ phases:
   pre_build:
     commands:
       - echo "=========================================="
-      - echo "Assuming Role to Target Account"
+      - echo "Pre-flight Setup"
       - echo "=========================================="
       - |
         set -euo pipefail
@@ -86,34 +86,38 @@ phases:
         echo "  Target Alias: $TARGET_ALIAS"
         echo ""
 
-        # Assume role to target account ONCE
-        ROLE_ARN="arn:aws:iam::${TARGET_ACCOUNT_ID}:role/OrganizationAccountAccessRole"
-        echo "Assuming role: $ROLE_ARN"
+        # Only assume role if target account differs from central account
+        if [ "$TARGET_ACCOUNT_ID" != "$CENTRAL_ACCOUNT_ID" ]; then
+            ROLE_ARN="arn:aws:iam::${TARGET_ACCOUNT_ID}:role/OrganizationAccountAccessRole"
+            echo "Assuming role: $ROLE_ARN"
 
-        if ! TEMP_CREDS=$(aws sts assume-role \
-            --role-arn "$ROLE_ARN" \
-            --role-session-name "pipeline-apply-${TARGET_ALIAS}" \
-            --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
-            --output text 2>&1); then
-            echo "❌ ERROR: Failed to assume role $ROLE_ARN"
-            echo "Error: $TEMP_CREDS"
-            exit 1
+            if ! TEMP_CREDS=$(aws sts assume-role \
+                --role-arn "$ROLE_ARN" \
+                --role-session-name "pipeline-apply-${TARGET_ALIAS}" \
+                --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+                --output text 2>&1); then
+                echo "❌ ERROR: Failed to assume role $ROLE_ARN"
+                echo "Error: $TEMP_CREDS"
+                exit 1
+            fi
+
+            # Export credentials for all subsequent phases
+            export AWS_ACCESS_KEY_ID=$(echo "$TEMP_CREDS" | awk '{print $1}')
+            export AWS_SECRET_ACCESS_KEY=$(echo "$TEMP_CREDS" | awk '{print $2}')
+            export AWS_SESSION_TOKEN=$(echo "$TEMP_CREDS" | awk '{print $3}')
+
+            # Verify
+            ASSUMED_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+            if [ "$ASSUMED_ACCOUNT" != "$TARGET_ACCOUNT_ID" ]; then
+                echo "❌ ERROR: Assumed wrong account. Expected $TARGET_ACCOUNT_ID, got $ASSUMED_ACCOUNT"
+                exit 1
+            fi
+
+            echo "✅ Successfully assumed role in account $TARGET_ACCOUNT_ID"
+            echo "✅ All subsequent operations will use target account credentials"
+        else
+            echo "✅ Target account same as central - using current credentials"
         fi
-
-        # Export credentials for all subsequent phases
-        export AWS_ACCESS_KEY_ID=$(echo "$TEMP_CREDS" | awk '{print $1}')
-        export AWS_SECRET_ACCESS_KEY=$(echo "$TEMP_CREDS" | awk '{print $2}')
-        export AWS_SESSION_TOKEN=$(echo "$TEMP_CREDS" | awk '{print $3}')
-
-        # Verify
-        ASSUMED_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
-        if [ "$ASSUMED_ACCOUNT" != "$TARGET_ACCOUNT_ID" ]; then
-            echo "❌ ERROR: Assumed wrong account. Expected $TARGET_ACCOUNT_ID, got $ASSUMED_ACCOUNT"
-            exit 1
-        fi
-
-        echo "✅ Successfully assumed role in account $TARGET_ACCOUNT_ID"
-        echo "✅ All subsequent operations will use target account credentials"
         echo ""
 
   build:
