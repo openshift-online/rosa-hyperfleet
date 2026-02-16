@@ -116,26 +116,57 @@ phases:
             if ! aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
                 echo "Creating state bucket $BUCKET_NAME in $BUCKET_REGION..."
 
+                # Create bucket with region-specific configuration
                 if [ "$BUCKET_REGION" == "us-east-1" ]; then
-                    aws s3api create-bucket --bucket "$BUCKET_NAME" --region "$BUCKET_REGION"
+                    if ! aws s3api create-bucket --bucket "$BUCKET_NAME" --region "$BUCKET_REGION" 2>&1; then
+                        echo "❌ ERROR: Failed to create S3 bucket" >&2
+                        echo "   Bucket: $BUCKET_NAME" >&2
+                        echo "   Region: $BUCKET_REGION" >&2
+                        echo "   Command: aws s3api create-bucket" >&2
+                        return 1
+                    fi
                 else
-                    aws s3api create-bucket --bucket "$BUCKET_NAME" --region "$BUCKET_REGION" \
-                        --create-bucket-configuration LocationConstraint="$BUCKET_REGION"
+                    if ! aws s3api create-bucket --bucket "$BUCKET_NAME" --region "$BUCKET_REGION" \
+                        --create-bucket-configuration LocationConstraint="$BUCKET_REGION" 2>&1; then
+                        echo "❌ ERROR: Failed to create S3 bucket" >&2
+                        echo "   Bucket: $BUCKET_NAME" >&2
+                        echo "   Region: $BUCKET_REGION" >&2
+                        echo "   Command: aws s3api create-bucket" >&2
+                        return 1
+                    fi
                 fi
 
                 # Enable versioning
-                aws s3api put-bucket-versioning --bucket "$BUCKET_NAME" \
-                    --versioning-configuration Status=Enabled
+                if ! aws s3api put-bucket-versioning --bucket "$BUCKET_NAME" \
+                    --versioning-configuration Status=Enabled 2>&1; then
+                    echo "❌ ERROR: Failed to enable bucket versioning" >&2
+                    echo "   Bucket: $BUCKET_NAME" >&2
+                    echo "   Region: $BUCKET_REGION" >&2
+                    echo "   Command: aws s3api put-bucket-versioning" >&2
+                    return 1
+                fi
 
                 # Enable encryption
-                aws s3api put-bucket-encryption --bucket "$BUCKET_NAME" \
+                if ! aws s3api put-bucket-encryption --bucket "$BUCKET_NAME" \
                     --server-side-encryption-configuration \
-                    '{"Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]}'
+                    '{"Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]}' 2>&1; then
+                    echo "❌ ERROR: Failed to enable bucket encryption" >&2
+                    echo "   Bucket: $BUCKET_NAME" >&2
+                    echo "   Region: $BUCKET_REGION" >&2
+                    echo "   Command: aws s3api put-bucket-encryption" >&2
+                    return 1
+                fi
 
                 # Block public access
-                aws s3api put-public-access-block --bucket "$BUCKET_NAME" \
+                if ! aws s3api put-public-access-block --bucket "$BUCKET_NAME" \
                     --public-access-block-configuration \
-                    "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+                    "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" 2>&1; then
+                    echo "❌ ERROR: Failed to configure public access block" >&2
+                    echo "   Bucket: $BUCKET_NAME" >&2
+                    echo "   Region: $BUCKET_REGION" >&2
+                    echo "   Command: aws s3api put-public-access-block" >&2
+                    return 1
+                fi
 
                 echo "✓ State bucket created and configured"
             else
