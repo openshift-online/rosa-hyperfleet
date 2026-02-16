@@ -19,6 +19,7 @@ This script renders configuration values by:
 
 import json
 import sys
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -500,7 +501,6 @@ def cleanup_stale_files(shards: List[Dict[str, Any]], deploy_dir: Path) -> None:
             # If this shard no longer exists in config.yaml, remove the entire directory
             if shard_key not in valid_shard_paths:
                 print(f"  [CLEANUP] Removing stale shard: deploy/{environment}/{region_alias}/")
-                import shutil
                 shutil.rmtree(region_dir)
                 removed_count += 1
                 continue
