@@ -235,6 +235,8 @@ phases:
                     -backend-config="bucket=$TF_STATE_BUCKET" \
                     -backend-config="key=$TF_STATE_KEY" \
                     -backend-config="region=$TF_STATE_REGION" \
+                    -backend-config="role_arn=$ROLE_ARN" \
+                    -backend-config="session_name=terraform-backend-access" \
                     -backend-config="use_lockfile=true"
 
                 echo "Validating Terraform configuration..."
