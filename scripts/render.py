@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import yaml
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment
 
 
 def load_yaml(file_path: Path) -> Dict[str, Any]:
@@ -381,8 +381,7 @@ def render_shard_values(
 
 def render_shard_terraform(
     shard: Dict[str, Any],
-    deploy_dir: Path,
-    jinja_env: Environment
+    deploy_dir: Path
 ) -> None:
     """Generate terraform pipeline config files for a shard.
 
@@ -393,7 +392,6 @@ def render_shard_terraform(
     Args:
         shard: Shard configuration
         deploy_dir: Path to the deploy output directory
-        jinja_env: Jinja2 environment for loading templates
     """
     environment = shard['environment']
     region_alias = shard['region_alias']
@@ -401,13 +399,17 @@ def render_shard_terraform(
     terraform_dir = deploy_dir / environment / region_alias / 'terraform'
     terraform_dir.mkdir(parents=True, exist_ok=True)
 
-    # Generate regional.json
-    regional_template = jinja_env.get_template('regional.json.j2')
+    # Generate regional.json from shard terraform_vars (already merged with sector)
     regional_file = terraform_dir / 'regional.json'
-    rendered_content = regional_template.render(shard)
+    regional_data = shard.get('terraform_vars', {}).copy()
 
-    # Parse and re-format to ensure valid JSON with proper formatting
-    regional_data = json.loads(rendered_content)
+    # Extract all management cluster account IDs for cross-account access configuration
+    management_clusters = shard.get('management_clusters', [])
+    mc_account_ids = [mc.get('account_id') for mc in management_clusters if mc.get('account_id')]
+
+    # Add management cluster account IDs to regional config if any exist
+    if mc_account_ids:
+        regional_data['management_cluster_account_ids'] = mc_account_ids
 
     # Add metadata at the beginning
     regional_data_with_metadata = {
@@ -427,15 +429,23 @@ def render_shard_terraform(
         management_dir = terraform_dir / 'management'
         management_dir.mkdir(parents=True, exist_ok=True)
 
-        mc_template = jinja_env.get_template('management.json.j2')
         for mc in management_clusters:
             cluster_id = mc.get('cluster_id', '')
 
             mc_file = management_dir / f'{cluster_id}.json'
-            rendered_content = mc_template.render(mc=mc, **shard)
 
-            # Parse and re-format to ensure valid JSON with proper formatting
-            mc_data = json.loads(rendered_content)
+            # Build MC terraform_vars by merging shard terraform_vars with MC-specific overrides
+            shard_tf_vars = shard.get('terraform_vars', {}).copy()
+
+            # MC-specific overrides (these override shard values)
+            mc_overrides = {
+                'account_id': mc.get('account_id'),
+                'alias': cluster_id,
+                'cluster_id': cluster_id,
+                'regional_aws_account_id': shard.get('account_id'),
+            }
+
+            mc_data = deep_merge(shard_tf_vars, mc_overrides)
 
             # Add metadata at the beginning
             mc_data_with_metadata = {
@@ -448,6 +458,69 @@ def render_shard_terraform(
                 f.write('\n')  # Add trailing newline
 
             print(f"  [OK] deploy/{environment}/{region_alias}/terraform/management/{cluster_id}.json")
+
+
+def cleanup_stale_files(shards: List[Dict[str, Any]], deploy_dir: Path) -> None:
+    """Remove stale files from deploy directory that no longer exist in config.yaml.
+
+    Args:
+        shards: List of resolved shard configurations
+        deploy_dir: Path to the deploy output directory
+    """
+    if not deploy_dir.exists():
+        return
+
+    # Build a set of valid shard paths (environment/region_alias)
+    valid_shard_paths = {(shard['environment'], shard['region_alias']) for shard in shards}
+
+    # Build a mapping of shard -> set of management cluster IDs
+    shard_mc_map = {}
+    for shard in shards:
+        key = (shard['environment'], shard['region_alias'])
+        mc_ids = {mc.get('cluster_id', '') for mc in shard.get('management_clusters', []) if mc.get('cluster_id')}
+        shard_mc_map[key] = mc_ids
+
+    removed_count = 0
+
+    # Scan deploy directory for environments
+    for env_dir in deploy_dir.iterdir():
+        if not env_dir.is_dir() or env_dir.name.startswith('.'):
+            continue
+
+        environment = env_dir.name
+
+        # Scan for region directories within this environment
+        for region_dir in env_dir.iterdir():
+            if not region_dir.is_dir() or region_dir.name.startswith('.'):
+                continue
+
+            region_alias = region_dir.name
+            shard_key = (environment, region_alias)
+
+            # If this shard no longer exists in config.yaml, remove the entire directory
+            if shard_key not in valid_shard_paths:
+                print(f"  [CLEANUP] Removing stale shard: deploy/{environment}/{region_alias}/")
+                import shutil
+                shutil.rmtree(region_dir)
+                removed_count += 1
+                continue
+
+            # Check for stale management cluster files
+            mc_dir = region_dir / 'terraform' / 'management'
+            if mc_dir.exists():
+                valid_mc_ids = shard_mc_map.get(shard_key, set())
+
+                for mc_file in mc_dir.glob('*.json'):
+                    # Extract cluster_id from filename (e.g., mc01-us-east-1.json -> mc01-us-east-1)
+                    cluster_id = mc_file.stem
+
+                    if cluster_id not in valid_mc_ids:
+                        print(f"  [CLEANUP] Removing stale MC: deploy/{environment}/{region_alias}/terraform/management/{mc_file.name}")
+                        mc_file.unlink()
+                        removed_count += 1
+
+    if removed_count > 0:
+        print()
 
 
 def main() -> int:
@@ -463,7 +536,6 @@ def main() -> int:
     config_file = project_root / 'config.yaml'
     base_dir = project_root / 'argocd' / 'config'
     deploy_dir = project_root / 'deploy'
-    templates_dir = script_dir / 'templates'
 
     if not config_file.exists():
         print(f"Error: Config file not found: {config_file}", file=sys.stderr)
@@ -498,22 +570,12 @@ def main() -> int:
         print("Error: No cluster types found", file=sys.stderr)
         return 1
 
-    # Set up Jinja environment for terraform templates
-    jinja_env = Environment(
-        loader=FileSystemLoader(templates_dir),
-        keep_trailing_newline=True,
-    )
-
-    # Add tojson filter for proper JSON serialization
-    def tojson_filter(value):
-        """Convert value to JSON with proper escaping and type preservation."""
-        return json.dumps(value, ensure_ascii=False)
-
-    jinja_env.filters['tojson'] = tojson_filter
-
     print(f"Found {len(shards)} shard(s)")
     print(f"Found cluster types: {', '.join(cluster_types)}")
     print()
+
+    # Clean up stale files before rendering
+    cleanup_stale_files(shards, deploy_dir)
 
     # Process each shard
     for shard in shards:
@@ -526,7 +588,7 @@ def main() -> int:
 
         render_shard_values(shard, cluster_types, base_dir, deploy_dir)
         render_shard_applicationsets(shard, cluster_types, deploy_dir, base_dir)
-        render_shard_terraform(shard, deploy_dir, jinja_env)
+        render_shard_terraform(shard, deploy_dir)
         print()
 
     print("[OK] Rendering complete")
