@@ -63,6 +63,7 @@ resource "aws_iam_role_policy" "codebuild_policy" {
           "iam:*",
           "s3:*",
           "ecs:*",
+          "ecr:*",
           "kms:*",
           "apigateway:*",
           "iot:*",
