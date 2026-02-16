@@ -4,12 +4,11 @@
   "service_phase": "staging",
   "cost_center": "000",
   "environment": "staging",
-  "account_id": "REMOVED",
+  "account_id": "018092638725",
   "region": "us-east-1",
   "alias": "regional-us-east-1",
   "region_alias": "us-east-1",
   "management_cluster_account_ids": [
-    "REMOVED",
-    "REMOVED"
+    "660777614061"
   ]
 }

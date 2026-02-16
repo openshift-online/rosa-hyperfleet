@@ -88,7 +88,7 @@ shards:
   - region_alias: "us-east-1"
     aws_region: "us-east-1"
     sector: "staging"
-    account_id: "REMOVED"
+    account_id: "018092638725"
     terraform_vars:
       account_id: "{{ account_id }}"
       region: "{{ aws_region }}"
@@ -96,6 +96,4 @@ shards:
       region_alias: "{{ region_alias }}"
     management_clusters:
       - cluster_id: "mc01-{{ region_alias }}"
-        account_id: "REMOVED"
-      - cluster_id: "mc02-{{ region_alias }}"
-        account_id: "REMOVED"
+        account_id: "660777614061"
