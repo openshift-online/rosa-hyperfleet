@@ -12,17 +12,17 @@ locals {
 
   # Use hash-based naming for all resources to avoid length limits
   # Hash of full alias ensures uniqueness while keeping names short
-  resource_hash = substr(md5("management-${local.name_suffix}-${data.aws_caller_identity.current.account_id}"), 0, 12)
+  resource_hash  = substr(md5("management-${local.name_suffix}-${data.aws_caller_identity.current.account_id}"), 0, 12)
   account_suffix = substr(data.aws_caller_identity.current.account_id, -8, 8)
 
   # Resource naming patterns (all under 32 chars)
-  artifact_bucket_name = "mc-${local.resource_hash}-${local.account_suffix}"  # 24 chars
-  codebuild_role_name = "mc-cb-${local.resource_hash}"  # 18 chars
-  codepipeline_role_name = "mc-cp-${local.resource_hash}"  # 18 chars
-  validate_project_name = "mc-val-${local.resource_hash}"  # 19 chars
-  apply_project_name = "mc-app-${local.resource_hash}"  # 19 chars
-  bootstrap_project_name = "mc-boot-${local.resource_hash}"  # 21 chars
-  pipeline_name = "mc-pipe-${local.resource_hash}"  # 20 chars
+  artifact_bucket_name   = "mc-${local.resource_hash}-${local.account_suffix}" # 24 chars
+  codebuild_role_name    = "mc-cb-${local.resource_hash}"                      # 18 chars
+  codepipeline_role_name = "mc-cp-${local.resource_hash}"                      # 18 chars
+  validate_project_name  = "mc-val-${local.resource_hash}"                     # 19 chars
+  apply_project_name     = "mc-app-${local.resource_hash}"                     # 19 chars
+  bootstrap_project_name = "mc-boot-${local.resource_hash}"                    # 21 chars
+  pipeline_name          = "mc-pipe-${local.resource_hash}"                    # 20 chars
 }
 
 # Use shared GitHub Connection (passed from pipeline-provisioner)
@@ -173,7 +173,7 @@ resource "aws_s3_bucket" "pipeline_artifact" {
   bucket = local.artifact_bucket_name
 
   timeouts {
-    create = "30s"  # Fail fast if bucket creation hangs (explicit names should be instant)
+    create = "30s" # Fail fast if bucket creation hangs (explicit names should be instant)
     delete = "2m"
   }
 }
@@ -361,16 +361,16 @@ resource "aws_codebuild_project" "management_bootstrap" {
       value = var.target_account_id
     }
     environment_variable {
-      name  = "TARGET_REGION"
-      value = var.target_region
-    }
-    environment_variable {
       name  = "TARGET_ALIAS"
       value = var.target_alias
     }
     environment_variable {
-      name  = "TARGET_ENVIRONMENT"
+      name  = "ENVIRONMENT"
       value = var.target_environment
+    }
+    environment_variable {
+      name  = "AWS_REGION"
+      value = var.target_region
     }
   }
 

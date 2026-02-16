@@ -3,19 +3,24 @@
 set -euo pipefail
 
 CLUSTER_TYPE="${1:-}"
-ENVIRONMENT="${2:-integration}"
-REGION_ALIAS="${3:-$(aws configure get region)}"  # default to AWS CLI configured region
-AWS_REGION="${4:-$REGION_ALIAS}"  # default to REGION_ALIAS if not provided
+
+# Set defaults from environment variables
+ENVIRONMENT="${ENVIRONMENT:-integration}"
+REGION_ALIAS="${REGION_ALIAS:-$(aws configure get region)}"
+AWS_REGION="${AWS_REGION:-$REGION_ALIAS}"
 
 if [[ -z "$CLUSTER_TYPE" ]]; then
-    echo "Usage: $0 <cluster-type> [environment] [region-alias] [aws-region]"
-    echo "       cluster-type: management-cluster or regional-cluster"
-    echo "       environment: dev, staging, prod, etc. (default: integration)"
-    echo "       region-alias: region identifier for deploy paths (default: current AWS CLI region)"
-    echo "       aws-region: AWS region (default: same as region-alias)"
+    echo "Usage: ENVIRONMENT=<env> REGION_ALIAS=<alias> AWS_REGION=<region> $0 <cluster-type>"
     echo ""
-    echo "This script automatically reads terraform.tfvars to extract AWS profile"
-    echo "and calls bootstrap-argocd.sh with the correct parameters."
+    echo "Arguments:"
+    echo "  cluster-type: management-cluster or regional-cluster"
+    echo ""
+    echo "Required environment variables:"
+    echo "  ENVIRONMENT - Environment name (integration, staging, production)"
+    echo "  REGION_ALIAS - Region directory identifier"
+    echo "  AWS_REGION - AWS region for operations"
+    echo ""
+    echo "All environment variables have defaults if not specified."
     exit 1
 fi
 

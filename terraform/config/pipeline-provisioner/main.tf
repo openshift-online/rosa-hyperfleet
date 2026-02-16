@@ -210,7 +210,7 @@ resource "aws_codebuild_project" "provisioner" {
       value = var.github_branch
     }
     environment_variable {
-      name  = "TARGET_ENVIRONMENT"
+      name  = "ENVIRONMENT"
       value = var.environment
     }
     environment_variable {
@@ -230,7 +230,7 @@ resource "aws_codepipeline" "provisioner" {
   name           = "pipeline-provisioner"
   role_arn       = aws_iam_role.codepipeline_role.arn
   pipeline_type  = "V2"
-  execution_mode = "QUEUED"  # Prevent parallel executions that could cause lock conflicts
+  execution_mode = "QUEUED" # Prevent parallel executions that could cause lock conflicts
 
   artifact_store {
     location = aws_s3_bucket.pipeline_artifact.bucket

@@ -233,7 +233,11 @@ phases:
         export ASSUME_ROLE_ARN="${ROLE_ARN}"
 
         echo "Bootstrapping ArgoCD..."
-        scripts/bootstrap-argocd.sh management-cluster "${TARGET_ENVIRONMENT:-integration}" "${TARGET_ALIAS}" "${TARGET_REGION}"
+        # Export standardized environment variables (Phase 2 migration)
+        export ENVIRONMENT="${TARGET_ENVIRONMENT:-integration}"
+        export REGION_ALIAS="${TARGET_ALIAS}"
+        export AWS_REGION="${TARGET_REGION}"
+        scripts/bootstrap-argocd.sh management-cluster
 
         # Cleanup
         echo "Cleaning up..."

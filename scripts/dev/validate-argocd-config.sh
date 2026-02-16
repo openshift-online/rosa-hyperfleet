@@ -3,11 +3,20 @@
 set -euo pipefail
 
 CLUSTER_TYPE="${1:-}"
-ENVIRONMENT="${2:-integration}"
-REGION_ALIAS="${3:-$(aws configure get region 2>/dev/null || echo "us-east-1")}"
+
+# Set defaults from environment variables
+ENVIRONMENT="${ENVIRONMENT:-integration}"
+REGION_ALIAS="${REGION_ALIAS:-$(aws configure get region 2>/dev/null || echo "us-east-1")}"
 
 if [[ -z "$CLUSTER_TYPE" ]]; then
-    echo "Usage: $0 <cluster-type> [environment] [region-alias]"
+    echo "Usage: ENVIRONMENT=<env> REGION_ALIAS=<alias> $0 <cluster-type>"
+    echo ""
+    echo "Arguments:"
+    echo "  cluster-type: management-cluster or regional-cluster"
+    echo ""
+    echo "Environment variables (with defaults):"
+    echo "  ENVIRONMENT (default: integration)"
+    echo "  REGION_ALIAS (default: current AWS CLI region or us-east-1)"
     exit 1
 fi
 

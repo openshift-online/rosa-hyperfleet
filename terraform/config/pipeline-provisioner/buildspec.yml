@@ -99,44 +99,44 @@ phases:
         }
 
         # Determine which environment to process
-        TARGET_ENV="${TARGET_ENVIRONMENT:-staging}"
+        ENVIRONMENT="${TARGET_ENVIRONMENT:-staging}"
 
-        # Validate and sanitize TARGET_ENV to prevent path traversal and injection
-        if [[ -z "$TARGET_ENV" ]]; then
-            echo "❌ ERROR: TARGET_ENV is empty" >&2
+        # Validate and sanitize ENVIRONMENT to prevent path traversal and injection
+        if [[ -z "$ENVIRONMENT" ]]; then
+            echo "❌ ERROR: ENVIRONMENT is empty" >&2
             exit 1
         fi
 
         # Check for path traversal attempts
-        if [[ "$TARGET_ENV" == *"/"* ]]; then
-            echo "❌ ERROR: TARGET_ENV contains invalid character '/': $TARGET_ENV" >&2
+        if [[ "$ENVIRONMENT" == *"/"* ]]; then
+            echo "❌ ERROR: ENVIRONMENT contains invalid character '/': $ENVIRONMENT" >&2
             exit 1
         fi
 
-        if [[ "$TARGET_ENV" == *".."* ]]; then
-            echo "❌ ERROR: TARGET_ENV contains path traversal sequence '..': $TARGET_ENV" >&2
+        if [[ "$ENVIRONMENT" == *".."* ]]; then
+            echo "❌ ERROR: ENVIRONMENT contains path traversal sequence '..': $ENVIRONMENT" >&2
             exit 1
         fi
 
         # Check for whitespace
-        if [[ "$TARGET_ENV" =~ [[:space:]] ]]; then
-            echo "❌ ERROR: TARGET_ENV contains whitespace: $TARGET_ENV" >&2
+        if [[ "$ENVIRONMENT" =~ [[:space:]] ]]; then
+            echo "❌ ERROR: ENVIRONMENT contains whitespace: $ENVIRONMENT" >&2
             exit 1
         fi
 
         # Enforce allowlist: only alphanumeric, dot, underscore, and hyphen
-        if [[ ! "$TARGET_ENV" =~ ^[A-Za-z0-9._-]+$ ]]; then
-            echo "❌ ERROR: TARGET_ENV contains invalid characters: $TARGET_ENV" >&2
+        if [[ ! "$ENVIRONMENT" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "❌ ERROR: ENVIRONMENT contains invalid characters: $ENVIRONMENT" >&2
             echo "   Only alphanumeric, dot (.), underscore (_), and hyphen (-) are allowed" >&2
             exit 1
         fi
 
-        echo "Processing environment: $TARGET_ENV"
+        echo "Processing environment: $ENVIRONMENT"
         echo ""
 
         # Validate environment directory exists
-        if [ ! -d "deploy/${TARGET_ENV}" ]; then
-            echo "❌ ERROR: Environment directory does not exist: deploy/${TARGET_ENV}" >&2
+        if [ ! -d "deploy/${ENVIRONMENT}" ]; then
+            echo "❌ ERROR: Environment directory does not exist: deploy/${ENVIRONMENT}" >&2
             echo "   Available environments:" >&2
             ls -d deploy/*/ 2>/dev/null | sed 's|deploy/||g; s|/$||g' | sed 's/^/   - /' >&2 || echo "   (none found)" >&2
             exit 1
@@ -144,41 +144,39 @@ phases:
 
         # Validate at least one region directory exists
         shopt -s nullglob
-        region_dirs=("deploy/${TARGET_ENV}"/*/)
+        region_dirs=("deploy/${ENVIRONMENT}"/*/)
         shopt -u nullglob
 
         if [ ${#region_dirs[@]} -eq 0 ]; then
-            echo "❌ ERROR: No region directories found in deploy/${TARGET_ENV}/" >&2
-            echo "   Expected at least one directory matching: deploy/${TARGET_ENV}/*/" >&2
-            echo "   Ensure config.yaml has shards for environment '${TARGET_ENV}' and run scripts/render.py" >&2
+            echo "❌ ERROR: No region directories found in deploy/${ENVIRONMENT}/" >&2
+            echo "   Expected at least one directory matching: deploy/${ENVIRONMENT}/*/" >&2
+            echo "   Ensure config.yaml has shards for environment '${ENVIRONMENT}' and run scripts/render.py" >&2
             exit 1
         fi
 
-        echo "Found ${#region_dirs[@]} region(s) in environment '${TARGET_ENV}'"
+        echo "Found ${#region_dirs[@]} region(s) in environment '${ENVIRONMENT}'"
         echo ""
 
         # Process each region_alias directory in the target environment
-        for region_dir in deploy/${TARGET_ENV}/*/; do
+        for region_dir in deploy/${ENVIRONMENT}/*/; do
             [ -d "$region_dir" ] || continue
 
-            # Extract environment and region_alias from directory path
-            # e.g., deploy/integration/us-east-1/ -> ENV_NAME=integration, REGION_ALIAS=us-east-1
+            # Extract region_alias from directory path
+            # e.g., deploy/integration/us-east-1/ -> REGION_ALIAS=us-east-1
             REGION_ALIAS=$(basename "$region_dir")
-            ENV_NAME=$(basename "$(dirname "$region_dir")")
-            REGION_NAME="${ENV_NAME}-${REGION_ALIAS}"
 
             echo "=========================================="
-            echo "Processing: $ENV_NAME / $REGION_ALIAS"
+            echo "Processing: $ENVIRONMENT / $REGION_ALIAS"
             echo "=========================================="
 
             # 1. Check for regional.json in this region
             if [ -f "${region_dir}terraform/regional.json" ]; then
-                echo "Found regional.json for $REGION_NAME"
+                echo "Found regional.json for ${ENVIRONMENT}-${REGION_ALIAS}"
 
                 REGIONAL_CONFIG="${region_dir}terraform/regional.json"
 
                 # Extract configuration from JSON
-                TARGET_REGION=$(jq -r '.region // .target_region // "us-east-1"' "$REGIONAL_CONFIG")
+                AWS_REGION=$(jq -r '.region // .target_region // "us-east-1"' "$REGIONAL_CONFIG")
                 TARGET_ACCOUNT_ID=$(jq -r '.account_id // ""' "$REGIONAL_CONFIG")
                 TARGET_ALIAS=$(jq -r '.alias // ""' "$REGIONAL_CONFIG")
 
@@ -187,39 +185,39 @@ phases:
                 SERVICE_PHASE=$(jq -r '.service_phase // "dev"' "$REGIONAL_CONFIG")
                 COST_CENTER=$(jq -r '.cost_center // "000"' "$REGIONAL_CONFIG")
 
-                echo "  Target Region: $TARGET_REGION"
+                echo "  AWS Region: $AWS_REGION"
                 [ -n "$TARGET_ACCOUNT_ID" ] && echo "  Target Account ID: $TARGET_ACCOUNT_ID"
                 [ -n "$TARGET_ALIAS" ] && echo "  Target Alias: $TARGET_ALIAS"
                 echo "  Terraform Vars: app_code=$APP_CODE, service_phase=$SERVICE_PHASE, cost_center=$COST_CENTER"
 
-                echo "Provisioning Regional Cluster Pipeline for $REGION_NAME..."
+                echo "Provisioning Regional Cluster Pipeline for ${ENVIRONMENT}-${REGION_ALIAS}..."
 
                 cd terraform/config/pipeline-regional-cluster
 
                 terraform init \
                     -reconfigure \
                     -backend-config="bucket=$TF_STATE_BUCKET" \
-                    -backend-config="key=pipelines/regional-${REGION_NAME}.tfstate" \
+                    -backend-config="key=pipelines/regional-${ENVIRONMENT}-${REGION_ALIAS}.tfstate" \
                     -backend-config="region=$TF_STATE_REGION" \
                     -backend-config="use_lockfile=true"
 
                 # Build terraform apply command with variables
-                TF_VARS="-var=github_repo_owner=${GITHUB_REPO_OWNER} -var=github_repo_name=${GITHUB_REPO_NAME} -var=github_branch=${GITHUB_BRANCH} -var=region=${TARGET_REGION}"
+                TF_VARS="-var=github_repo_owner=${GITHUB_REPO_OWNER} -var=github_repo_name=${GITHUB_REPO_NAME} -var=github_branch=${GITHUB_BRANCH} -var=region=${AWS_REGION}"
                 [ -n "$GITHUB_CONNECTION_ARN" ] && TF_VARS="$TF_VARS -var=github_connection_arn=${GITHUB_CONNECTION_ARN}"
                 [ -n "$TARGET_ACCOUNT_ID" ] && TF_VARS="$TF_VARS -var=target_account_id=${TARGET_ACCOUNT_ID}"
-                [ -n "$TARGET_REGION" ] && TF_VARS="$TF_VARS -var=target_region=${TARGET_REGION}"
+                [ -n "$AWS_REGION" ] && TF_VARS="$TF_VARS -var=target_region=${AWS_REGION}"
                 [ -n "$TARGET_ALIAS" ] && TF_VARS="$TF_VARS -var=target_alias=${TARGET_ALIAS}"
                 [ -n "$APP_CODE" ] && TF_VARS="$TF_VARS -var=app_code=${APP_CODE}"
                 [ -n "$SERVICE_PHASE" ] && TF_VARS="$TF_VARS -var=service_phase=${SERVICE_PHASE}"
                 [ -n "$COST_CENTER" ] && TF_VARS="$TF_VARS -var=cost_center=${COST_CENTER}"
 
                 # Apply with retry logic
-                if retry_terraform_apply "pipelines/regional-${REGION_NAME}.tfstate"; then
+                if retry_terraform_apply "pipelines/regional-${ENVIRONMENT}-${REGION_ALIAS}.tfstate"; then
                     cd ../../..
-                    echo "✅ Regional pipeline created for $REGION_NAME"
+                    echo "✅ Regional pipeline created for ${ENVIRONMENT}-${REGION_ALIAS}"
                 else
                     cd ../../..
-                    echo "❌ Failed to create regional pipeline for $REGION_NAME after retries"
+                    echo "❌ Failed to create regional pipeline for ${ENVIRONMENT}-${REGION_ALIAS} after retries"
                     echo "⏭️  Continuing with next region..."
                     continue
                 fi
@@ -229,7 +227,7 @@ phases:
 
             # 2. Check for management/*.json files in this region
             if [ -d "${region_dir}terraform/management" ]; then
-                echo "Checking for management cluster configs in $REGION_NAME..."
+                echo "Checking for management cluster configs in ${ENVIRONMENT}-${REGION_ALIAS}..."
 
                 for mc_config in ${region_dir}terraform/management/*.json; do
                     [ -e "$mc_config" ] || continue
@@ -240,7 +238,7 @@ phases:
                     echo "Found management cluster config: $CLUSTER_NAME"
 
                     # Extract configuration from JSON
-                    TARGET_REGION=$(jq -r '.region // .target_region // "us-east-1"' "$mc_config")
+                    AWS_REGION=$(jq -r '.region // .target_region // "us-east-1"' "$mc_config")
                     TARGET_ACCOUNT_ID=$(jq -r '.account_id // ""' "$mc_config")
                     TARGET_ALIAS=$(jq -r '.alias // ""' "$mc_config")
 
@@ -256,27 +254,27 @@ phases:
                     # Use CENTRAL_ACCOUNT_ID as regional account default if not specified
                     [ -z "$REGIONAL_AWS_ACCOUNT_ID" ] && REGIONAL_AWS_ACCOUNT_ID="${CENTRAL_ACCOUNT_ID}"
 
-                    echo "  Target Region: $TARGET_REGION"
+                    echo "  AWS Region: $AWS_REGION"
                     [ -n "$TARGET_ACCOUNT_ID" ] && echo "  Target Account ID: $TARGET_ACCOUNT_ID"
                     [ -n "$TARGET_ALIAS" ] && echo "  Target Alias: $TARGET_ALIAS"
                     echo "  Terraform Vars: app_code=$APP_CODE, service_phase=$SERVICE_PHASE, cost_center=$COST_CENTER, cluster_id=$CLUSTER_ID, regional_aws_account_id=$REGIONAL_AWS_ACCOUNT_ID"
 
-                    echo "Provisioning Management Cluster Pipeline for $CLUSTER_NAME in $REGION_NAME..."
+                    echo "Provisioning Management Cluster Pipeline for $CLUSTER_NAME in ${ENVIRONMENT}-${REGION_ALIAS}..."
 
                     cd terraform/config/pipeline-management-cluster
 
                     terraform init \
                         -reconfigure \
                         -backend-config="bucket=$TF_STATE_BUCKET" \
-                        -backend-config="key=pipelines/management-${REGION_NAME}-${CLUSTER_NAME}.tfstate" \
+                        -backend-config="key=pipelines/management-${ENVIRONMENT}-${REGION_ALIAS}-${CLUSTER_NAME}.tfstate" \
                         -backend-config="region=$TF_STATE_REGION" \
                         -backend-config="use_lockfile=true"
 
                     # Build terraform apply command with variables
-                    TF_VARS="-var=github_repo_owner=${GITHUB_REPO_OWNER} -var=github_repo_name=${GITHUB_REPO_NAME} -var=github_branch=${GITHUB_BRANCH} -var=region=${TARGET_REGION}"
+                    TF_VARS="-var=github_repo_owner=${GITHUB_REPO_OWNER} -var=github_repo_name=${GITHUB_REPO_NAME} -var=github_branch=${GITHUB_BRANCH} -var=region=${AWS_REGION}"
                     [ -n "$GITHUB_CONNECTION_ARN" ] && TF_VARS="$TF_VARS -var=github_connection_arn=${GITHUB_CONNECTION_ARN}"
                     [ -n "$TARGET_ACCOUNT_ID" ] && TF_VARS="$TF_VARS -var=target_account_id=${TARGET_ACCOUNT_ID}"
-                    [ -n "$TARGET_REGION" ] && TF_VARS="$TF_VARS -var=target_region=${TARGET_REGION}"
+                    [ -n "$AWS_REGION" ] && TF_VARS="$TF_VARS -var=target_region=${AWS_REGION}"
                     [ -n "$TARGET_ALIAS" ] && TF_VARS="$TF_VARS -var=target_alias=${TARGET_ALIAS}"
                     [ -n "$APP_CODE" ] && TF_VARS="$TF_VARS -var=app_code=${APP_CODE}"
                     [ -n "$SERVICE_PHASE" ] && TF_VARS="$TF_VARS -var=service_phase=${SERVICE_PHASE}"
@@ -288,9 +286,9 @@ phases:
                     TF_VARS="$TF_VARS -var=repository_branch=${GITHUB_BRANCH}"
 
                     # Apply with retry logic
-                    if retry_terraform_apply "pipelines/management-${REGION_NAME}-${CLUSTER_NAME}.tfstate"; then
+                    if retry_terraform_apply "pipelines/management-${ENVIRONMENT}-${REGION_ALIAS}-${CLUSTER_NAME}.tfstate"; then
                         cd ../../..
-                        echo "✅ Management pipeline created for $CLUSTER_NAME in $REGION_NAME"
+                        echo "✅ Management pipeline created for $CLUSTER_NAME in ${ENVIRONMENT}-${REGION_ALIAS}"
                     else
                         cd ../../..
                         echo "❌ Failed to create management pipeline for $CLUSTER_NAME after retries"

@@ -242,7 +242,11 @@ phases:
             )
 
             echo "Bootstrapping ArgoCD..."
-            ./scripts/bootstrap-argocd.sh regional-cluster "${TARGET_ENVIRONMENT}" "${TARGET_ALIAS}" "${REGION}" 2>&1 | tee /tmp/bootstrap.log
+            # Export standardized environment variables (Phase 2 migration)
+            export ENVIRONMENT="${TARGET_ENVIRONMENT}"
+            export REGION_ALIAS="${ALIAS}"
+            export AWS_REGION="${REGION}"
+            ./scripts/bootstrap-argocd.sh regional-cluster 2>&1 | tee /tmp/bootstrap.log
             BOOTSTRAP_EXIT_CODE=${PIPESTATUS[0]}
 
             echo ""
