@@ -163,6 +163,9 @@ resource "aws_iam_role_policy" "codebuild_policy" {
           "iam:GetOpenIDConnectProvider",
           "iam:TagOpenIDConnectProvider",
           "iam:UntagOpenIDConnectProvider",
+          "iam:CreateServiceLinkedRole",
+          "iam:GetServiceLinkedRoleDeletionStatus",
+          "iam:DeleteServiceLinkedRole",
           # KMS - For encryption
           "kms:CreateKey",
           "kms:CreateAlias",
@@ -172,6 +175,7 @@ resource "aws_iam_role_policy" "codebuild_policy" {
           "kms:GetKeyRotationStatus",
           "kms:EnableKeyRotation",
           "kms:DisableKeyRotation",
+          "kms:ListAliases",
           "kms:ListResourceTags",
           "kms:PutKeyPolicy",
           "kms:ScheduleKeyDeletion",
