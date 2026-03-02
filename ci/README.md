@@ -35,7 +35,7 @@ Credentials are stored in Vault at `kv/selfservice/cluster-secrets-rosa-regional
 
 ## Nightly Resources Janitor
 
-The nightly e2e tests creates AWS resources across two accounts. Teardown relies on `terraform destroy`, which can fail and leak resources. The **nightly-resources-janitor** job is a weekly fallback that purges everything except resources we need to remain between tests using [aws-nuke](https://github.com/ekristen/aws-nuke).
+The nightly e2e tests create AWS resources across two accounts. Teardown relies on `terraform destroy`, which can fail and leak resources. The **nightly-resources-janitor** job is a weekly fallback that purges everything except resources we need to keep between tests using [aws-nuke](https://github.com/ekristen/aws-nuke).
 
 ### What is preserved
 
