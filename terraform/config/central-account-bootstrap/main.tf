@@ -1,12 +1,3 @@
-provider "aws" {
-  region = var.region
-}
-
-provider "aws" {
-  alias  = "us_east_1"
-  region = "us-east-1"
-}
-
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
@@ -25,6 +16,7 @@ module "platform_image" {
   source = "../../modules/platform-image"
 
   providers = {
+    aws           = aws
     aws.us_east_1 = aws.us_east_1
   }
 
