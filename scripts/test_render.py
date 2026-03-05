@@ -1,3 +1,12 @@
+#!/usr/bin/env -S uv run
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#     "PyYAML>=6.0",
+#     "Jinja2>=3.1",
+#     "pytest>=8.0",
+# ]
+# ///
 """Unit tests for render.py"""
 
 import json
@@ -1068,3 +1077,7 @@ class TestCleanupStaleFiles:
 
         # Hidden dirs should be left untouched
         assert hidden.exists()
+
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, "-v"]))
