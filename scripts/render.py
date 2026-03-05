@@ -45,6 +45,54 @@ def load_yaml(file_path: Path) -> Dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
+def load_config(config_path: Path) -> Dict[str, Any]:
+    """Load configuration from a single YAML file or a config directory.
+
+    Auto-detects file vs directory:
+    - File: loads it directly via load_yaml() (backward compatible)
+    - Directory: loads defaults.yaml + each environments/*.yaml, assembles into
+      {"defaults": {...}, "environments": {"<stem>": {...}}}
+
+    Args:
+        config_path: Path to a YAML file or a config directory
+
+    Returns:
+        Parsed configuration dictionary
+
+    Raises:
+        FileNotFoundError: If config_path doesn't exist or defaults.yaml is missing
+        ValueError: If no environment files are found in directory mode
+    """
+    if not config_path.exists():
+        raise FileNotFoundError(f"Config path not found: {config_path}")
+
+    if config_path.is_file():
+        return load_yaml(config_path)
+
+    # Directory mode
+    defaults_file = config_path / "defaults.yaml"
+    if not defaults_file.exists():
+        raise FileNotFoundError(
+            f"defaults.yaml not found in config directory: {config_path}"
+        )
+
+    defaults = load_yaml(defaults_file)
+
+    env_dir = config_path / "environments"
+    env_files = sorted(env_dir.glob("*.yaml")) if env_dir.is_dir() else []
+    if not env_files:
+        raise ValueError(
+            f"No environment files found in {env_dir}. "
+            f"Expected one or more .yaml files in the environments/ subdirectory."
+        )
+
+    environments = {}
+    for env_file in env_files:
+        environments[env_file.stem] = load_yaml(env_file)
+
+    return {"defaults": defaults, "environments": environments}
+
+
 def validate_region_deployment_uniqueness(region_deployments):
     """Ensure environment + region_deployment combinations are unique across region deployments.
 
@@ -671,18 +719,27 @@ def cleanup_stale_files(
         print()
 
 
-def resolve_config_file(config_file: str = None, project_root: Path = None) -> Path:
-    """Resolve the config file path.
+def resolve_config_path(config_path: str = None, project_root: Path = None) -> Path:
+    """Resolve the config path (file or directory).
+
+    When no explicit path is given, auto-detects:
+    1. config/defaults.yaml exists → return config/ directory
+    2. Otherwise → return config.yaml (legacy fallback)
 
     Args:
-        config_file: Optional explicit path to config file
-        project_root: Project root directory (used for default path)
+        config_path: Optional explicit path to config file or directory
+        project_root: Project root directory (used for auto-detection)
 
     Returns:
-        Resolved Path to the config file
+        Resolved Path to the config file or directory
     """
-    if config_file:
-        return Path(config_file)
+    if config_path:
+        return Path(config_path)
+
+    config_dir = project_root / "config"
+    if (config_dir / "defaults.yaml").exists():
+        return config_dir
+
     return project_root / "config.yaml"
 
 
@@ -702,9 +759,9 @@ def main() -> int:
         help='Optional prefix for resource names in CI/test environments (e.g., "xg4y")',
     )
     parser.add_argument(
-        "--config-file",
+        "--config-dir",
         default=None,
-        help="Path to config.yaml (default: <project_root>/config.yaml)",
+        help="Path to config file or directory (default: auto-detect config/ or config.yaml)",
     )
     args = parser.parse_args()
     ci_prefix = args.ci_prefix
@@ -713,19 +770,22 @@ def main() -> int:
     script_dir = Path(__file__).parent
     project_root = script_dir.parent
 
-    config_file = resolve_config_file(args.config_file, project_root)
+    config_path = resolve_config_path(args.config_dir, project_root)
     base_dir = project_root / "argocd" / "config"
     deploy_dir = project_root / "deploy"
-
-    if not config_file.exists():
-        print(f"Error: Config file not found: {config_file}", file=sys.stderr)
-        return 1
 
     if ci_prefix:
         print(f"CI prefix: {ci_prefix}")
 
     # Load config
-    config = load_yaml(config_file)
+    try:
+        config = load_config(config_path)
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
     # Resolve region deployments from config (merge sector defaults + template processing)
     region_deployments = resolve_region_deployments(config, ci_prefix=ci_prefix)

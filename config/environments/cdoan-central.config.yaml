@@ -1,0 +1,8 @@
+region_deployments:
+  us-east-2:
+    account_id: "754250776154"
+    terraform_vars:
+      enable_bastion: true
+    management_clusters:
+      mc01:
+        account_id: "910485845704"
