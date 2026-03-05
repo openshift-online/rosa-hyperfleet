@@ -21,6 +21,7 @@ from render import (
     deep_merge,
     get_cluster_types,
     load_yaml,
+    resolve_config_file,
     render_region_deployment_applicationsets,
     render_region_deployment_terraform,
     render_region_deployment_values,
@@ -1077,6 +1078,26 @@ class TestCleanupStaleFiles:
 
         # Hidden dirs should be left untouched
         assert hidden.exists()
+
+
+# =============================================================================
+# resolve_config_file
+# =============================================================================
+
+
+class TestResolveConfigFile:
+    def test_returns_explicit_path(self, tmp_path):
+        custom = tmp_path / "custom" / "my-config.yaml"
+        result = resolve_config_file(str(custom), project_root=tmp_path)
+        assert result == custom
+
+    def test_falls_back_to_default(self, tmp_path):
+        result = resolve_config_file(None, project_root=tmp_path)
+        assert result == tmp_path / "config.yaml"
+
+    def test_empty_string_falls_back_to_default(self, tmp_path):
+        result = resolve_config_file("", project_root=tmp_path)
+        assert result == tmp_path / "config.yaml"
 
 
 if __name__ == "__main__":

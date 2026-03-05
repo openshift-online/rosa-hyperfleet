@@ -671,6 +671,21 @@ def cleanup_stale_files(
         print()
 
 
+def resolve_config_file(config_file: str = None, project_root: Path = None) -> Path:
+    """Resolve the config file path.
+
+    Args:
+        config_file: Optional explicit path to config file
+        project_root: Project root directory (used for default path)
+
+    Returns:
+        Resolved Path to the config file
+    """
+    if config_file:
+        return Path(config_file)
+    return project_root / "config.yaml"
+
+
 def main() -> int:
     """Main entry point for the script.
 
@@ -698,7 +713,7 @@ def main() -> int:
     script_dir = Path(__file__).parent
     project_root = script_dir.parent
 
-    config_file = Path(args.config_file) if args.config_file else project_root / "config.yaml"
+    config_file = resolve_config_file(args.config_file, project_root)
     base_dir = project_root / "argocd" / "config"
     deploy_dir = project_root / "deploy"
 
