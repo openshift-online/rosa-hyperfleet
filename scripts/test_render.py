@@ -1,3 +1,12 @@
+#!/usr/bin/env -S uv run
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#     "PyYAML>=6.0",
+#     "Jinja2>=3.1",
+#     "pytest>=8.0",
+# ]
+# ///
 """Unit tests for render.py"""
 
 import json
@@ -11,7 +20,10 @@ from render import (
     create_applicationset_template,
     deep_merge,
     get_cluster_types,
+    load_config,
     load_yaml,
+    render_environment_accounts,
+    resolve_config_path,
     render_region_deployment_applicationsets,
     render_region_deployment_terraform,
     render_region_deployment_values,
@@ -46,6 +58,130 @@ class TestLoadYaml:
         f = tmp_path / "null.yaml"
         f.write_text("---\n")
         assert load_yaml(f) == {}
+
+
+# =============================================================================
+# load_config
+# =============================================================================
+
+
+class TestLoadConfig:
+    def test_file_mode_loads_single_yaml(self, tmp_path):
+        """Passing a file path loads it directly via load_yaml()."""
+        f = tmp_path / "config.yaml"
+        f.write_text("defaults:\n  revision: main\nenvironments:\n  e2e:\n    region_deployments:\n      us-east-1:\n        management_clusters: {}\n")
+        result = load_config(f)
+        assert result["defaults"]["revision"] == "main"
+        assert "e2e" in result["environments"]
+
+    def test_directory_mode_assembles_from_files(self, tmp_path):
+        """Passing a directory loads defaults.config.yaml + environments/*.config.yaml."""
+        (tmp_path / "defaults.config.yaml").write_text("revision: main\n")
+        env_dir = tmp_path / "environments"
+        env_dir.mkdir()
+        (env_dir / "staging.config.yaml").write_text("region_deployments:\n  us-east-1:\n    management_clusters: {}\n")
+
+        result = load_config(tmp_path)
+        assert result["defaults"]["revision"] == "main"
+        assert "staging" in result["environments"]
+
+    def test_env_name_derived_from_filename(self, tmp_path):
+        """Environment name is the filename stem (e.g. brian.config.yaml -> 'brian')."""
+        (tmp_path / "defaults.config.yaml").write_text("revision: main\n")
+        env_dir = tmp_path / "environments"
+        env_dir.mkdir()
+        (env_dir / "brian.config.yaml").write_text("region_deployments:\n  us-east-1:\n    management_clusters: {}\n")
+        (env_dir / "cdoan-central.config.yaml").write_text("region_deployments:\n  us-east-2:\n    management_clusters: {}\n")
+
+        result = load_config(tmp_path)
+        assert "brian" in result["environments"]
+        assert "cdoan-central" in result["environments"]
+
+    def test_missing_defaults_raises(self, tmp_path):
+        """Raises FileNotFoundError if defaults.config.yaml is missing in directory mode."""
+        env_dir = tmp_path / "environments"
+        env_dir.mkdir()
+        (env_dir / "staging.config.yaml").write_text("region_deployments: {}\n")
+
+        with pytest.raises(FileNotFoundError, match="defaults.config.yaml"):
+            load_config(tmp_path)
+
+    def test_no_environments_raises(self, tmp_path):
+        """Raises ValueError if no environment files are found in directory mode."""
+        (tmp_path / "defaults.config.yaml").write_text("revision: main\n")
+        (tmp_path / "environments").mkdir()
+
+        with pytest.raises(ValueError, match="No environment"):
+            load_config(tmp_path)
+
+    def test_sorted_order(self, tmp_path):
+        """Environments are assembled in sorted filename order."""
+        (tmp_path / "defaults.config.yaml").write_text("{}\n")
+        env_dir = tmp_path / "environments"
+        env_dir.mkdir()
+        (env_dir / "zebra.config.yaml").write_text("{}\n")
+        (env_dir / "alpha.config.yaml").write_text("{}\n")
+        (env_dir / "middle.config.yaml").write_text("{}\n")
+
+        result = load_config(tmp_path)
+        env_names = list(result["environments"].keys())
+        assert env_names == ["alpha", "middle", "zebra"]
+
+    def test_empty_env_file(self, tmp_path):
+        """An environment file with empty/null content works correctly."""
+        (tmp_path / "defaults.config.yaml").write_text("revision: main\n")
+        env_dir = tmp_path / "environments"
+        env_dir.mkdir()
+        (env_dir / "empty-env.config.yaml").write_text("")
+
+        result = load_config(tmp_path)
+        assert "empty-env" in result["environments"]
+        assert result["environments"]["empty-env"] == {}
+
+    def test_equivalence_with_single_file(self, tmp_path):
+        """Directory mode produces the same dict as a single-file config."""
+        # Create single-file config
+        single_file = tmp_path / "single.yaml"
+        single_file.write_text(
+            "defaults:\n"
+            "  revision: main\n"
+            "  terraform_vars:\n"
+            "    app_code: infra\n"
+            "environments:\n"
+            "  staging:\n"
+            "    region_deployments:\n"
+            "      us-east-1:\n"
+            "        account_id: '111'\n"
+            "        management_clusters:\n"
+            "          mc01: {}\n"
+        )
+
+        # Create equivalent directory structure
+        config_dir = tmp_path / "config_dir"
+        config_dir.mkdir()
+        (config_dir / "defaults.config.yaml").write_text(
+            "revision: main\n"
+            "terraform_vars:\n"
+            "  app_code: infra\n"
+        )
+        env_dir = config_dir / "environments"
+        env_dir.mkdir()
+        (env_dir / "staging.config.yaml").write_text(
+            "region_deployments:\n"
+            "  us-east-1:\n"
+            "    account_id: '111'\n"
+            "    management_clusters:\n"
+            "      mc01: {}\n"
+        )
+
+        file_result = load_config(single_file)
+        dir_result = load_config(config_dir)
+        assert file_result == dir_result
+
+    def test_nonexistent_path_raises(self, tmp_path):
+        """Raises FileNotFoundError for a path that doesn't exist."""
+        with pytest.raises(FileNotFoundError):
+            load_config(tmp_path / "nonexistent")
 
 
 # =============================================================================
@@ -1003,6 +1139,123 @@ class TestRenderRegionDeploymentTerraform:
 
 
 # =============================================================================
+# render_environment_accounts
+# =============================================================================
+
+
+class TestRenderEnvironmentAccounts:
+    def test_single_env_single_region(self, tmp_path):
+        deploy_dir = tmp_path / "deploy"
+        rds = [
+            {
+                "environment": "brian",
+                "region_deployment": "us-east-1",
+                "aws_region": "us-east-1",
+                "management_clusters": [],
+            }
+        ]
+
+        render_environment_accounts(rds, deploy_dir)
+
+        accounts_file = deploy_dir / "brian" / "accounts.json"
+        assert accounts_file.exists()
+        data = json.loads(accounts_file.read_text())
+        assert "us-east-1" in data["region_definitions"]
+        entry = data["region_definitions"]["us-east-1"]
+        assert entry["name"] == "brian"
+        assert entry["environment"] == "brian"
+        assert entry["aws_region"] == "us-east-1"
+
+    def test_single_env_multiple_regions(self, tmp_path):
+        deploy_dir = tmp_path / "deploy"
+        rds = [
+            {
+                "environment": "prod",
+                "region_deployment": "us-east-1",
+                "aws_region": "us-east-1",
+                "management_clusters": [],
+            },
+            {
+                "environment": "prod",
+                "region_deployment": "us-west-2",
+                "aws_region": "us-west-2",
+                "management_clusters": [],
+            },
+        ]
+
+        render_environment_accounts(rds, deploy_dir)
+
+        accounts_file = deploy_dir / "prod" / "accounts.json"
+        data = json.loads(accounts_file.read_text())
+        assert len(data["region_definitions"]) == 2
+        assert "us-east-1" in data["region_definitions"]
+        assert "us-west-2" in data["region_definitions"]
+
+    def test_multiple_environments(self, tmp_path):
+        deploy_dir = tmp_path / "deploy"
+        rds = [
+            {
+                "environment": "staging",
+                "region_deployment": "us-east-1",
+                "aws_region": "us-east-1",
+                "management_clusters": [],
+            },
+            {
+                "environment": "prod",
+                "region_deployment": "eu-west-1",
+                "aws_region": "eu-west-1",
+                "management_clusters": [],
+            },
+        ]
+
+        render_environment_accounts(rds, deploy_dir)
+
+        assert (deploy_dir / "staging" / "accounts.json").exists()
+        assert (deploy_dir / "prod" / "accounts.json").exists()
+
+    def test_contains_generated_metadata(self, tmp_path):
+        deploy_dir = tmp_path / "deploy"
+        rds = [
+            {
+                "environment": "e2e",
+                "region_deployment": "us-east-1",
+                "aws_region": "us-east-1",
+                "management_clusters": [],
+            }
+        ]
+
+        render_environment_accounts(rds, deploy_dir)
+
+        accounts_file = deploy_dir / "e2e" / "accounts.json"
+        data = json.loads(accounts_file.read_text())
+        assert "_generated" in data
+        assert "DO NOT EDIT" in data["_generated"]
+
+    def test_entry_fields(self, tmp_path):
+        """Each entry should have exactly name, environment, and aws_region."""
+        deploy_dir = tmp_path / "deploy"
+        rds = [
+            {
+                "environment": "cdoan-central",
+                "region_deployment": "us-east-2",
+                "aws_region": "us-east-2",
+                "management_clusters": [],
+            }
+        ]
+
+        render_environment_accounts(rds, deploy_dir)
+
+        accounts_file = deploy_dir / "cdoan-central" / "accounts.json"
+        data = json.loads(accounts_file.read_text())
+        entry = data["region_definitions"]["us-east-2"]
+        assert entry == {
+            "name": "cdoan-central",
+            "environment": "cdoan-central",
+            "aws_region": "us-east-2",
+        }
+
+
+# =============================================================================
 # cleanup_stale_files
 # =============================================================================
 
@@ -1068,3 +1321,39 @@ class TestCleanupStaleFiles:
 
         # Hidden dirs should be left untouched
         assert hidden.exists()
+
+
+# =============================================================================
+# resolve_config_path
+# =============================================================================
+
+
+class TestResolveConfigPath:
+    def test_returns_explicit_path(self, tmp_path):
+        custom = tmp_path / "custom" / "my-config"
+        result = resolve_config_path(str(custom), project_root=tmp_path)
+        assert result == custom
+
+    def test_prefers_config_dir_when_defaults_exists(self, tmp_path):
+        """When config/defaults.config.yaml exists, returns config/ directory."""
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        (config_dir / "defaults.config.yaml").write_text("revision: main\n")
+        # Also create config.yaml to verify directory is preferred
+        (tmp_path / "config.yaml").write_text("defaults: {}\n")
+
+        result = resolve_config_path(None, project_root=tmp_path)
+        assert result == config_dir
+
+    def test_falls_back_to_config_yaml(self, tmp_path):
+        """When config/defaults.yaml doesn't exist, falls back to config.yaml."""
+        result = resolve_config_path(None, project_root=tmp_path)
+        assert result == tmp_path / "config.yaml"
+
+    def test_empty_string_falls_back_to_auto_detect(self, tmp_path):
+        result = resolve_config_path("", project_root=tmp_path)
+        assert result == tmp_path / "config.yaml"
+
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, "-v"]))
