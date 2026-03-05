@@ -74,27 +74,6 @@ environments:
           mc01:
             account_id: "910485845704"
 
-  integration:
-    region_deployments:
-      us-east-1:
-        management_clusters:
-          mc01: {}
-      us-east-2:
-        revision: "826fa76d08fc2ce87c863196e52d5a4fa9259a82"
-        management_clusters:
-          mc01: {}
-      eu-west-1:
-        management_clusters:
-          mc01: {}
-
-  staging:
-    terraform_vars:
-      service_phase: "staging"
-    region_deployments:
-      us-east-1:
-        management_clusters:
-          mc01: {}
-
   brian:
     region_deployments:
       us-east-1:
