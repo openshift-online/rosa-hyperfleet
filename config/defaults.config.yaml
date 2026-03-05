@@ -1,0 +1,24 @@
+revision: main
+bootstrap_pipeline_revision: main
+account_id: "ssm:///infra/{{ environment }}/{{ aws_region }}/account_id"
+management_cluster_account_id: "ssm:///infra/{{ environment }}/{{ aws_region }}/{{ cluster_prefix }}/account_id"
+terraform_vars:
+  app_code: "infra"
+  service_phase: "dev"
+  cost_center: "000"
+  environment: "{{ environment }}"
+  account_id: "{{ account_id }}"
+  region: "{{ aws_region }}"
+  alias: "regional-{{ aws_region }}"
+values:
+  management-cluster:
+    hypershift:
+      oidcStorageS3Bucket:
+        name: "hypershift-mc-{{ aws_region }}"
+        region: "{{ aws_region }}"
+      externalDns:
+        domain: "dev.{{ aws_region }}.rosa.example.com"
+  regional-cluster:
+    maestro:
+      mqttEndpoint: "xxx.iot.{{ aws_region }}.amazonaws.com"
+    someOtherSetting: "value"
