@@ -211,20 +211,26 @@ class GitManager:
             )
         self.push(message)
 
-    def modify_config(self, callback):
-        """Load config.yaml, apply callback modifications, render, and push.
+    def modify_config(self, environment: str, callback):
+        """Load an environment config file, apply callback modifications, render, and push.
 
         Args:
-            callback: A function that receives and modifies the config dict.
+            environment: Environment name (maps to config/environments/<name>.config.yaml)
+            callback: A function that receives and modifies the environment config dict.
         """
-        config_path = self.work_dir / "config.yaml"
-        with open(config_path) as f:
-            config = yaml.safe_load(f)
+        env_file = self.work_dir / "config" / "environments" / f"{environment}.config.yaml"
+        if not env_file.exists():
+            raise FileNotFoundError(
+                f"Environment config not found: {env_file}"
+            )
 
-        callback(config)
+        with open(env_file) as f:
+            env_config = yaml.safe_load(f) or {}
 
-        with open(config_path, "w") as f:
-            yaml.dump(config, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        callback(env_config)
 
-        self.render_and_push("ci: update config.yaml")
+        with open(env_file, "w") as f:
+            yaml.dump(env_config, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+        self.render_and_push(f"ci: update {environment} config")
 
