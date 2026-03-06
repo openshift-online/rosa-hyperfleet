@@ -342,7 +342,18 @@ output "region_dns_name_servers" {
   value       = aws_route53_zone.region.name_servers
 }
 
-output "dns_shard_zone_names" {
-  description = "Full DNS names for each DNS shard (hash-prefixed)"
-  value       = module.dns_shard[*].zone_name
+output "dns_shard_zone_id" {
+  description = "Route53 hosted zone ID for the DNS shard"
+  value       = aws_route53_zone.shard.zone_id
 }
+
+output "dns_shard_zone_name" {
+  description = "Full DNS name of the shard zone (hash-prefixed)"
+  value       = aws_route53_zone.shard.name
+}
+
+output "dns_shard_name_servers" {
+  description = "Nameservers for the DNS shard zone"
+  value       = aws_route53_zone.shard.name_servers
+}
+

@@ -209,9 +209,3 @@ variable "region_dns_name" {
   description = "Base DNS name for the region (e.g., 'us-east-2.stage.rosa.example.com')"
   type        = string
 }
-
-variable "dns_shard_count" {
-  description = "Number of DNS shards to create under the region zone"
-  type        = number
-  default     = 1
-}

@@ -66,3 +66,11 @@ maestro_db_deletion_protection = false  # Set to true for production
 
 # MQTT topic prefix for Maestro communication
 maestro_mqtt_topic_prefix = "maestro/consumers"
+
+# =============================================================================
+# DNS Configuration
+# =============================================================================
+# DNS zone configuration for the region.
+
+# Base DNS name for the region
+region_dns_name = "us-east-2.stage.rosa.example.com"
