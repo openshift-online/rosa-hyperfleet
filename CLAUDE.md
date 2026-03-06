@@ -139,4 +139,8 @@ docs/
 - `argocd/config/shared/argocd/` - ArgoCD self-management Helm chart
 - Design decisions follow ADR format in `docs/design-decisions/`
 
+### Code Development
+
+- **Testing**: Work with a Test-Driven-Development model for non-shell languages. Write tests, run them to see them fail, then write code to make them pass, and run the tests again.
+
 Include AGENTS.md
