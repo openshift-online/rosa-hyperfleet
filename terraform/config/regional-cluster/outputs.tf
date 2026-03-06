@@ -327,3 +327,22 @@ output "hyperfleet_configuration_summary" {
   value       = module.hyperfleet_infrastructure.configuration_summary
   sensitive   = true
 }
+
+# =============================================================================
+# DNS Outputs
+# =============================================================================
+
+output "region_dns_zone_id" {
+  description = "Route53 hosted zone ID for the region"
+  value       = aws_route53_zone.region.zone_id
+}
+
+output "region_dns_name_servers" {
+  description = "Nameservers for the region DNS zone"
+  value       = aws_route53_zone.region.name_servers
+}
+
+output "dns_shard_zone_names" {
+  description = "Full DNS names for each DNS shard (hash-prefixed)"
+  value       = module.dns_shard[*].zone_name
+}
