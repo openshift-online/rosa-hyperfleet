@@ -83,7 +83,7 @@ def load_config(config_path: Path) -> Dict[str, Any]:
     if not env_files:
         raise ValueError(
             f"No environment files found in {env_dir}. "
-            f"Expected one or more .yaml files in the environments/ subdirectory."
+            f"Expected one or more *.config.yaml files in the environments/ subdirectory."
         )
 
     environments = {}
@@ -339,10 +339,10 @@ def resolve_region_deployments(
                 rd["management_clusters"] = mc_list
 
                 # Lifecycle flags (control teardown behavior — require explicit boolean True)
-                if rd_config.get('delete') is True:
-                    rd['delete'] = True
-                if rd_config.get('delete_pipeline') is True:
-                    rd['delete_pipeline'] = True
+                if rd_config.get("delete") is True:
+                    rd["delete"] = True
+                if rd_config.get("delete_pipeline") is True:
+                    rd["delete_pipeline"] = True
 
                 # Inherit revision (scalar override: most-specific non-None wins)
                 rd["revision"] = (
@@ -579,10 +579,10 @@ def render_region_deployment_terraform(rd: Dict[str, Any], deploy_dir: Path) -> 
     regional_data["sector"] = rd.get("sector", environment)
 
     # Lifecycle flags (consistent with MC pattern — top-level, not in terraform_vars)
-    if rd.get('delete') is True:
-        regional_data['delete'] = True
-    if rd.get('delete_pipeline') is True:
-        regional_data['delete_pipeline'] = True
+    if rd.get("delete") is True:
+        regional_data["delete"] = True
+    if rd.get("delete_pipeline") is True:
+        regional_data["delete_pipeline"] = True
 
     # Extract all management cluster account IDs for cross-account access configuration
     management_clusters = rd.get("management_clusters", [])
@@ -664,7 +664,7 @@ def render_environment_accounts(
     """Generate accounts.json for each environment.
 
     Groups region deployments by environment and writes a single
-    deploy/<environment>/terraform/accounts.json containing a
+    deploy/<environment>/accounts.json containing a
     region_definitions map with one entry per region.
 
     Args:
