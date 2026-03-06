@@ -54,6 +54,11 @@ output "alb_dns_name" {
   value       = aws_lb.platform.dns_name
 }
 
+output "alb_zone_id" {
+  description = "Internal ALB Route53 hosted zone ID (for alias records)"
+  value       = aws_lb.platform.zone_id
+}
+
 output "target_group_arn" {
   description = "Target group ARN for TargetGroupBinding"
   value       = aws_lb_target_group.platform.arn

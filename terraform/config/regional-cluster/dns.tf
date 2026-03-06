@@ -27,3 +27,16 @@ resource "aws_route53_record" "shard_ns" {
   ttl     = 300
   records = aws_route53_zone.shard.name_servers
 }
+
+# Alias record pointing api.<region_dns_name> to the Platform API ALB
+resource "aws_route53_record" "api" {
+  zone_id = aws_route53_zone.region.zone_id
+  name    = "api.${var.region_dns_name}"
+  type    = "A"
+
+  alias {
+    name                   = module.api_gateway.alb_dns_name
+    zone_id                = module.api_gateway.alb_zone_id
+    evaluate_target_health = true
+  }
+}
