@@ -104,9 +104,10 @@ docs/
 #### For Infrastructure Changes
 
 1. Update Terraform modules in `terraform/modules/`
-2. Use `make terraform-fmt` and lint jobs for sanitization
-3. For testing: use `make ephemeral-provision` for ephemeral dev environments, or run `terraform init && terraform apply` directly in the relevant `terraform/config/` directory
-4. Ensure architect agent reviews any architectural changes
+2. **IMPORTANT**: When modifying `versions.tf` files, always use exact provider versions from `terraform/provider-versions.yaml` - this is the single source of truth for all provider versions
+3. Use `make terraform-fmt` and lint jobs for sanitization
+4. For testing: use `make ephemeral-provision` for ephemeral dev environments, or run `terraform init && terraform apply` directly in the relevant `terraform/config/` directory. For manual testing, create local `terraform.tfvars` and use `make apply-infra-regional` or `make apply-infra-management`
+5. Ensure architect agent reviews any architectural changes
 
 #### For Application Changes
 
@@ -148,6 +149,8 @@ docs/
 - `Makefile` - Standardized provisioning commands
 - `bootstrap-argocd.sh` - ECS Fargate bootstrap script
 - `argocd/config/shared/argocd/` - ArgoCD self-management Helm chart
+- `terraform/provider-versions.yaml` - Single source of truth for all Terraform and provider versions (enforced by CI)
+- `scripts/validate-provider-versions.py` - Validates all modules use standard versions (runs automatically in CI via `make check-rendered-files`)
 - Design decisions follow ADR format in `docs/design/`
 
 Include AGENTS.md

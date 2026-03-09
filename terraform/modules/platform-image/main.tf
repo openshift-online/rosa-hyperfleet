@@ -15,9 +15,15 @@ terraform {
 }
 
 locals {
-  name_prefix     = var.name_prefix != "" ? "${var.name_prefix}-" : ""
-  dockerfile_hash = substr(sha256(file("${path.module}/Dockerfile")), 0, 12)
-  container_image = "${aws_ecrpublic_repository.platform.repository_uri}:${local.dockerfile_hash}"
+  name_prefix = var.name_prefix != "" ? "${var.name_prefix}-" : ""
+
+  # Hash both Dockerfile AND provider-versions.yaml
+  # This ensures image rebuilds when provider versions change
+  dockerfile_hash        = sha256(file("${path.module}/Dockerfile"))
+  provider_versions_hash = sha256(file("${path.module}/../../provider-versions.yaml"))
+  combined_hash          = substr(sha256("${local.dockerfile_hash}${local.provider_versions_hash}"), 0, 12)
+
+  container_image = "${aws_ecrpublic_repository.platform.repository_uri}:${local.combined_hash}"
 }
 
 # =============================================================================

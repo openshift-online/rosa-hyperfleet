@@ -89,7 +89,28 @@ RUN set -euo pipefail && \
     rm -rf "${TF_PACKAGE}" "terraform_${TERRAFORM_VERSION}_SHA256SUMS" \
       "terraform_${TERRAFORM_VERSION}_SHA256SUMS.sig" /tmp/tf-bin
 
+# Setup Terraform plugin cache directory
+ENV TF_PLUGIN_CACHE_DIR=/opt/platform/.terraform.d/plugin-cache
+RUN mkdir -p ${TF_PLUGIN_CACHE_DIR}
+
+# Copy provider versions config and generator script (from repo root)
+COPY --chown=65534:65534 terraform/provider-versions.yaml /tmp/provider-versions.yaml
+COPY --chown=65534:65534 terraform/modules/platform-image/generate-provider-init.py /tmp/generate-provider-init.py
+
+# Generate Terraform config and download providers into cache
+RUN chmod +x /tmp/generate-provider-init.py && \
+    python3 /tmp/generate-provider-init.py && \
+    cd /tmp && \
+    terraform init && \
+    echo "" && \
+    echo "✅ Providers cached successfully:" && \
+    find ${TF_PLUGIN_CACHE_DIR} -name "terraform-provider-*" -type f | sort && \
+    echo "" && \
+    echo "Cache size:" && \
+    du -sh ${TF_PLUGIN_CACHE_DIR} && \
+    rm -rf /tmp/.terraform* /tmp/provider-init.tf /tmp/provider-versions.yaml /tmp/generate-provider-init.py
+
 # Run as non-root
-RUN mkdir -p /opt/platform && chown 65534:65534 /opt/platform
+RUN mkdir -p /opt/platform && chown -R 65534:65534 /opt/platform
 ENV HOME=/opt/platform
 USER 65534

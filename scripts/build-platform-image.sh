@@ -116,9 +116,9 @@ echo "Authenticating with public ECR..."
 aws ecr-public get-login-password --region us-east-1 | $CONTAINER_RUNTIME login --username AWS --password-stdin public.ecr.aws
 echo ""
 
-# Build the image
+# Build the image (using repo root as context to access provider-versions.yaml)
 echo "Building platform image from ${DOCKERFILE}..."
-$CONTAINER_RUNTIME build --platform linux/amd64 -t "${ECR_URL}:${IMAGE_TAG}" "$DOCKERFILE_DIR"
+$CONTAINER_RUNTIME build --platform linux/amd64 -t "${ECR_URL}:${IMAGE_TAG}" -f "$DOCKERFILE" .
 echo ""
 
 # Push the image
