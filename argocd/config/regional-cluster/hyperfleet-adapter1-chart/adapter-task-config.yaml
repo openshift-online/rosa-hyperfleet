@@ -1,0 +1,65 @@
+# Example HyperFleet Adapter task configuration
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterTaskConfig
+metadata:
+  name: adapter1
+  labels:
+    hyperfleet.io/adapter-type: adapter1
+    hyperfleet.io/component: adapter
+spec:
+  params:
+    - name: "clusterId"
+      source: "event.id"
+      type: "string"
+      required: true
+    - name: "generationId"
+      source: "event.generation"
+      type: "int"
+      required: true
+
+  preconditions:
+    - name: "clusterStatus"
+      apiCall:
+        method: "GET"
+        url: "/clusters/{{ .clusterId }}"
+        timeout: 10s
+        retryAttempts: 3
+        retryBackoff: "exponential"
+      capture:
+        - name: "clusterName"
+          field: "name"
+        - name: "generationId"
+          field: "generation"
+        - name: "timestamp"
+          field: "created_time"
+        - name: "readyConditionStatus"
+          expression: |
+            status.conditions.filter(c, c.type == "Ready").size() > 0
+              ? status.conditions.filter(c, c.type == "Ready")[0].status
+              : "False"
+
+        - name: "placementClusterName"
+          expression: "\"mc01\""  # TBC coming from placement adapter
+          description: "Unique identifier for the target maestro"
+
+        - name: "adapterName"
+          expression: "\"adapter1\""  # TBC coming from config passed to params
+          description: "Unique identifier for the adapter"
+
+      # check if the cluster is not ready
+      conditions:
+        - field: "readyConditionStatus"
+          operator: "equals"
+          value: "False"
+
+    - name: "validationCheck"
+      # Valid CEL expression
+      expression: |
+        readyConditionStatus == "False"
+
+  # Resources with valid K8s manifests
+  resources: []
+
+  post:
+    payloads: []
+    postActions: []

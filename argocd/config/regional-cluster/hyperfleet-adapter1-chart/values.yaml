@@ -1,0 +1,41 @@
+# ArgoCD Application configuration
+hyperfleetAdapter1Chart:
+  # Name of the ArgoCD Application
+  applicationName: hyperfleet-adapter1
+
+  # Namespace where the ArgoCD Application resource will be created
+  namespace: argocd
+
+  # Target namespace where hyperfleet-adapter1 will be deployed
+  # Note: This namespace should be created by another chart
+  targetNamespace: hyperfleet-system
+
+  # ArgoCD project
+  project: default
+
+  # Source configuration
+  source:
+    # Repository URL for the hyperfleet-adapter chart
+    repoURL: https://github.com/openshift-hyperfleet/hyperfleet-adapter
+    # Chart path within the repository
+    path: charts
+    # Target revision/tag
+    targetRevision: v0.1.1
+
+  # Sync policy configuration
+  syncPolicy:
+    # Automated sync settings
+    automated:
+      # Automatically sync when differences are detected
+      prune: true
+      # Allow empty resources to be managed
+      selfHeal: true
+
+    # Sync options
+    syncOptions: []
+      # Namespace creation is handled by another chart
+
+# SecretProviderClass configuration for AWS Secrets Manager
+secretProvider:
+  # Name of the SecretProviderClass
+  name: hyperfleet-adapter1-secrets

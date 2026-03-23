@@ -1,0 +1,34 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ index .Values "hyperfleet-api-chart" "applicationName" }}
+  namespace: {{ index .Values "hyperfleet-api-chart" "namespace" }}
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: {{ index .Values "hyperfleet-api-chart" "project" }}
+
+  source:
+    repoURL: {{ index .Values "hyperfleet-api-chart" "source" "repoURL" }}
+    targetRevision: {{ index .Values "hyperfleet-api-chart" "source" "targetRevision" }}
+    path: {{ index .Values "hyperfleet-api-chart" "source" "path" }}
+    helm:
+      {{- if index .Values "hyperfleet-api-chart" "helmValues" }}
+      values: |
+        {{- toYaml (index .Values "hyperfleet-api-chart" "helmValues") | nindent 8 }}
+      {{- end }}
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ index .Values "hyperfleet-api-chart" "targetNamespace" }}
+
+  syncPolicy:
+    {{- if index .Values "hyperfleet-api-chart" "syncPolicy" "automated" }}
+    automated:
+      prune: {{ index .Values "hyperfleet-api-chart" "syncPolicy" "automated" "prune" }}
+      selfHeal: {{ index .Values "hyperfleet-api-chart" "syncPolicy" "automated" "selfHeal" }}
+    {{- end }}
+    {{- if index .Values "hyperfleet-api-chart" "syncPolicy" "syncOptions" }}
+    syncOptions:
+      {{- toYaml (index .Values "hyperfleet-api-chart" "syncPolicy" "syncOptions") | nindent 6 }}
+    {{- end }}

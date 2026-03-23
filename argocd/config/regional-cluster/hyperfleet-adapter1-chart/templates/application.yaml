@@ -1,0 +1,96 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .Values.hyperfleetAdapter1Chart.applicationName }}
+  namespace: {{ .Values.hyperfleetAdapter1Chart.namespace }}
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: {{ .Values.hyperfleetAdapter1Chart.project }}
+
+  source:
+    repoURL: {{ .Values.hyperfleetAdapter1Chart.source.repoURL }}
+    targetRevision: {{ .Values.hyperfleetAdapter1Chart.source.targetRevision }}
+    path: {{ .Values.hyperfleetAdapter1Chart.source.path }}
+    helm:
+      valuesObject:
+        image:
+          registry: quay.io/openshift-hyperfleet
+          repository: hyperfleet-adapter
+          tag: v0.1.1
+          pullPolicy: Always
+        replicaCount: 2
+
+        # Broker configuration for hyperfleet-adapter
+        # Uses hyperfleet-broker library: https://github.com/openshift-hyperfleet/hyperfleet-broker
+        broker:
+          create: true
+          type: rabbitmq  # Explicitly set broker type
+          rabbitmq:
+            enabled: false
+            url: "amqps://placeholder@localhost:5671/"
+            queue: "hyperfleet-sentinel"
+            exchange: "clusters"
+            exchangeType: "topic"
+            routingKey: "#"
+        # Subscriber configuration
+        subscriber:
+          parallelism: 1
+
+        # Environment variables - BROKER_RABBITMQ_URL overrides broker.yaml config
+        env:
+          - name: BROKER_RABBITMQ_URL
+            valueFrom:
+              secretKeyRef:
+                name: hyperfleet-adapter1-broker-credentials
+                key: BROKER_RABBITMQ_URL
+
+        # Service account configuration for AWS Pod Identity
+        serviceAccount:
+          create: true
+          annotations:
+            # AWS IAM role for Pod Identity
+            # Replace with your actual IAM role ARN
+            eks.amazonaws.com/role-arn: ""
+          name: hyperfleet-adapter-sa
+
+        # Volume configuration to mount secrets from SecretProviderClass
+        # Using extraVolumes/extraVolumeMounts to integrate with upstream chart
+        extraVolumes:
+          - name: secrets-store-inline
+            csi:
+              driver: secrets-store.csi.k8s.io
+              readOnly: true
+              volumeAttributes:
+                secretProviderClass: hyperfleet-adapter1-secrets
+
+        extraVolumeMounts:
+          - name: secrets-store-inline
+            mountPath: /mnt/secrets-store
+            readOnly: true
+
+        # AdapterConfig loaded from adapter-config.yaml file
+        adapterConfig:
+          create: true
+          yaml: |
+            {{ .Files.Get "adapter-config.yaml" | nindent 12 }}
+
+        adapterTaskConfig:
+          create: true
+          yaml: |
+            {{ .Files.Get "adapter-task-config.yaml" | nindent 12 }}
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.hyperfleetAdapter1Chart.targetNamespace }}
+
+  syncPolicy:
+    {{- if .Values.hyperfleetAdapter1Chart.syncPolicy.automated }}
+    automated:
+      prune: {{ .Values.hyperfleetAdapter1Chart.syncPolicy.automated.prune }}
+      selfHeal: {{ .Values.hyperfleetAdapter1Chart.syncPolicy.automated.selfHeal }}
+    {{- end }}
+    {{- if .Values.hyperfleetAdapter1Chart.syncPolicy.syncOptions }}
+    syncOptions:
+      {{- toYaml .Values.hyperfleetAdapter1Chart.syncPolicy.syncOptions | nindent 6 }}
+    {{- end }}

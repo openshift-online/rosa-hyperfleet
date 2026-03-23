@@ -1,0 +1,230 @@
+apiVersion: work.open-cluster-management.io/v1
+kind: ManifestWork
+metadata:
+  name: "work-{{ .clusterId | lower }}"
+  labels:
+    # HyperFleet tracking labels
+    hyperfleet.io/cluster-id: "{{ .clusterId }}"
+    hyperfleet.io/adapter: "{{ .adapterName }}"
+    hyperfleet.io/component: "infrastructure"
+    hyperfleet.io/generation: "{{ .generationId }}"
+    hyperfleet.io/resource-group: "cluster-setup"
+
+    # Maestro-specific labels
+    maestro.io/source-id: "{{ .adapterName }}"
+    maestro.io/resource-type: "manifestwork"
+    maestro.io/priority: "normal"
+
+    # Standard Kubernetes application labels
+    app.kubernetes.io/name: "aro-hcp-cluster"
+    app.kubernetes.io/instance: "{{ .clusterId }}"
+    app.kubernetes.io/version: "v1.0.0"
+    app.kubernetes.io/component: "infrastructure"
+    app.kubernetes.io/part-of: "hyperfleet"
+    app.kubernetes.io/managed-by: "hyperfleet-adapter"
+    app.kubernetes.io/created-by: "{{ .adapterName }}"
+
+  # Annotations for metadata and operational information
+  annotations:
+    # Tracking and lifecycle
+    hyperfleet.io/created-by: "hyperfleet-adapter-framework"
+    hyperfleet.io/managed-by: "{{ .adapterName }}"
+    hyperfleet.io/generation: "{{ .generationId }}"
+    hyperfleet.io/cluster-name: "{{ .clusterId }}"
+    hyperfleet.io/deployment-time: "{{ .timestamp }}"
+
+    # Maestro-specific annotations
+    maestro.io/applied-time: "{{ .timestamp }}"
+    maestro.io/source-adapter: "{{ .adapterName }}"
+
+    # Operational annotations
+    deployment.hyperfleet.io/strategy: "rolling"
+    deployment.hyperfleet.io/timeout: "300s"
+    monitoring.hyperfleet.io/enabled: "true"
+
+spec:
+  workload:
+    manifests:
+
+      - apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: "clusters-{{ .clusterId | lower }}"
+          labels:
+            hyperfleet.io/cluster-id: "{{ .clusterId }}"
+            hyperfleet.io/managed-by: "{{ .metadata.name }}"
+            hyperfleet.io/resource-type: "namespace"
+          annotations:
+            hyperfleet.io/created-by: "hyperfleet-adapter"
+            hyperfleet.io/generation: "{{ .generationId }}"
+      - apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "cluster-config"
+          namespace: "clusters-{{ .clusterId | lower }}"
+          labels:
+            hyperfleet.io/cluster-id: "{{ .clusterId }}"
+          annotations:
+            hyperfleet.io/generation: "{{ .generationId }}"
+        data:
+          cluster_id: "{{ .clusterId }}"
+          cluster_name: "{{ .clusterName }}"
+
+      # - apiVersion: v1
+      #   kind: Secret
+      #   metadata:
+      #     name: pull-secret
+      #     namespace: clusters-{{ .clusterId | lower }}
+      #     labels:
+      #       hyperfleet.io/cluster-id: "{{ .clusterId }}"
+      #     annotations:
+      #       hyperfleet.io/generation: "{{ .generationId }}"
+      #   type: "{{ resources.fetchPullSecret.type }}"
+      #   data: "{{ resources.fetchPullSecret.data | toJson }}"
+
+      - apiVersion: hypershift.openshift.io/v1beta1
+        kind: HostedCluster
+        metadata:
+          name: "{{ .clusterName }}"
+          namespace: clusters-{{ .clusterId | lower }}
+          labels:
+            hyperfleet.io/cluster-id: "{{ .clusterId }}"
+          annotations:
+            hyperfleet.io/generation: "{{ .generationId }}"
+            hypershift.openshift.io/pod-security-admission-label-override: privileged
+            hypershift.openshift.io/control-plane-operator-image: quay.io/psav/hypershift:test20
+        spec:
+          infraID: "{{ .clusterId | lower }}"
+          dns:
+            baseDomain: example.com
+          release:
+            image: quay.io/openshift-release-dev/ocp-release:4.21.1-multi
+          pullSecret:
+            name: pull-secret
+          sshKey:
+            name: ssh-key
+          networking:
+            clusterNetwork:
+              - cidr: 10.132.0.0/14
+            serviceNetwork:
+              - cidr: 172.31.0.0/16
+            machineNetwork:
+              - cidr: 10.0.0.0/16
+            networkType: OVNKubernetes
+          platform:
+            type: AWS
+            aws:
+              region: us-east-2
+              cloudProviderConfig:
+                vpc: vpc-079c97f14c382addd
+                subnet:
+                  id: subnet-06facdd1662309198
+              endpointAccess: Private
+              rolesRef:
+                controlPlaneOperatorARN: arn:aws:iam::724701986097:role/test-cluster-control-plane-operator
+                ingressARN: arn:aws:iam::724701986097:role/test-cluster-ingress
+                imageRegistryARN: arn:aws:iam::724701986097:role/test-cluster-image-registry
+                kubeCloudControllerARN: arn:aws:iam::724701986097:role/test-cluster-cloud-controller-manager
+                nodePoolManagementARN: arn:aws:iam::724701986097:role/test-cluster-node-pool-management
+                networkARN: arn:aws:iam::724701986097:role/test-cluster-network-config
+                storageARN: arn:aws:iam::724701986097:role/test-cluster-ebs-csi
+          issuerURL: https://d27b9ltht2nj08.cloudfront.net/test-cluster
+          services:
+            - service: APIServer
+              servicePublishingStrategy:
+                type: LoadBalancer
+            - service: OAuthServer
+              servicePublishingStrategy:
+                type: Route
+            - service: Konnectivity
+              servicePublishingStrategy:
+                type: Route
+            - service: Ignition
+              servicePublishingStrategy:
+                type: Route
+          infrastructureAvailabilityPolicy: SingleReplica
+          controllerAvailabilityPolicy: SingleReplica
+      - apiVersion: hypershift.openshift.io/v1beta1
+        kind: NodePool
+        metadata:
+          name: "{{ .clusterName }}-workers"
+          namespace: clusters-{{ .clusterId | lower }}
+          labels:
+            hyperfleet.io/cluster-id: "{{ .clusterId }}"
+          annotations:
+            hyperfleet.io/generation: "{{ .generationId }}"
+        spec:
+          clusterName: "{{ .clusterName }}"
+          replicas: 2
+          management:
+            autoRepair: true
+            upgradeType: Replace
+          release:
+            image: quay.io/openshift-release-dev/ocp-release:4.21.1-multi
+          platform:
+            type: AWS
+            aws:
+              instanceType: m6a.xlarge
+              rootVolume:
+                size: 120
+                type: gp3
+              subnet:
+                id: subnet-06facdd1662309198
+              instanceProfile: test-cluster-ROSA-Worker-Role
+              securityGroups:
+                - id: sg-0d94389408c66383a
+              resourceTags:
+                - key: red-hat-managed
+                  value: "true"
+      - apiVersion: v1
+        kind: Secret
+        metadata:
+          name: ssh-key
+          namespace: clusters-{{ .clusterId | lower }}
+          labels:
+            hyperfleet.io/cluster-id: "{{ .clusterId }}"
+          annotations:
+            hyperfleet.io/generation: "{{ .generationId }}"
+        type: Opaque
+        data:
+          id_rsa.pub: ""
+
+  deleteOption:
+    propagationPolicy: "Foreground"
+    gracePeriodSeconds: 30          
+
+  manifestConfigs:
+    - resourceIdentifier:
+        group: ""
+        resource: "namespaces"
+        name: "clusters-{{ .clusterId | lower }}"
+      updateStrategy:
+        type: "ServerSideApply"
+      feedbackRules:
+        - type: "JSONPaths"
+          jsonPaths:
+            - name: "phase"
+              path: ".status.phase"
+            - name: "conditions"
+              path: ".status.conditions"
+            - name: "creationTimestamp"
+              path: ".metadata.creationTimestamp"
+
+    - resourceIdentifier:
+        group: "hypershift.openshift.io"
+        resource: "hostedclusters"
+        namespace: "clusters-{{ .clusterId }}"
+        name: "{{ .clusterName }}"
+      updateStrategy:
+        type: "ServerSideApply"
+      feedbackRules:
+        - type: "JSONPaths"
+          jsonPaths:
+            - name: "availableCondition"
+              path: ".status.conditions[?(@.type==\"Available\")].status"
+            - name: "degradedCondition"
+              path: ".status.conditions[?(@.type==\"Degraded\")].status"
+            - name: "controlPlaneEndpoint"
+              path: ".status.controlPlaneEndpoint.host"
+            - name: "version"
+              path: ".status.version.history[0].version"

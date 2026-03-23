@@ -1,0 +1,33 @@
+apiVersion: hyperfleet.redhat.com/v1alpha1
+kind: AdapterConfig
+metadata:
+  name: adapter1
+  labels:
+    hyperfleet.io/adapter-type: adapter1
+    hyperfleet.io/component: adapter
+spec:
+  adapter:
+    version: "0.1.1"
+
+  debugConfig: true
+  log:
+    level: debug
+
+  clients:
+    hyperfleetApi:
+      baseUrl: http://hyperfleet-api:8000
+      version: v1
+      timeout: 2s
+      retryAttempts: 3
+      retryBackoff: exponential
+    broker:
+      subscriptionId: subscription
+      topic: clusters
+    maestro:
+      grpcServerAddress: "maestro-grpc.maestro-server.svc.cluster.local:8090"
+      httpServerAddress: "http://maestro-http.maestro-server.svc.cluster.local:8080"
+      sourceId: "hyperfleet-adapter"
+      clientId: "hyperfleet-adapter-client"
+      insecure: true
+      auth:
+        type: "none"

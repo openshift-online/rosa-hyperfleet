@@ -1,0 +1,135 @@
+# ArgoCD Application configuration
+hyperfleetSentinelChart:
+  # Name of the ArgoCD Application
+  applicationName: hyperfleet-sentinel
+
+  # Namespace where the ArgoCD Application resource will be created
+  namespace: argocd
+
+  # Target namespace where hyperfleet-sentinel will be deployed
+  # Note: This namespace should be created by another chart
+  targetNamespace: hyperfleet-system
+
+  # ArgoCD project
+  project: default
+
+  # Source configuration
+  source:
+    # Repository URL for the hyperfleet-sentinel chart
+    repoURL: https://github.com/cdoan1/hyperfleet-sentinel
+    # Chart path within the repository
+    path: charts
+    # Target revision/tag
+    targetRevision: cdoan/ROSAENG-133-v0.1.1
+
+  # Sync policy configuration
+  syncPolicy:
+    # Automated sync settings
+    automated:
+      # Automatically sync when differences are detected
+      prune: true
+      # Allow empty resources to be managed
+      selfHeal: true
+
+    # Sync options
+    syncOptions: []
+      # Namespace creation is handled by another chart
+
+  # Additional values to pass to the hyperfleet-sentinel chart
+  # These will be merged into the Application spec
+  values:
+
+    image:
+      registry: quay.io/openshift-hyperfleet
+      repository: hyperfleet-sentinel
+      tag: v0.1.1
+      pullPolicy: Always
+    replicaCount: 2
+
+    # Broker configuration for hyperfleet-sentinel
+    # Uses hyperfleet-broker library: https://github.com/openshift-hyperfleet/hyperfleet-broker
+    # The BROKER_RABBITMQ_URL environment variable overrides this value
+    broker:
+      type: rabbitmq
+      # Topic name for the broker
+      topic: "hyperfleet-sentinel"
+      rabbitmq:
+        # Placeholder URL - actual value comes from BROKER_RABBITMQ_URL env var
+        # which is populated from the secret created by SecretProviderClass
+        url: "amqp://placeholder:placeholder@localhost:5672/"
+        exchangeType: topic
+        # Prefetch settings for performance tuning
+        # prefetchCount: 10  # Max unacknowledged messages per consumer
+        # prefetchSize: 0    # Max size in bytes (0 = unlimited)
+
+    # Subscriber configuration
+    subscriber:
+      parallelism: 1
+
+    # Sentinel configuration - monitors cluster resources via hyperfleet-api
+    config:
+      resourceType: clusters
+      pollInterval: 5s
+      maxAgeNotReady: 10s
+      maxAgeReady: 30m
+      hyperfleetApi:
+        baseUrl: http://hyperfleet-api:8000
+        timeout: 5s
+
+    # Use the secret created by SecretProviderClass instead of creating one
+    existingSecret: hyperfleet-sentinel-broker-credentials
+
+    # Service account configuration for AWS Pod Identity
+    serviceAccount:
+      create: true
+      annotations:
+        # AWS IAM role for Pod Identity
+        # Replace with your actual IAM role ARN
+        eks.amazonaws.com/role-arn: ""
+      name: sentinel-sa
+
+    # Volume configuration to mount secrets from SecretProviderClass
+    # Using extraVolumes/extraVolumeMounts to integrate with upstream chart
+    extraVolumes:
+      - name: secrets-store-inline
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: hyperfleet-sentinel-secrets
+
+    extraVolumeMounts:
+      - name: secrets-store-inline
+        mountPath: /mnt/secrets-store
+        readOnly: true
+
+# SecretProviderClass configuration for AWS Secrets Manager
+secretProvider:
+  # Enable SecretProviderClass creation
+  enabled: true
+  # Name of the SecretProviderClass
+  name: hyperfleet-sentinel-secrets
+
+  # AWS configuration
+  aws:
+    # AWS region where secrets are stored
+    region: us-east-1
+    # List of secrets to retrieve from AWS Secrets Manager
+    secrets:
+      # Retrieve the broker URL from AWS Secrets Manager
+      # The secret should contain a field named 'url' with the full AMQP connection string
+      # Format: amqp://username:password@host:port/vhost
+      # Example for AWS MQ: amqps://username:password@b-xxx.mq.us-east-1.amazonaws.com:5671/
+      - objectName: hyperfleet-sentinel/broker-credentials
+        objectType: secretsmanager
+        jmesPath:
+          - path: url
+            objectAlias: url
+
+  # Secret objects to create in Kubernetes from the retrieved secrets
+  secretObjects:
+    - secretName: hyperfleet-sentinel-broker-credentials
+      type: Opaque
+      data:
+        - objectName: url
+          key: url

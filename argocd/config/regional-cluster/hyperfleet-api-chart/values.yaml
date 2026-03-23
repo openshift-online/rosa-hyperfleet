@@ -1,0 +1,91 @@
+hyperfleet-api-chart:
+  # Name of the ArgoCD Application resource
+  applicationName: hyperfleet-api
+
+  # Namespace where the ArgoCD Application will be created
+  namespace: argocd
+
+  # Target namespace where hyperfleet-api will be deployed
+  targetNamespace: hyperfleet-system
+
+  # Project in ArgoCD (use 'default' if not using ArgoCD Projects)
+  project: default
+
+  # Source configuration for the hyperfleet-api chart
+  source:
+    # Git repository URL
+    repoURL: https://github.com/cdoan1/hyperfleet-api.git
+    # Target revision (branch, tag, or commit)
+    targetRevision: cdoan/ROSAENG-130-v0.1.1
+    # Path to the chart within the repository
+    path: charts
+
+  # Sync policy configuration
+  syncPolicy:
+    automated:
+      # Enable auto-sync
+      prune: true
+      # Enable self-healing
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+
+  # Additional helm values to pass to hyperfleet-api chart
+  # These will be passed as --helm-set-string or via values
+  helmValues:
+
+    image:
+      registry: quay.io/openshift-hyperfleet
+      repository: hyperfleet-api
+      tag: v0.1.1
+      pullPolicy: Always
+    replicaCount: 2
+    
+    database:
+      sslMode: require
+      postgresql:
+        enabled: false
+      external:
+        enabled: true
+        secretName: hyperfleet-api-db-credentials
+
+    serviceAccount:
+      name: hyperfleet-api-sa
+
+    # Configure CSI volume to mount the SecretProviderClass
+    # This creates the Kubernetes secret that database.external.secretName references
+    extraVolumes:
+      - name: secrets-store-inline
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: hyperfleet-api-aws-credentials
+
+    extraVolumeMounts:
+      - name: secrets-store-inline
+        mountPath: /mnt/secrets-store
+        readOnly: true
+
+    adapters:
+      cluster:
+        - adapter1
+        - adapter2
+      nodepool:
+        - adapter3
+
+# SecretProviderClass configuration for AWS Pod Identity
+secretProviderClass:
+  # Enable SecretProviderClass creation
+  enabled: true
+
+  # Name of the SecretProviderClass
+  name: hyperfleet-api-aws-credentials
+
+  # The SecretProviderClass retrieves credentials from AWS Secrets Manager:
+  # Secret name: "{global.cluster_name}-hyperfleet-db-credentials"
+  # This must match terraform/modules/hyperfleet-infrastructure (regional_id-hyperfleet-db-credentials)
+  #
+  # The secret structure is hardcoded in templates/secretproviderclass.yaml to retrieve:
+  # - db.user, db.password, db.host, db.port, db.name
+  # and sync them to a Kubernetes Secret: hyperfleet-api-db-credentials
