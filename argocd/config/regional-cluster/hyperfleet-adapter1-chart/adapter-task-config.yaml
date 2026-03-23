@@ -1,4 +1,3 @@
-# Example HyperFleet Adapter task configuration
 apiVersion: hyperfleet.redhat.com/v1alpha1
 kind: AdapterTaskConfig
 metadata:
@@ -58,8 +57,247 @@ spec:
         readyConditionStatus == "False"
 
   # Resources with valid K8s manifests
-  resources: []
+  resources:
+    - name: "hostedClusterBundle"
+      transport:
+        client: "maestro"
+        maestro:
+          targetCluster: "{{ .placementClusterName }}"      
+      manifest:
+        # ref: "/etc/adapter/manifestwork.yaml"
+        apiVersion: work.open-cluster-management.io/v1
+        kind: ManifestWork
+        metadata:
+          name: "work-{{ .clusterId | lower }}"
+          labels:
+            # HyperFleet tracking labels
+            hyperfleet.io/cluster-id: "{{ .clusterId }}"
+            hyperfleet.io/adapter: "{{ .adapterName }}"
+            hyperfleet.io/component: "infrastructure"
+            hyperfleet.io/generation: "{{ .generationId }}"
+            hyperfleet.io/resource-group: "cluster-setup"
+
+            # Maestro-specific labels
+            maestro.io/source-id: "{{ .adapterName }}"
+            maestro.io/resource-type: "manifestwork"
+            maestro.io/priority: "normal"
+
+            # Standard Kubernetes application labels
+            app.kubernetes.io/name: "aro-hcp-cluster"
+            app.kubernetes.io/instance: "{{ .clusterId }}"
+            app.kubernetes.io/version: "v1.0.0"
+            app.kubernetes.io/component: "infrastructure"
+            app.kubernetes.io/part-of: "hyperfleet"
+            app.kubernetes.io/managed-by: "hyperfleet-adapter"
+            app.kubernetes.io/created-by: "{{ .adapterName }}"
+
+          # Annotations for metadata and operational information
+          annotations:
+            # Tracking and lifecycle
+            hyperfleet.io/created-by: "hyperfleet-adapter-framework"
+            hyperfleet.io/managed-by: "{{ .adapterName }}"
+            hyperfleet.io/generation: "{{ .generationId }}"
+            hyperfleet.io/cluster-name: "{{ .clusterId }}"
+            hyperfleet.io/deployment-time: "{{ .timestamp }}"
+
+            # Maestro-specific annotations
+            maestro.io/applied-time: "{{ .timestamp }}"
+            maestro.io/source-adapter: "{{ .adapterName }}"
+
+            # Operational annotations
+            deployment.hyperfleet.io/strategy: "rolling"
+            deployment.hyperfleet.io/timeout: "300s"
+            monitoring.hyperfleet.io/enabled: "true"
+
+        spec:
+          workload:
+            manifests:
+              - apiVersion: v1
+                kind: Namespace
+                metadata:
+                  name: "clusters-{{ .clusterId | lower }}"
+                  labels:
+                    hyperfleet.io/cluster-id: "{{ .clusterId }}"
+                    hyperfleet.io/managed-by: "{{ .metadata.name }}"
+                    hyperfleet.io/resource-type: "namespace"
+                  annotations:
+                    hyperfleet.io/created-by: "hyperfleet-adapter"
+                    hyperfleet.io/generation: "{{ .generationId }}"
+              - apiVersion: v1
+                kind: ConfigMap
+                metadata:
+                  name: "cluster-config"
+                  namespace: "clusters-{{ .clusterId | lower }}"
+                  labels:
+                    hyperfleet.io/cluster-id: "{{ .clusterId }}"
+                  annotations:
+                    hyperfleet.io/generation: "{{ .generationId }}"
+                data:
+                  cluster_id: "{{ .clusterId }}"
+                  cluster_name: "{{ .clusterName }}"
+
+              # - apiVersion: v1
+              #   kind: Secret
+              #   metadata:
+              #     name: pull-secret
+              #     namespace: clusters-{{ .clusterId | lower }}
+              #     labels:
+              #       hyperfleet.io/cluster-id: "{{ .clusterId }}"
+              #     annotations:
+              #       hyperfleet.io/generation: "{{ .generationId }}"
+              #   type: "{{ resources.fetchPullSecret.type }}"
+              #   data: "{{ resources.fetchPullSecret.data | toJson }}"
+
+              - apiVersion: v1
+                kind: Secret
+                metadata:
+                  name: ssh-key
+                  namespace: clusters-{{ .clusterId | lower }}
+                  labels:
+                    hyperfleet.io/cluster-id: "{{ .clusterId }}"
+                  annotations:
+                    hyperfleet.io/generation: "{{ .generationId }}"
+                type: Opaque
+                data:
+                  id_rsa.pub: ""
+
+          deleteOption:
+            propagationPolicy: "Foreground"
+            gracePeriodSeconds: 30          
+
+          manifestConfigs:
+            - resourceIdentifier:
+                group: ""
+                resource: "namespaces"
+                name: "clusters-{{ .clusterId | lower }}"
+              updateStrategy:
+                type: "ServerSideApply"
+              feedbackRules:
+                - type: "JSONPaths"
+                  jsonPaths:
+                    - name: "phase"
+                      path: ".status.phase"
+                    - name: "conditions"
+                      path: ".status.conditions"
+                    - name: "creationTimestamp"
+                      path: ".metadata.creationTimestamp"
+
+            # - resourceIdentifier:
+            #     group: "hypershift.openshift.io"
+            #     resource: "hostedclusters"
+            #     namespace: "clusters-{{ .clusterId }}"
+            #     name: "{{ .clusterName }}"
+            #   updateStrategy:
+            #     type: "ServerSideApply"
+            #   feedbackRules:
+            #     - type: "JSONPaths"
+            #       jsonPaths:
+            #         - name: "availableCondition"
+            #           path: ".status.conditions[?(@.type==\"Available\")].status"
+            #         - name: "degradedCondition"
+            #           path: ".status.conditions[?(@.type==\"Degraded\")].status"
+            #         - name: "controlPlaneEndpoint"
+            #           path: ".status.controlPlaneEndpoint.host"
+            #         - name: "version"
+            #           path: ".status.version.history[0].version"
+      
+      discovery:
+        byName: "work-{{ .clusterId | lower }}"
+
+      nestedDiscoveries:
+        - name: "clusterNamespace"
+          discovery:
+            bySelectors:
+              labelSelector:
+                hyperfleet.io/resource-type: "namespace"
+                hyperfleet.io/cluster-id: "{{ .clusterId }}"  
+        # - name: "hostedCluster"
+        #   discovery:
+        #     byName: "{{ .clusterName }}"
+        - name: "clusterConfig"
+          discovery:
+            byName: "cluster-config"
+            namespace: "{{ .clusterId }}"
 
   post:
-    payloads: []
-    postActions: []
+    payloads:
+      - name: "clusterStatusPayload"
+        build:
+          adapter: "{{ .metadata.name }}"
+          conditions:
+            - type: "Applied"
+              status:
+                expression: |
+                  has(resources.hostedClusterBundle) && has(resources.hostedClusterBundle.status)
+                  && has(resources.hostedClusterBundle.status.conditions)
+                  && resources.hostedClusterBundle.status.conditions.filter(c, has(c.type) && c.type == "Applied").size() > 0
+                  ? resources.hostedClusterBundle.status.conditions.filter(c, c.type == "Applied")[0].status
+                  : "False"
+              reason:
+                expression: |
+                  has(resources.hostedClusterBundle) && has(resources.hostedClusterBundle.status)
+                  && has(resources.hostedClusterBundle.status.conditions)
+                  && resources.hostedClusterBundle.status.conditions.filter(c, has(c.type) && c.type == "Applied").size() > 0
+                  ? resources.hostedClusterBundle.status.conditions.filter(c, c.type == "Applied")[0].reason
+                  : "ManifestWorkNotApplied"
+              message:
+                expression: |
+                  has(resources.hostedClusterBundle) && has(resources.hostedClusterBundle.status)
+                  && has(resources.hostedClusterBundle.status.conditions)
+                  && resources.hostedClusterBundle.status.conditions.filter(c, has(c.type) && c.type == "Applied").size() > 0
+                  ? resources.hostedClusterBundle.status.conditions.filter(c, c.type == "Applied")[0].message
+                  : "ManifestWork not yet applied by Maestro agent"
+
+            - type: "Health"
+              status:
+                expression: |
+                  adapter.?executionStatus.orValue("") == "success"
+                    && !adapter.?resourcesSkipped.orValue(false)
+                  ? "True"
+                  : "False"
+              reason:
+                expression: |
+                  adapter.?executionStatus.orValue("") != "success"
+                  ? "ExecutionFailed:" + adapter.?executionError.?phase.orValue("unknown")
+                  : adapter.?resourcesSkipped.orValue(false)
+                    ? "ResourcesSkipped"
+                    : "Healthy"
+              message:
+                expression: |
+                  adapter.?executionStatus.orValue("") == "success"
+                    && !adapter.?resourcesSkipped.orValue(false)
+                  ? "Adapter execution completed successfully"
+                  : adapter.?resourcesSkipped.orValue(false)
+                    ? "Resources skipped: " + adapter.?skipReason.orValue("unknown reason")
+                    : "Adapter execution failed"
+
+          # Use CEL expression for numeric fields to preserve type (not Go template which outputs strings)
+          observed_generation:
+            expression: "generation"
+          observed_time: "{{ now | date \"2006-01-02T15:04:05Z07:00\" }}"
+
+          data:
+            namespace:
+              name:
+                expression: |
+                  resources.?clusterNamespace.?metadata.?name.orValue("")
+              creationTimestamp:
+                expression: |
+                  resources.?clusterNamespace.?metadata.?creationTimestamp.orValue("")
+            configmap:
+              name:
+                expression: |
+                  resources.?clusterConfig.?metadata.?name.orValue("")
+              creationTimestamp:
+                expression: |
+                  resources.?clusterConfig.?metadata.?creationTimestamp.orValue("")
+
+    postActions:
+      - name: "reportClusterStatus"
+        apiCall:
+          method: "POST"
+          url: "/clusters/{{ .clusterId }}/statuses"
+          headers:
+            - name: "Content-Type"
+              value: "application/json"
+          body: "{{ .clusterStatusPayload }}"
