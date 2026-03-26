@@ -10,8 +10,8 @@ The goal is to improve reliability, reduce dependencies on global services, and 
 
 The architecture consists of three layers within each region:
 
-1. **Regional Cluster (RC)** - EKS-based cluster running core services (Platform API, CLM, Maestro, ArgoCD, Tekton)
-2. **Management Clusters (MC)** - EKS clusters hosting customer Hosted Control Planes via HyperShift
+1. **Regional Cluster (RC)** - EKS-based cluster running core services (Platform API, CLM, Maestro, ArgoCD, Tekton, Prometheus)
+2. **Management Clusters (MC)** - EKS clusters hosting customer Hosted Control Planes via HyperShift, with Prometheus monitoring
 3. **Customer Hosted Clusters** - ROSA HCP clusters with control planes in MCs and workers in customer accounts
 
 ## Documentation Index
@@ -62,6 +62,7 @@ Each module has its own README with usage, inputs, outputs, and architecture:
 
 - [`hyperfleet-system`](../argocd/config/regional-cluster/hyperfleet-system/README.md) - HyperFleet components (API, Sentinel, Adapter)
 - [`platform-api`](../argocd/config/regional-cluster/platform-api/README.md) - Platform API with Envoy sidecar
+- `monitoring` (RC + MC) - kube-prometheus-stack subchart; Prometheus with 2 replicas, 14-day / 85 GB retention, 100 Gi persistent storage per replica; Alertmanager and Grafana disabled (metrics forwarded to RHOBS)
 
 ### Presentations
 
