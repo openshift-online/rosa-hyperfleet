@@ -61,8 +61,6 @@ maestroServer:
   # Metrics configuration
   metrics:
     enabled: true
-    serviceMonitor:
-      enabled: true
   # Service configuration
   service:
     http:
