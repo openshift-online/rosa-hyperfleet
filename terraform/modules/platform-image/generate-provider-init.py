@@ -23,10 +23,20 @@ def main():
     with open(versions_file) as f:
         config = yaml.safe_load(f)
 
+    # Validate providers top-level structure
+    providers = config.get('providers')
+    if not isinstance(providers, dict):
+        print("ERROR: provider-versions.yaml must contain a top-level 'providers' map", file=sys.stderr)
+        sys.exit(1)
+
     # Generate Terraform configuration
     tf_config = 'terraform {\n  required_providers {\n'
 
-    for name, info in config['providers'].items():
+    for name, info in providers.items():
+        if not isinstance(info, dict) or 'source' not in info or 'version' not in info:
+            provider_name = str(name) if name is not None else 'null'
+            print(f"ERROR: provider '{provider_name}' must define both 'source' and 'version'", file=sys.stderr)
+            sys.exit(1)
         # Handle YAML null keyword - convert None to 'null' string
         provider_name = str(name) if name is not None else 'null'
         tf_config += f'    {provider_name} = {{\n'

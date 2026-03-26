@@ -39,21 +39,40 @@ echo "Using container runtime: $CONTAINER_RUNTIME"
 
 DOCKERFILE_DIR="terraform/modules/platform-image"
 DOCKERFILE="${DOCKERFILE_DIR}/Dockerfile"
+PROVIDER_VERSIONS_FILE="terraform/provider-versions.yaml"
 
 if [ ! -f "$DOCKERFILE" ]; then
   echo "Error: Dockerfile not found: $DOCKERFILE"
   exit 1
 fi
 
-# Compute the image tag from the Dockerfile content (matches Terraform's sha256(), first 12 hex chars)
+if [ ! -f "$PROVIDER_VERSIONS_FILE" ]; then
+  echo "Error: Provider versions file not found: $PROVIDER_VERSIONS_FILE"
+  exit 1
+fi
+
+# Extract the canonical Terraform version from provider-versions.yaml
+TERRAFORM_VERSION=$(grep '^terraform_version:' "$PROVIDER_VERSIONS_FILE" | sed 's/terraform_version:[[:space:]]*"\(.*\)"/\1/')
+if [ -z "$TERRAFORM_VERSION" ]; then
+  echo "Error: Could not extract terraform_version from $PROVIDER_VERSIONS_FILE"
+  exit 1
+fi
+echo "Terraform version: $TERRAFORM_VERSION"
+
+# Compute the image tag to match Terraform's combined_hash local:
+# sha256(sha256(Dockerfile) + sha256(provider-versions.yaml) + sha256(generate-provider-init.py)), first 12 chars
 if command -v sha256sum &>/dev/null; then
-  IMAGE_TAG=$(sha256sum "$DOCKERFILE" | cut -c1-12)
+  _sha256() { sha256sum "$1" | cut -d' ' -f1; }
 elif command -v shasum &>/dev/null; then
-  IMAGE_TAG=$(shasum -a 256 "$DOCKERFILE" | cut -c1-12)
+  _sha256() { shasum -a 256 "$1" | cut -d' ' -f1; }
 else
   echo "Error: Neither sha256sum nor shasum found."
   exit 1
 fi
+DOCKERFILE_HASH=$(_sha256 "$DOCKERFILE")
+PROVIDER_VERSIONS_HASH=$(_sha256 "$PROVIDER_VERSIONS_FILE")
+GENERATOR_HASH=$(_sha256 "${DOCKERFILE_DIR}/generate-provider-init.py")
+IMAGE_TAG=$(printf '%s%s%s' "$DOCKERFILE_HASH" "$PROVIDER_VERSIONS_HASH" "$GENERATOR_HASH" | sha256sum | cut -c1-12)
 
 # Find the platform public ECR repository in the current account
 echo "Looking up platform public ECR repository..."
@@ -118,7 +137,10 @@ echo ""
 
 # Build the image (using repo root as context to access provider-versions.yaml)
 echo "Building platform image from ${DOCKERFILE}..."
-$CONTAINER_RUNTIME build --platform linux/amd64 -t "${ECR_URL}:${IMAGE_TAG}" -f "$DOCKERFILE" .
+$CONTAINER_RUNTIME build --platform linux/amd64 \
+  --build-arg TERRAFORM_VERSION="${TERRAFORM_VERSION}" \
+  -t "${ECR_URL}:${IMAGE_TAG}" \
+  -f "$DOCKERFILE" .
 echo ""
 
 # Push the image

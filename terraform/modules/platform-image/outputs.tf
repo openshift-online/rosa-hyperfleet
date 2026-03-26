@@ -9,6 +9,6 @@ output "ecr_repository_url" {
 }
 
 output "image_tag" {
-  description = "Current image tag derived from Dockerfile SHA"
-  value       = local.dockerfile_hash
+  description = "Current image tag derived from Dockerfile, provider versions, and generator script SHA"
+  value       = local.combined_hash
 }
