@@ -166,6 +166,57 @@ ip-10-0-1-42.ec2.internal    Ready    <none>   2h    v1.31.4-eks-aeac579
 
 The bastion task stays running until explicitly stopped or until the environment is torn down (teardown automatically cleans up running bastion tasks).
 
+## Port Forwarding
+
+Forward ports from cluster services to your local machine through the bastion, without opening an interactive shell. This is useful for accessing the ArgoCD UI, Prometheus, Maestro, or any custom service directly from your browser.
+
+> ⚠️ _Bastion must be enabled in your environment config (`enable_bastion: true` in `defaults.yaml`). The default ephemeral preset already has it enabled._
+
+**Prerequisites:** `vault`, `aws`, `fzf`, `lsof` must be installed and available in your `PATH`.
+
+```bash
+# Interactive — fzf picker to choose services on the Regional Cluster
+make ephemeral-port-forward-rc
+
+# Interactive — fzf picker to choose services on the Management Cluster
+make ephemeral-port-forward-mc
+
+# Automatically forward all RC services (Maestro HTTP+gRPC, ArgoCD, Prometheus)
+make ephemeral-port-forward-rc-all
+
+# Automatically forward all MC services (ArgoCD, Prometheus)
+make ephemeral-port-forward-mc-all
+
+# Explicit environment selection
+make ephemeral-port-forward-rc ID=6bd2d3d7
+```
+
+Available services per cluster type:
+
+| Service    | RC  | MC  | Local URL                   | Notes                          |
+| ---------- | --- | --- | --------------------------- | ------------------------------ |
+| Maestro HTTP | Yes | No | `http://localhost:8080`   | Maestro server HTTP endpoint   |
+| Maestro gRPC | Yes | No | `http://localhost:8090`   | Maestro server gRPC endpoint   |
+| ArgoCD     | Yes | Yes | `https://localhost:8443`    | Admin password printed on start |
+| Prometheus | Yes | Yes | `http://localhost:9090`     | Prometheus UI                  |
+| Custom     | Yes | Yes | Configurable                | Prompted interactively          |
+
+The command starts `kubectl port-forward` sessions inside the bastion, then opens SSM port-forward tunnels from your laptop to the bastion for each selected service. When ArgoCD is selected, the admin password is automatically retrieved and printed.
+
+Press `Ctrl+C` to stop all active port-forward sessions.
+
+Example output:
+
+```
+==> Port forwarding active. Forwarded ports:
+    ArgoCD-Server: http://localhost:8443
+    Prometheus:    http://localhost:9090
+
+    ArgoCD UI:    https://localhost:8443
+    Username:     admin
+    Password:     abc123xyz
+```
+
 ## Run E2E Tests
 
 Run the end-to-end test suite against one of your development environments:
