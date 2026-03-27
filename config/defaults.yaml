@@ -79,6 +79,10 @@ applications:
         # @doc applications.management-cluster.hypershift.externalDns.domain External DNS domain for HyperShift.
         # @used-by applications.management-cluster.hypershift.externalDns.domain _context
         domain: "dev.{{ aws_region }}.rosa.example.com"
+    cloudwatch-exporter:
+      # @doc applications.management-cluster.cloudwatch-exporter.region AWS region for CloudWatch metrics collection.
+      # @used-by applications.management-cluster.cloudwatch-exporter.region _context
+      region: "{{ aws_region }}"
   regional-cluster:
     maestro:
       # @doc applications.regional-cluster.maestro.mqttEndpoint Maestro MQTT broker endpoint.

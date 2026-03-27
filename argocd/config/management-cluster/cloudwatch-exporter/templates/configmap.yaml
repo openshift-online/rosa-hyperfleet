@@ -1,0 +1,140 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudwatch-exporter-config
+  namespace: {{ .Release.Namespace }}
+data:
+  config.yml: |
+    apiVersion: v1alpha1
+    discovery:
+      jobs:
+        - type: AWS/IoT
+          regions:
+            - {{ .Values.region }}
+          metrics:
+            # Message Broker
+            - name: Connect.AuthError
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: Connect.ClientError
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: Connect.ClientIDThrottle
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: Connect.ServerError
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: Connect.Success
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: Connect.Throttle
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: Ping.Success
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: PublishIn.AuthError
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: PublishIn.ClientError
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: PublishIn.ServerError
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: PublishIn.Success
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: PublishIn.Throttle
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: PublishOut.AuthError
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: PublishOut.ClientError
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: PublishOut.Success
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: PublishOut.Throttle
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: Subscribe.AuthError
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: Subscribe.ClientError
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: Subscribe.ServerError
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: Subscribe.Success
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: Subscribe.Throttle
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: Unsubscribe.ClientError
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: Unsubscribe.ServerError
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: Unsubscribe.Success
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: Unsubscribe.Throttle
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: Throttle.Exceeded
+              statistics: [Sum]
+              period: 300
+              length: 300
+            # Rules
+            - name: RulesExecuted
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: TopicMatch
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: ParseError
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: RuleNotFound
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: RuleExecutionThrottled
+              statistics: [Sum]
+              period: 300
+              length: 300

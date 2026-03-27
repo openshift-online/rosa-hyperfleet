@@ -1,3 +1,25 @@
+# Region is populated per-environment by the render pipeline
+region: us-east-1
+
 prometheus-yet-another-cloudwatch-exporter:
+  serviceAccount:
+    create: true
+    # Pod Identity association is managed by terraform/modules/cloudwatch-exporter
+    name: cloudwatch-exporter
+
   serviceMonitor:
     enabled: true
+
+  # Disable the built-in ConfigMap — we manage our own in templates/configmap.yaml
+  # so the region can be templated from values
+  configMap:
+    enabled: false
+
+  extraVolumes:
+    - name: yace-config
+      configMap:
+        name: cloudwatch-exporter-config
+
+  extraVolumeMounts:
+    - name: yace-config
+      mountPath: /config

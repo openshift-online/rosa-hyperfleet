@@ -88,6 +88,16 @@ module "maestro_agent" {
 # HyperShift OIDC (Private S3 + CloudFront + Pod Identity)
 # =============================================================================
 
+# =============================================================================
+# CloudWatch Exporter (Pod Identity for YACE)
+# =============================================================================
+
+module "cloudwatch_exporter" {
+  source = "../../modules/cloudwatch-exporter"
+
+  cluster_name = module.management_cluster.cluster_name
+}
+
 module "hypershift_oidc" {
   source = "../../modules/hypershift-oidc"
 

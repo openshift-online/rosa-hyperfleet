@@ -128,6 +128,15 @@ output "maestro_agent_role_arn" {
 }
 
 # =============================================================================
+# CloudWatch Exporter Outputs
+# =============================================================================
+
+output "cloudwatch_exporter_role_arn" {
+  description = "IAM role ARN for CloudWatch Exporter"
+  value       = module.cloudwatch_exporter.role_arn
+}
+
+# =============================================================================
 # HyperShift OIDC Outputs
 # =============================================================================
 
