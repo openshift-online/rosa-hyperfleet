@@ -178,6 +178,7 @@ argocd      argocd          Synced        Healthy
 argocd      cert-manager    Synced        Healthy
 argocd      hypershift      Synced        Healthy
 argocd      maestro-agent   Synced        Healthy
+argocd      monitoring      Synced        Healthy
 argocd      root            Synced        Healthy
 ```
 
