@@ -31,7 +31,7 @@ spec:
       # No init container - config.yaml is mounted directly from Secrets Manager
       containers:
         - name: agent
-          image: "{{ .Values.maestroAgent.image.repository }}:{{ .Values.maestroAgent.image.tag }}"
+          image: "{{ .Values.maestroAgent.image.registry }}/{{ .Values.maestroAgent.image.repository }}:{{ .Values.maestroAgent.image.tag }}"
           imagePullPolicy: {{ .Values.maestroAgent.image.pullPolicy }}
           volumeMounts:
             - name: secrets-store

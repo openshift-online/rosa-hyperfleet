@@ -45,7 +45,7 @@ spec:
               secretProviderClass: {{ include "maestro-server.fullname" . }}-secrets
       initContainers:
         - name: migration
-          image: "{{ .Values.maestroServer.image.repository }}:{{ .Values.maestroServer.image.tag }}"
+          image: "{{ .Values.maestroServer.image.registry }}/{{ .Values.maestroServer.image.repository }}:{{ .Values.maestroServer.image.tag }}"
           imagePullPolicy: {{ .Values.maestroServer.image.pullPolicy }}
           volumeMounts:
             - name: secrets-store
@@ -68,7 +68,7 @@ spec:
             {{- end }}
       containers:
         - name: service
-          image: "{{ .Values.maestroServer.image.repository }}:{{ .Values.maestroServer.image.tag }}"
+          image: "{{ .Values.maestroServer.image.registry }}/{{ .Values.maestroServer.image.repository }}:{{ .Values.maestroServer.image.tag }}"
           imagePullPolicy: {{ .Values.maestroServer.image.pullPolicy }}
           volumeMounts:
             - name: secrets-store

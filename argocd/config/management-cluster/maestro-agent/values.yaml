@@ -4,7 +4,8 @@
 maestroAgent:
   # Container image configuration
   image:
-    repository: "quay.io/redhat-user-workloads/maestro-rhtap-tenant/maestro/maestro"
+    registry: "quay.io"
+    repository: "redhat-user-workloads/maestro-rhtap-tenant/maestro/maestro"
     tag: "latest"
     # digest: "sha256:..." # Use digest instead of tag for production
     pullPolicy: IfNotPresent
