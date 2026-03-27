@@ -1,1 +1,3 @@
-prometheus-yet-another-cloudwatch-exporter: {}
+prometheus-yet-another-cloudwatch-exporter:
+  serviceMonitor:
+    enabled: true
