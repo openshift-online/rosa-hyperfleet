@@ -15,4 +15,4 @@ spec:
   selector:
     matchLabels:
       app: maestro
-      port: metrics
+      service: metrics
