@@ -156,6 +156,9 @@ def main():
             log.error("Invalid --provision-override-file format (expected target:override): %s", entry)
             sys.exit(1)
         target, override = entry.split(":", 1)
+        if not target.strip() or not override.strip():
+            log.error("Invalid --provision-override-file: target and override must both be non-empty: %s", entry)
+            sys.exit(1)
         provision_overrides.append((target, override))
 
     env = EphemeralEnvOrchestrator(

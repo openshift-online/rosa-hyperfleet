@@ -291,7 +291,12 @@ class EphemeralEnvOrchestrator:
         log.info("Applying %d provision override(s):", len(self.provision_overrides))
 
         for target_path, override_file in self.provision_overrides:
-            target = git.work_dir / target_path
+            root = git.work_dir.resolve()
+            target = (root / target_path).resolve()
+            if not target.is_relative_to(root):
+                raise ValueError(
+                    f"Override target escapes repo root: {target_path}"
+                )
             if not target.exists():
                 raise FileNotFoundError(
                     f"Override target not found: {target_path} "

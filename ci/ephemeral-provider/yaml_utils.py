@@ -47,7 +47,10 @@ def load_and_merge(target_path, override_path):
     with open(override_path) as f:
         override = yaml.safe_load(f) or {}
 
-    deep_merge(base, override)
+    if isinstance(base, dict) and isinstance(override, dict):
+        deep_merge(base, override)
+    else:
+        base = override
 
     with open(target_path, "w") as f:
         yaml.dump(base, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
