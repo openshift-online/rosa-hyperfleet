@@ -107,7 +107,7 @@ spec:
             - --server-hostname=
             - --http-server-bindport={{ .Values.maestroServer.maestro.httpBindPort }}
             - --grpc-server-bindport={{ .Values.maestroServer.maestro.grpcBindPort }}
-            - --metrics-server-bindport=9090
+            - --metrics-server-bindport={{ .Values.maestroServer.maestro.metricsBindPort }}
             - --health-check-server-bindport={{ .Values.maestroServer.maestro.healthCheckBindPort }}
             - --enable-health-check-https=false
             - --enable-db-debug={{ .Values.maestroServer.database.debug }}

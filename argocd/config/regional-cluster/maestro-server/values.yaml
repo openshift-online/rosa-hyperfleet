@@ -25,6 +25,7 @@ maestroServer:
     httpBindPort: 8080
     grpcBindPort: 8090
     healthCheckBindPort: 8083
+    metricsBindPort: 9090
     httpReadTimeout: 300
     httpWriteTimeout: 600
     labelMetricsInclusionDuration: "168h" # 7 days
@@ -74,7 +75,7 @@ maestroServer:
       port: 8083
     metrics:
       type: ClusterIP
-      port: 8080
+      port: 9090
   # Network policy
   networkPolicy:
     enabled: false
