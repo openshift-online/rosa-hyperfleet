@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: cloudwatch-exporter-config
+  name: cloudwatch-exporter
   namespace: {{ .Release.Namespace }}
 data:
   config.yml: |

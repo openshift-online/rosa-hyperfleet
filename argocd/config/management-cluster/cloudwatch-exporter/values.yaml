@@ -2,6 +2,7 @@
 region: us-east-1
 
 prometheus-yet-another-cloudwatch-exporter:
+  fullnameOverride: cloudwatch-exporter
   serviceAccount:
     create: true
     # Pod Identity association is managed by terraform/modules/cloudwatch-exporter
@@ -14,12 +15,3 @@ prometheus-yet-another-cloudwatch-exporter:
   # so the region can be templated from values
   configMap:
     enabled: false
-
-  extraVolumes:
-    - name: yace-config
-      configMap:
-        name: cloudwatch-exporter-config
-
-  extraVolumeMounts:
-    - name: yace-config
-      mountPath: /config
