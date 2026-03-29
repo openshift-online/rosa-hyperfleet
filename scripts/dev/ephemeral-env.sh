@@ -365,18 +365,37 @@ cmd_provision() {
         echo "Select a remote to pick a branch from (or Esc to abort):"
 
         local remote
-        remote=$(git remote -v | grep '(fetch)' \
-            | awk '{printf "%-15s %s\n", $1, $2}' \
-            | fzf --height=10 --header="Select remote:" \
+        local remote_list
+        remote_list=$(git remote -v | grep '(fetch)' \
+            | awk '{printf "%-15s %s\n", $1, $2}')
+
+        # Put origin first if it's a fork (not upstream), so it's the default selection
+        local origin_url
+        origin_url=$(git remote get-url origin 2>/dev/null \
+            | sed 's|.*github\.com[:/]||; s|\.git$||' || true)
+        if [[ -n "$origin_url" && "$origin_url" != "openshift-online/rosa-regional-platform" ]]; then
+            remote_list=$(echo "$remote_list" | grep '^origin '; echo "$remote_list" | grep -v '^origin ')
+        fi
+
+        remote=$(echo "$remote_list" \
+            | fzf --height=10 --header="Select remote:" --no-sort \
             | awk '{print $1}') \
             || { echo "Aborted."; exit 1; }
 
         repo=$(git remote get-url "$remote" | sed 's|.*github\.com[:/]||; s|\.git$||')
         echo "Fetching branches from $remote ($repo)..."
 
-        branch=$(git ls-remote --heads "$remote" 2>/dev/null \
-            | sed 's|.*refs/heads/||' \
-            | fzf --height=20 --header="Select branch:") \
+        local remote_branches
+        remote_branches=$(git ls-remote --sort=-committerdate --heads "$remote" 2>/dev/null \
+            | sed 's|.*refs/heads/||')
+
+        # Put current branch first (fzf default) if it exists in the remote
+        if echo "$remote_branches" | grep -qx "$branch"; then
+            remote_branches=$(echo "$branch"; echo "$remote_branches" | grep -vx "$branch")
+        fi
+
+        branch=$(echo "$remote_branches" \
+            | fzf --height=20 --header="Select branch:" --no-sort) \
             || { echo "Aborted."; exit 1; }
 
         echo "Selected branch: $branch (from $remote)"
