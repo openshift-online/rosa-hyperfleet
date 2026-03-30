@@ -44,7 +44,11 @@ resource "aws_iot_policy" "maestro_server" {
         Effect = "Allow"
         Action = ["iot:Publish"]
         Resource = [
-          "arn:aws:iot:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:topic/sources/${var.regional_id}/consumers/*/sourceevents"
+          "arn:aws:iot:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:topic/sources/${var.regional_id}/consumers/*/sourceevents",
+          # The server also needs publish on agentevents: the sdk-go MQTT source client
+          # publishes a spec-resync request to agentevents when responding to agent
+          # resync triggers. Removing this permission breaks server↔agent connectivity.
+          "arn:aws:iot:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:topic/sources/${var.regional_id}/consumers/*/agentevents"
         ]
       },
       {
