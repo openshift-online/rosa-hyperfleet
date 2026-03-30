@@ -73,7 +73,10 @@ if [[ $rc -ne 0 ]]; then
     fi
 
     if [[ -n "${CLUSTER_PREFIX+set}" ]]; then
-        LOG_OUTPUT_DIR="${ARTIFACT_DIR:-/tmp}/cluster-logs" \
+        # Logs are left in S3 rather than added to public CI artifacts because
+        # they may contain sensitive data (e.g. maestro secrets) that cannot be
+        # reliably redacted. The S3 URIs are printed below for manual retrieval.
+        S3_ONLY=true \
             "${REPO_ROOT}/scripts/dev/collect-cluster-logs.sh" || true
     fi
     exit $rc

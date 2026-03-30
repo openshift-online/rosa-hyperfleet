@@ -26,6 +26,10 @@
 #
 # Optional:
 #   LOG_OUTPUT_DIR  — Output directory (default: /tmp/<prefix>logs-<timestamp>)
+#   S3_ONLY         — If set to "true", skip downloading logs and leave them in S3.
+#                     Prints the S3 URI so callers can fetch logs manually.
+#                     Used in CI to avoid publishing sensitive data (e.g. maestro
+#                     secrets) to public artifact stores.
 #
 # All collection failures are logged but do not cause a non-zero exit, so
 # this script is safe to call from test failure handlers.
@@ -223,6 +227,16 @@ collect_logs_for_cluster() {
         echo "  Warning: log-collector exited with code $exit_code for ${cluster_id}"
         echo "  Check CloudWatch logs: /ecs/${cluster_id}/bastion (log-collector stream)"
         return 1
+    fi
+
+    # In S3-only mode, leave logs in the bucket and print the location.
+    # This is used in CI to avoid publishing sensitive data to public artifacts.
+    if [[ "${S3_ONLY:-}" == "true" ]]; then
+        echo "  Logs available in S3:"
+        echo "    aws s3 cp s3://${s3_bucket}/${s3_key} ${cluster_id}-logs.tar.gz"
+        echo "  Account: ${account_id}"
+        echo "==> ${cluster_id} log collection complete (S3 only)"
+        return 0
     fi
 
     # Download to a temp file outside the output directory so the unredacted
