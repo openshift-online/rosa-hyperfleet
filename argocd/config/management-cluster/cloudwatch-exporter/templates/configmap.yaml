@@ -138,3 +138,138 @@ data:
               statistics: [Sum]
               period: 300
               length: 300
+        - type: AWS/EKS
+          regions:
+            - {{ .Values.region }}
+          dimensionsRegexp:
+            ClusterName: "^{{ .Values.global.cluster_name }}$"
+          metrics:
+            # API Server - Request Totals
+            - name: apiserver_request_total
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: apiserver_request_total_4XX
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: apiserver_request_total_5XX
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: apiserver_request_total_429
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: apiserver_request_total_LIST_PODS
+              statistics: [Sum]
+              period: 300
+              length: 300
+            # API Server - Request Duration P99
+            - name: apiserver_request_duration_seconds_GET_P99
+              statistics: [Average]
+              period: 300
+              length: 300
+            - name: apiserver_request_duration_seconds_LIST_P99
+              statistics: [Average]
+              period: 300
+              length: 300
+            - name: apiserver_request_duration_seconds_POST_P99
+              statistics: [Average]
+              period: 300
+              length: 300
+            - name: apiserver_request_duration_seconds_PUT_P99
+              statistics: [Average]
+              period: 300
+              length: 300
+            - name: apiserver_request_duration_seconds_PATCH_P99
+              statistics: [Average]
+              period: 300
+              length: 300
+            - name: apiserver_request_duration_seconds_DELETE_P99
+              statistics: [Average]
+              period: 300
+              length: 300
+            # API Server - Inflight Requests
+            - name: apiserver_current_inflight_requests_READONLY
+              statistics: [Average]
+              period: 300
+              length: 300
+            - name: apiserver_current_inflight_requests_MUTATING
+              statistics: [Average]
+              period: 300
+              length: 300
+            # API Server - Flow Control
+            - name: apiserver_flowcontrol_current_executing_seats
+              statistics: [Average]
+              period: 300
+              length: 300
+            # API Server - Admission Webhooks
+            - name: apiserver_admission_webhook_request_total
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: apiserver_admission_webhook_request_total_ADMIT
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: apiserver_admission_webhook_request_total_VALIDATING
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: apiserver_admission_webhook_rejection_count_ADMIT
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: apiserver_admission_webhook_rejection_count_VALIDATING
+              statistics: [Sum]
+              period: 300
+              length: 300
+            # API Server - Storage
+            - name: apiserver_storage_size_bytes
+              statistics: [Average]
+              period: 300
+              length: 300
+            # etcd
+            - name: etcd_mvcc_db_total_size_in_use_in_bytes
+              statistics: [Average]
+              period: 300
+              length: 300
+            # Scheduler - Schedule Attempts
+            - name: scheduler_schedule_attempts_total
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: scheduler_schedule_attempts_SCHEDULED
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: scheduler_schedule_attempts_UNSCHEDULABLE
+              statistics: [Sum]
+              period: 300
+              length: 300
+            - name: scheduler_schedule_attempts_ERROR
+              statistics: [Sum]
+              period: 300
+              length: 300
+            # Scheduler - Pending Pods
+            - name: scheduler_pending_pods
+              statistics: [Average]
+              period: 300
+              length: 300
+            - name: scheduler_pending_pods_ACTIVEQ
+              statistics: [Average]
+              period: 300
+              length: 300
+            - name: scheduler_pending_pods_BACKOFF
+              statistics: [Average]
+              period: 300
+              length: 300
+            - name: scheduler_pending_pods_UNSCHEDULABLE
+              statistics: [Average]
+              period: 300
+              length: 300
+            - name: scheduler_pending_pods_GATED
+              statistics: [Average]
+              period: 300
+              length: 300
