@@ -247,7 +247,7 @@ spec:
                   data:
                     - secretKey: .dockerconfigjson
                       remoteRef:
-                        key: "{{ .managementClusterName }}-openshift-pull-secret"
+                        key: "{{ .placementClusterName }}-openshift-pull-secret"
                         property: ".dockerconfigjson"
 
               - apiVersion: hypershift.openshift.io/v1beta1
