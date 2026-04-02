@@ -1,0 +1,10 @@
+apiVersion: v2
+name: eks-nodepool
+description: Custom Karpenter NodePool for regional cluster workloads
+type: application
+version: 0.1.0
+appVersion: "latest"
+keywords:
+  - karpenter
+  - nodepool
+  - eks

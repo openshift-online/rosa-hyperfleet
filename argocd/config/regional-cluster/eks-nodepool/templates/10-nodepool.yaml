@@ -1,0 +1,35 @@
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: regional-workloads
+spec:
+  template:
+    spec:
+      nodeClassRef:
+        group: eks.amazonaws.com
+        kind: NodeClass
+        name: default
+      requirements:
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values:
+            - {{ .Values.eksNodePool.capacityType }}
+        - key: kubernetes.io/arch
+          operator: In
+          values:
+            - {{ .Values.eksNodePool.arch }}
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values:
+            {{- range .Values.eksNodePool.instanceFamilies }}
+            {{- $family := . }}
+            {{- range list "xlarge" "2xlarge" "4xlarge" }}
+            - {{ $family }}.{{ . }}
+            {{- end }}
+            {{- end }}
+  limits:
+    cpu: {{ .Values.eksNodePool.limits.cpu | quote }}
+    memory: {{ .Values.eksNodePool.limits.memory }}
+  disruption:
+    consolidationPolicy: {{ .Values.eksNodePool.disruption.consolidationPolicy }}
+    consolidateAfter: {{ .Values.eksNodePool.disruption.consolidateAfter }}

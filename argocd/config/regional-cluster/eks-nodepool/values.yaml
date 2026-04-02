@@ -1,0 +1,20 @@
+eksNodePool:
+  instanceFamilies:
+    - m5
+    - m5a
+    - m6a
+    - m6i
+    - m7a
+    - m7i
+    - r5
+    - r5a
+    - r6a
+    - r6i
+  capacityType: on-demand
+  arch: amd64
+  limits:
+    cpu: "64"
+    memory: 256Gi
+  disruption:
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 60s
