@@ -3,6 +3,7 @@ kind: NodePool
 metadata:
   name: regional-workloads
 spec:
+  weight: 100
   template:
     spec:
       nodeClassRef:

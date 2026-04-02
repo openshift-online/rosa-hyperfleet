@@ -1,0 +1,60 @@
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: regional-workloads
+spec:
+  weight: 100
+  template:
+    spec:
+      nodeClassRef:
+        group: eks.amazonaws.com
+        kind: NodeClass
+        name: default
+      requirements:
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values:
+            - on-demand
+        - key: kubernetes.io/arch
+          operator: In
+          values:
+            - amd64
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values:
+            - m5.xlarge
+            - m5.2xlarge
+            - m5.4xlarge
+            - m5a.xlarge
+            - m5a.2xlarge
+            - m5a.4xlarge
+            - m6a.xlarge
+            - m6a.2xlarge
+            - m6a.4xlarge
+            - m6i.xlarge
+            - m6i.2xlarge
+            - m6i.4xlarge
+            - m7a.xlarge
+            - m7a.2xlarge
+            - m7a.4xlarge
+            - m7i.xlarge
+            - m7i.2xlarge
+            - m7i.4xlarge
+            - r5.xlarge
+            - r5.2xlarge
+            - r5.4xlarge
+            - r5a.xlarge
+            - r5a.2xlarge
+            - r5a.4xlarge
+            - r6a.xlarge
+            - r6a.2xlarge
+            - r6a.4xlarge
+            - r6i.xlarge
+            - r6i.2xlarge
+            - r6i.4xlarge
+  limits:
+    cpu: "64"
+    memory: 256Gi
+  disruption:
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 60s
