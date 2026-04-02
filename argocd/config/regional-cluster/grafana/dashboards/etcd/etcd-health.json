@@ -1,8 +1,8 @@
 {
-  "title": "etcd Health (EKS)",
-  "uid": "etcd-health-eks",
-  "description": "etcd health indicators available from the EKS managed control plane. Direct etcd pod metrics (etcd_server_*, etcd_disk_*, grpc_server_*, etcd_network_*) are not exposed on EKS managed control planes. This dashboard uses apiserver_storage_objects and apiserver_request_duration_seconds as the closest available proxies for etcd health.",
-  "tags": ["kubernetes", "eks", "etcd", "sre"],
+  "title": "etcd Health (HCP)",
+  "uid": "etcd-health-hcp",
+  "description": "etcd health for Hosted Control Planes running on Management Clusters. HCP etcd runs as pods, exposing full etcd metrics (etcd_server_*, etcd_disk_*, etcd_network_*, etcd_mvcc_*). Filter by namespace to select individual HCPs.",
+  "tags": ["kubernetes", "etcd", "hcp", "sre"],
   "timezone": "browser",
   "refresh": "1m",
   "schemaVersion": 38,
@@ -20,42 +20,169 @@
         "refresh": 1
       },
       {
-        "name": "cluster",
+        "name": "namespace",
         "type": "query",
-        "label": "Cluster",
+        "label": "HCP Namespace",
         "datasource": { "type": "prometheus", "uid": "${datasource}" },
-        "query": "label_values(apiserver_storage_objects, cluster)",
+        "query": "label_values(etcd_server_has_leader{namespace=~\"clusters-.*\"}, namespace)",
         "refresh": 2,
         "multi": false,
         "includeAll": true,
         "allValue": ".*",
-        "sort": 1
+        "sort": 1,
+        "regex": ""
       }
     ]
   },
   "panels": [
     {
       "id": 1,
-      "type": "text",
-      "title": "EKS Managed Control Plane — etcd Access Notice",
-      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 3 },
+      "type": "stat",
+      "title": "Has Leader",
+      "description": "Whether the etcd member has a leader. 1 = yes, 0 = no leader (cluster is unavailable for writes).",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "min(etcd_server_has_leader{namespace=~\"$namespace\"})",
+          "legendFormat": "has_leader"
+        }
+      ],
       "options": {
-        "mode": "markdown",
-        "content": "**Note:** EKS manages etcd as a fully-opaque service. Metrics that require direct etcd pod access (`etcd_server_has_leader`, `etcd_server_leader_changes_seen_total`, `etcd_disk_*`, `etcd_network_*`, `grpc_server_*`, `etcd_server_proposals_*`, `etcd_debugging_snap_*`) are **not available**. This dashboard uses API server metrics as the closest available proxies for etcd health. For direct etcd metrics, use a self-managed control plane."
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "Yes", "color": "green" } } },
+            { "type": "value", "options": { "0": { "text": "No", "color": "red" } } }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 1, "color": "green" }
+            ]
+          }
+        }
       }
     },
     {
       "id": 2,
       "type": "stat",
-      "title": "Total etcd Object Count",
-      "description": "Total objects stored across all etcd keys as reported by the API server (apiserver_storage_objects). A proxy for etcd database size — consistent growth without corresponding cluster activity indicates resource accumulation.",
-      "gridPos": { "x": 0, "y": 3, "w": 6, "h": 4 },
+      "title": "Leader Changes (1h)",
+      "description": "Number of leader elections in the last hour. Frequent changes indicate instability — network issues, disk pressure, or resource contention.",
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(apiserver_storage_objects{cluster=~\"$cluster\"})",
-          "legendFormat": "Objects"
+          "expr": "sum(increase(etcd_server_leader_changes_seen_total{namespace=~\"$namespace\"}[1h]))",
+          "legendFormat": "changes"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 3, "color": "yellow" },
+              { "value": 10, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "DB Size",
+      "description": "Total etcd database size in bytes. Default etcd quota is 2 GiB for HCP. Approaching the quota triggers alarms and blocks writes.",
+      "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(etcd_mvcc_db_total_size_in_bytes{namespace=~\"$namespace\"})",
+          "legendFormat": "DB size"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 1073741824, "color": "yellow" },
+              { "value": 1825361101, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Proposals Failed",
+      "description": "Rate of failed Raft proposals. Non-zero sustained rate indicates consensus issues — likely network partitions or insufficient quorum.",
+      "gridPos": { "x": 12, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(etcd_server_proposals_failed_total{namespace=~\"$namespace\"}[5m]))",
+          "legendFormat": "failed/s"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 0.01, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Proposals Pending",
+      "description": "Number of pending Raft proposals. Sustained high values indicate the leader cannot commit entries — disk I/O or network issues.",
+      "gridPos": { "x": 16, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(etcd_server_proposals_pending{namespace=~\"$namespace\"})",
+          "legendFormat": "pending"
         }
       ],
       "options": {
@@ -70,56 +197,26 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "value": null, "color": "blue" },
-              { "value": 50000, "color": "yellow" },
-              { "value": 100000, "color": "red" }
+              { "value": null, "color": "green" },
+              { "value": 5, "color": "yellow" },
+              { "value": 50, "color": "red" }
             ]
           }
         }
       }
     },
     {
-      "id": 3,
+      "id": 6,
       "type": "stat",
-      "title": "API Server Request Rate",
-      "description": "Total requests/sec to the API server. High request rates directly stress etcd (every write and most reads touch etcd). Proxy for etcd client traffic load.",
-      "gridPos": { "x": 6, "y": 3, "w": 6, "h": 4 },
+      "title": "DB Space Used %",
+      "description": "Percentage of etcd DB size relative to the in-use size. A large gap between total size and in-use size means compaction + defragmentation is needed.",
+      "gridPos": { "x": 20, "y": 0, "w": 4, "h": 4 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(apiserver_request_total{cluster=~\"$cluster\"}[5m]))",
-          "legendFormat": "req/s"
-        }
-      ],
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "reduceOptions": { "calcs": ["lastNotNull"] }
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "reqps",
-          "color": { "mode": "thresholds" },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "value": null, "color": "blue" }]
-          }
-        }
-      }
-    },
-    {
-      "id": 4,
-      "type": "stat",
-      "title": "API Server Error Rate (5xx)",
-      "description": "Server-side errors as a percentage of all requests. Sustained 5xx errors can indicate etcd timeouts or write failures surfacing through the API server. Alert threshold: >1%.",
-      "gridPos": { "x": 12, "y": 3, "w": 6, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "100 * sum(rate(apiserver_request_total{cluster=~\"$cluster\",code=~\"5..\"}[5m])) / sum(rate(apiserver_request_total{cluster=~\"$cluster\"}[5m]))",
-          "legendFormat": "5xx %"
+          "expr": "100 * max(etcd_mvcc_db_total_size_in_use_in_bytes{namespace=~\"$namespace\"}) / max(etcd_mvcc_db_total_size_in_bytes{namespace=~\"$namespace\"})",
+          "legendFormat": "used %"
         }
       ],
       "options": {
@@ -135,93 +232,118 @@
             "mode": "absolute",
             "steps": [
               { "value": null, "color": "green" },
-              { "value": 1, "color": "yellow" },
-              { "value": 5, "color": "red" }
+              { "value": 50, "color": "yellow" },
+              { "value": 80, "color": "red" }
             ]
           }
-        }
-      }
-    },
-    {
-      "id": 5,
-      "type": "stat",
-      "title": "API Request Latency p99 (non-WATCH)",
-      "description": "p99 API request latency excluding WATCH. Elevated latency is an early indicator of etcd read/write slowness on EKS managed control planes. SRE standard: p99 <1s for GET/LIST, <500ms for mutating verbs.",
-      "gridPos": { "x": 18, "y": 3, "w": 6, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(apiserver_request_duration_seconds_bucket{cluster=~\"$cluster\",verb!=\"WATCH\"}[5m])))",
-          "legendFormat": "p99"
-        }
-      ],
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "reduceOptions": { "calcs": ["lastNotNull"] }
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "color": { "mode": "thresholds" },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "value": null, "color": "green" },
-              { "value": 1, "color": "yellow" },
-              { "value": 5, "color": "red" }
-            ]
-          }
-        }
-      }
-    },
-    {
-      "id": 6,
-      "type": "timeseries",
-      "title": "etcd Object Count by Resource (Top 15)",
-      "description": "Number of objects per resource type stored in etcd. Equivalent to monitoring etcd key space utilisation per resource. Consistent growth in events, pods, or secrets can indicate accumulation of stale objects and etcd pressure. Replaces the upstream 'DB Size' panel (etcd_debugging_mvcc_db_total_size_in_bytes) which is not available on EKS managed control planes.",
-      "gridPos": { "x": 0, "y": 7, "w": 24, "h": 9 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "topk(15, sum by (resource) (apiserver_storage_objects{cluster=~\"$cluster\"}))",
-          "legendFormat": "{{ resource }}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "color": { "mode": "palette-classic" }
-        }
-      },
-      "options": {
-        "tooltip": { "mode": "multi" },
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": ["lastNotNull", "max"]
         }
       }
     },
     {
       "id": 7,
       "type": "timeseries",
-      "title": "API Request Latency by Verb — p50 / p99 (etcd Proxy)",
-      "description": "Latency percentiles per HTTP verb (WATCH excluded). On EKS, etcd disk sync duration (etcd_disk_wal_fsync_duration_seconds, etcd_disk_backend_commit_duration_seconds) is unavailable. Elevated GET/LIST latency is the closest observable signal for etcd read slowness; elevated PUT/DELETE/POST latency proxies etcd write / WAL fsync slowness.",
-      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 9 },
+      "title": "DB Size Over Time",
+      "description": "etcd database total size and in-use size. The gap between total and in-use indicates dead space reclaimable by defragmentation.",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.99, sum by (verb, le) (rate(apiserver_request_duration_seconds_bucket{cluster=~\"$cluster\",verb!=\"WATCH\"}[5m])))",
-          "legendFormat": "p99 — {{ verb }}"
+          "expr": "max by (namespace) (etcd_mvcc_db_total_size_in_bytes{namespace=~\"$namespace\"})",
+          "legendFormat": "{{ namespace }} — total"
         },
         {
           "refId": "B",
-          "expr": "histogram_quantile(0.50, sum by (verb, le) (rate(apiserver_request_duration_seconds_bucket{cluster=~\"$cluster\",verb!=\"WATCH\"}[5m])))",
-          "legendFormat": "p50 — {{ verb }}"
+          "expr": "max by (namespace) (etcd_mvcc_db_total_size_in_use_in_bytes{namespace=~\"$namespace\"})",
+          "legendFormat": "{{ namespace }} — in use"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 10 }
+        }
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "max"]
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Raft Proposals",
+      "description": "Committed vs applied vs pending vs failed Raft proposals. A growing gap between committed and applied indicates the state machine is falling behind. Pending proposals should stay near zero.",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(etcd_server_proposals_committed_total{namespace=~\"$namespace\"}[5m]))",
+          "legendFormat": "committed/s"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(etcd_server_proposals_applied_total{namespace=~\"$namespace\"}[5m]))",
+          "legendFormat": "applied/s"
+        },
+        {
+          "refId": "C",
+          "expr": "max(etcd_server_proposals_pending{namespace=~\"$namespace\"})",
+          "legendFormat": "pending"
+        },
+        {
+          "refId": "D",
+          "expr": "sum(rate(etcd_server_proposals_failed_total{namespace=~\"$namespace\"}[5m]))",
+          "legendFormat": "failed/s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "failed/s" },
+            "properties": [
+              { "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } },
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "max"]
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "WAL Fsync Duration (p99)",
+      "description": "p99 write-ahead log fsync latency. This is the most critical disk I/O metric for etcd. Values above 10ms cause leader instability and election storms. HCP etcd uses EBS — monitor for volume throttling.",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.99, sum by (namespace, le) (rate(etcd_disk_wal_fsync_duration_seconds_bucket{namespace=~\"$namespace\"}[5m])))",
+          "legendFormat": "{{ namespace }} — p99"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.50, sum by (namespace, le) (rate(etcd_disk_wal_fsync_duration_seconds_bucket{namespace=~\"$namespace\"}[5m])))",
+          "legendFormat": "{{ namespace }} — p50"
         }
       ],
       "fieldConfig": {
@@ -232,7 +354,8 @@
             "mode": "absolute",
             "steps": [
               { "value": null, "color": "green" },
-              { "value": 1, "color": "red" }
+              { "value": 0.01, "color": "yellow" },
+              { "value": 0.1, "color": "red" }
             ]
           },
           "custom": { "thresholdsStyle": { "mode": "dashed" } }
@@ -248,86 +371,34 @@
       }
     },
     {
-      "id": 8,
-      "type": "timeseries",
-      "title": "API Write Request Rate by Verb (etcd Write Proxy)",
-      "description": "Rate of mutating verbs (POST, PUT, PATCH, DELETE). Each mutating API request results in an etcd write. Replaces upstream 'Raft Proposals' panels (etcd_server_proposals_committed_total, etcd_server_proposals_applied_total, etcd_server_proposals_pending, etcd_server_proposals_failed_total) which require direct etcd access.",
-      "gridPos": { "x": 0, "y": 25, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (verb) (rate(apiserver_request_total{cluster=~\"$cluster\",verb=~\"POST|PUT|PATCH|DELETE\"}[5m]))",
-          "legendFormat": "{{ verb }}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "reqps",
-          "color": { "mode": "palette-classic" }
-        }
-      },
-      "options": {
-        "tooltip": { "mode": "multi" },
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "calcs": ["lastNotNull", "max"]
-        }
-      }
-    },
-    {
-      "id": 9,
-      "type": "timeseries",
-      "title": "Watch Event Rate by Kind (etcd Network Proxy)",
-      "description": "Events dispatched to active watchers per kind. High watch event rates correspond to etcd change notification volume — a proxy for etcd peer/client traffic. Replaces upstream 'Client Traffic In/Out' and 'Peer Traffic In/Out' panels which use etcd_network_* metrics unavailable on EKS.",
-      "gridPos": { "x": 12, "y": 25, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (kind) (rate(apiserver_watch_events_total{cluster=~\"$cluster\"}[5m]))",
-          "legendFormat": "{{ kind }}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "eps",
-          "color": { "mode": "palette-classic" }
-        }
-      },
-      "options": {
-        "tooltip": { "mode": "multi" },
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "calcs": ["lastNotNull", "max"]
-        }
-      }
-    },
-    {
       "id": 10,
       "type": "timeseries",
-      "title": "Dropped Requests (API Priority & Fairness)",
-      "description": "Requests rejected by API priority and fairness flow control. Sustained rejections indicate the API server (and thus etcd) is saturated. Replaces upstream leader election panels — on EKS, etcd_server_leader_changes_seen_total is not accessible.",
-      "gridPos": { "x": 0, "y": 33, "w": 12, "h": 8 },
+      "title": "Backend Commit Duration (p99)",
+      "description": "p99 backend (boltdb) commit latency. Elevated values indicate disk pressure or large transactions. Sustained values above 25ms degrade write throughput.",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (flow_schema, priority_level) (rate(apiserver_flowcontrol_rejected_requests_total{cluster=~\"$cluster\"}[5m]))",
-          "legendFormat": "{{ priority_level }} / {{ flow_schema }}"
+          "expr": "histogram_quantile(0.99, sum by (namespace, le) (rate(etcd_disk_backend_commit_duration_seconds_bucket{namespace=~\"$namespace\"}[5m])))",
+          "legendFormat": "{{ namespace }} — p99"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.50, sum by (namespace, le) (rate(etcd_disk_backend_commit_duration_seconds_bucket{namespace=~\"$namespace\"}[5m])))",
+          "legendFormat": "{{ namespace }} — p50"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "reqps",
+          "unit": "s",
           "color": { "mode": "palette-classic" },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               { "value": null, "color": "green" },
-              { "value": 1, "color": "red" }
+              { "value": 0.025, "color": "yellow" },
+              { "value": 0.1, "color": "red" }
             ]
           },
           "custom": { "thresholdsStyle": { "mode": "dashed" } }
@@ -345,27 +416,153 @@
     {
       "id": 11,
       "type": "timeseries",
-      "title": "In-Flight Requests (etcd Saturation Proxy)",
-      "description": "Currently active requests being processed by the API server. Sustained high values indicate API server — and by extension, etcd — saturation. Broken out by request kind (mutating vs read-only).",
-      "gridPos": { "x": 12, "y": 33, "w": 12, "h": 8 },
+      "title": "gRPC Request Rate by Method",
+      "description": "Rate of gRPC requests to etcd by method. Useful for identifying which operations (Range, Put, Txn, Compact) dominate etcd load.",
+      "gridPos": { "x": 0, "y": 20, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (request_kind) (apiserver_current_inflight_requests{cluster=~\"$cluster\"})",
-          "legendFormat": "{{ request_kind }}"
+          "expr": "sum by (grpc_method) (rate(grpc_server_handled_total{namespace=~\"$namespace\", grpc_service=\"etcdserverpb.KV\"}[5m]))",
+          "legendFormat": "{{ grpc_method }}"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
+          "unit": "reqps",
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "max"]
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "gRPC Error Rate",
+      "description": "Rate of gRPC errors by code. Non-zero rates for codes other than OK indicate etcd-level failures (e.g., Unavailable = leader loss, ResourceExhausted = quota exceeded).",
+      "gridPos": { "x": 12, "y": 20, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (grpc_code) (rate(grpc_server_handled_total{namespace=~\"$namespace\", grpc_code!=\"OK\"}[5m]))",
+          "legendFormat": "{{ grpc_code }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "max"]
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Network Traffic (Client)",
+      "description": "Bytes sent to and received from etcd clients. Useful for sizing and detecting unexpected traffic patterns (e.g., large list operations).",
+      "gridPos": { "x": 0, "y": 28, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (namespace) (rate(etcd_network_client_grpc_received_bytes_total{namespace=~\"$namespace\"}[5m]))",
+          "legendFormat": "{{ namespace }} — received"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (namespace) (rate(etcd_network_client_grpc_sent_bytes_total{namespace=~\"$namespace\"}[5m]))",
+          "legendFormat": "{{ namespace }} — sent"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "max"]
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Network Traffic (Peer)",
+      "description": "Bytes sent to and received from etcd peers. High peer traffic indicates Raft replication load. Asymmetric traffic may indicate a slow follower.",
+      "gridPos": { "x": 12, "y": 28, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (namespace) (rate(etcd_network_peer_received_bytes_total{namespace=~\"$namespace\"}[5m]))",
+          "legendFormat": "{{ namespace }} — received"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (namespace) (rate(etcd_network_peer_sent_bytes_total{namespace=~\"$namespace\"}[5m]))",
+          "legendFormat": "{{ namespace }} — sent"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "max"]
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Snapshot Duration",
+      "description": "Time taken to create etcd snapshots. Snapshot duration correlates with DB size. Long snapshots can block writes and trigger leader elections.",
+      "gridPos": { "x": 0, "y": 36, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.99, sum by (namespace, le) (rate(etcd_debugging_snap_save_total_duration_seconds_bucket{namespace=~\"$namespace\"}[5m])))",
+          "legendFormat": "{{ namespace }} — p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
           "color": { "mode": "palette-classic" },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               { "value": null, "color": "green" },
-              { "value": 200, "color": "yellow" },
-              { "value": 400, "color": "red" }
+              { "value": 1, "color": "yellow" },
+              { "value": 5, "color": "red" }
             ]
           },
           "custom": { "thresholdsStyle": { "mode": "dashed" } }
@@ -381,29 +578,33 @@
       }
     },
     {
-      "id": 12,
+      "id": 16,
       "type": "timeseries",
-      "title": "Admission Webhook Latency p99",
-      "description": "p99 time spent in each admission webhook. Slow webhooks add latency to every mutating request, which chains into etcd write latency. Useful for diagnosing whether elevated write latency is webhook-induced or etcd-induced.",
-      "gridPos": { "x": 0, "y": 41, "w": 24, "h": 8 },
+      "title": "Slow Apply / Slow Read Index",
+      "description": "Rate of slow applies and slow read index operations. These indicate the etcd state machine or read path is under pressure. Any sustained rate is concerning.",
+      "gridPos": { "x": 12, "y": 36, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.99, sum by (name, le) (rate(apiserver_admission_webhook_admission_duration_seconds_bucket{cluster=~\"$cluster\"}[5m])))",
-          "legendFormat": "{{ name }}"
+          "expr": "sum by (namespace) (rate(etcd_server_slow_apply_total{namespace=~\"$namespace\"}[5m]))",
+          "legendFormat": "{{ namespace }} — slow apply"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (namespace) (rate(etcd_server_slow_read_indexes_total{namespace=~\"$namespace\"}[5m]))",
+          "legendFormat": "{{ namespace }} — slow read index"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
+          "unit": "short",
           "color": { "mode": "palette-classic" },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               { "value": null, "color": "green" },
-              { "value": 0.5, "color": "yellow" },
-              { "value": 1, "color": "red" }
+              { "value": 0.01, "color": "red" }
             ]
           },
           "custom": { "thresholdsStyle": { "mode": "dashed" } }
