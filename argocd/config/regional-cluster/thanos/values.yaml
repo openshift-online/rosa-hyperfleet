@@ -45,19 +45,20 @@ query:
 
   resources:
     requests:
-      cpu: 100m
-      memory: 256Mi
+      cpu: 300m
+      memory: 1Gi
     limits:
-      memory: 512Mi
+      cpu: "2"
+      memory: 5Gi
 
   frontend:
     replicas: 1
     resources:
       requests:
-        cpu: 50m
-        memory: 128Mi
+        cpu: 100m
+        memory: 500Mi
       limits:
-        memory: 256Mi
+        memory: 3Gi
 
 storeGateway:
   enabled: true
