@@ -20,10 +20,11 @@ receive:
 
   resources:
     requests:
-      cpu: 200m
-      memory: 1Gi
-    limits:
+      cpu: 700m
       memory: 2Gi
+    limits:
+      cpu: "2"
+      memory: 5Gi
 
   router:
     replicas: 1

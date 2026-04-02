@@ -23,6 +23,7 @@ spec:
             cpu: {{ .Values.receive.resources.requests.cpu }}
             memory: {{ .Values.receive.resources.requests.memory }}
           limits:
+            cpu: {{ .Values.receive.resources.limits.cpu }}
             memory: {{ .Values.receive.resources.limits.memory }}
         storage:
           size: {{ .Values.receive.storage.size }}
