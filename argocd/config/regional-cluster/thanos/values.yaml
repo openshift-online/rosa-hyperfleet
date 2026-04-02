@@ -23,7 +23,6 @@ receive:
       cpu: 700m
       memory: 2Gi
     limits:
-      cpu: "2"
       memory: 5Gi
 
   router:
@@ -48,7 +47,6 @@ query:
       cpu: 300m
       memory: 1Gi
     limits:
-      cpu: "2"
       memory: 5Gi
 
   frontend:
