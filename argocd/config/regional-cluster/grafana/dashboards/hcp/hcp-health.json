@@ -28,7 +28,7 @@
         "refresh": 2,
         "multi": false,
         "includeAll": true,
-        "allValue": ".*",
+        "allValue": "clusters-.*",
         "sort": 1
       }
     ]
