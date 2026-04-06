@@ -1,0 +1,337 @@
+{
+  "title": "API Gateway",
+  "uid": "api-gateway",
+  "description": "CloudWatch metrics for the regional Platform API: request rate, error rates, and latency (p50/p99) for both the API Gateway stage and its backend integration.",
+  "tags": ["aws", "cloudwatch", "api-gateway", "sre"],
+  "timezone": "browser",
+  "refresh": "1m",
+  "schemaVersion": 38,
+  "graphTooltip": 1,
+  "time": { "from": "now-3h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "label": "Datasource",
+        "query": "cloudwatch",
+        "current": { "text": "CloudWatch", "value": "CloudWatch" },
+        "hide": 0,
+        "refresh": 1
+      },
+      {
+        "name": "apigw_name",
+        "type": "query",
+        "label": "API Gateway",
+        "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+        "query": "dimension_values(default,AWS/ApiGateway,Count,ApiName)",
+        "refresh": 2,
+        "multi": false,
+        "includeAll": false,
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "API Gateway",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Request Rate",
+      "description": "Total API requests per minute.",
+      "gridPos": { "x": 0, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/ApiGateway,ApiName,Stage} Count ApiName=\"${apigw_name}\"', 'Sum', 60)",
+          "id": "q1",
+          "period": "60",
+          "label": ""
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "value": null, "color": "blue" }] }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "4xx Errors",
+      "gridPos": { "x": 4, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/ApiGateway,ApiName,Stage} 4XXError ApiName=\"${apigw_name}\"', 'Sum', 60)",
+          "id": "q1",
+          "period": "60"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "value": null, "color": "green" }, { "value": 1, "color": "yellow" }, { "value": 100, "color": "red" }]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "5xx Errors",
+      "gridPos": { "x": 8, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/ApiGateway,ApiName,Stage} 5XXError ApiName=\"${apigw_name}\"', 'Sum', 60)",
+          "id": "q1",
+          "period": "60"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "value": null, "color": "green" }, { "value": 1, "color": "red" }]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Latency p50",
+      "gridPos": { "x": 12, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/ApiGateway,ApiName,Stage} Latency ApiName=\"${apigw_name}\"', 'p50', 60)",
+          "id": "q1",
+          "period": "60"
+        }
+      ],
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Latency p99",
+      "gridPos": { "x": 16, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/ApiGateway,ApiName,Stage} Latency ApiName=\"${apigw_name}\"', 'p99', 60)",
+          "id": "q1",
+          "period": "60"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "value": null, "color": "green" }, { "value": 1000, "color": "yellow" }, { "value": 5000, "color": "red" }]
+          }
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Integration Latency p99",
+      "gridPos": { "x": 20, "y": 1, "w": 4, "h": 4 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/ApiGateway,ApiName,Stage} IntegrationLatency ApiName=\"${apigw_name}\"', 'p99', 60)",
+          "id": "q1",
+          "period": "60"
+        }
+      ],
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "API GW – Request Count & Errors",
+      "gridPos": { "x": 0, "y": 5, "w": 12, "h": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/ApiGateway,ApiName,Stage} Count ApiName=\"${apigw_name}\"', 'Sum', 60)",
+          "id": "q1",
+          "period": "60",
+          "label": "Requests"
+        },
+        {
+          "refId": "B",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/ApiGateway,ApiName,Stage} 4XXError ApiName=\"${apigw_name}\"', 'Sum', 60)",
+          "id": "q2",
+          "period": "60",
+          "label": "4xx"
+        },
+        {
+          "refId": "C",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/ApiGateway,ApiName,Stage} 5XXError ApiName=\"${apigw_name}\"', 'Sum', 60)",
+          "id": "q3",
+          "period": "60",
+          "label": "5xx"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none" } },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "API GW – Latency & Integration Latency (p50 / p99)",
+      "gridPos": { "x": 12, "y": 5, "w": 12, "h": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/ApiGateway,ApiName,Stage} Latency ApiName=\"${apigw_name}\"', 'p50', 60)",
+          "id": "q1",
+          "period": "60",
+          "label": "Latency p50"
+        },
+        {
+          "refId": "B",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/ApiGateway,ApiName,Stage} Latency ApiName=\"${apigw_name}\"', 'p99', 60)",
+          "id": "q2",
+          "period": "60",
+          "label": "Latency p99"
+        },
+        {
+          "refId": "C",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/ApiGateway,ApiName,Stage} IntegrationLatency ApiName=\"${apigw_name}\"', 'p50', 60)",
+          "id": "q3",
+          "period": "60",
+          "label": "Integration p50"
+        },
+        {
+          "refId": "D",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/ApiGateway,ApiName,Stage} IntegrationLatency ApiName=\"${apigw_name}\"', 'p99', 60)",
+          "id": "q4",
+          "period": "60",
+          "label": "Integration p99"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "options": { "tooltip": { "mode": "multi" } }
+    }
+  ],
+  "annotations": { "list": [] },
+  "links": [
+    {
+      "title": "RDS",
+      "url": "/d/rds-overview",
+      "type": "link",
+      "icon": "external link",
+      "tooltip": "RDS per-instance metrics"
+    },
+    {
+      "title": "Infrastructure",
+      "url": "/d/infrastructure",
+      "type": "link",
+      "icon": "external link",
+      "tooltip": "IoT Core & NAT Gateway"
+    }
+  ]
+}

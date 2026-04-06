@@ -92,6 +92,18 @@ grafana:
             timeInterval: "30s"
             httpMethod: POST
 
+        # CloudWatch datasource — credentials supplied via EKS Pod Identity
+        # (see terraform/config/regional-cluster/grafana.tf).
+        # defaultRegion: default resolves the region from EC2 instance metadata,
+        # so no per-region configuration change is needed.
+        - name: CloudWatch
+          type: cloudwatch
+          access: proxy
+          editable: false
+          jsonData:
+            authType: default
+            defaultRegion: default
+
   resources:
     requests:
       cpu: 250m

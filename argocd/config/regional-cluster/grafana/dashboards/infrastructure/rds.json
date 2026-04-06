@@ -1,0 +1,621 @@
+{
+  "title": "RDS",
+  "uid": "rds-overview",
+  "description": "Per-instance RDS metrics for Maestro and HyperFleet PostgreSQL databases. Select an instance from the dropdown. BurstBalance is critical for t4g instances — sustained 0% means CPU is throttled.",
+  "tags": ["aws", "cloudwatch", "rds", "postgresql", "sre"],
+  "timezone": "browser",
+  "refresh": "1m",
+  "schemaVersion": 38,
+  "graphTooltip": 1,
+  "time": { "from": "now-3h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "label": "Datasource",
+        "query": "cloudwatch",
+        "current": { "text": "CloudWatch", "value": "CloudWatch" },
+        "hide": 0,
+        "refresh": 1
+      },
+      {
+        "name": "rds_instance",
+        "type": "query",
+        "label": "RDS Instance",
+        "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+        "query": "dimension_values(default,AWS/RDS,CPUUtilization,DBInstanceIdentifier)",
+        "refresh": 2,
+        "multi": false,
+        "includeAll": false,
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "CPU Utilization",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/RDS,DBInstanceIdentifier} CPUUtilization DBInstanceIdentifier=\"${rds_instance}\"', 'Average', 60)",
+          "id": "q1",
+          "period": "60"
+        }
+      ],
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "value": null, "color": "green" }, { "value": 70, "color": "yellow" }, { "value": 90, "color": "red" }]
+          }
+        }
+      }
+    },
+
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Burst Balance",
+      "description": "CPU credit balance remaining (t-type instances only). Reaches 0% under sustained load — instance throttles silently when exhausted.",
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/RDS,DBInstanceIdentifier} BurstBalance DBInstanceIdentifier=\"${rds_instance}\"', 'Average', 60)",
+          "id": "q1",
+          "period": "60"
+        }
+      ],
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "value": null, "color": "red" }, { "value": 20, "color": "yellow" }, { "value": 50, "color": "green" }]
+          }
+        }
+      }
+    },
+
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Freeable Memory",
+      "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/RDS,DBInstanceIdentifier} FreeableMemory DBInstanceIdentifier=\"${rds_instance}\"', 'Average', 60)",
+          "id": "q1",
+          "period": "60"
+        }
+      ],
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Swap Usage",
+      "description": "Non-zero swap means postgres is memory-constrained. Any sustained swap is a signal to resize.",
+      "gridPos": { "x": 12, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/RDS,DBInstanceIdentifier} SwapUsage DBInstanceIdentifier=\"${rds_instance}\"', 'Average', 60)",
+          "id": "q1",
+          "period": "60"
+        }
+      ],
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "value": null, "color": "green" }, { "value": 1, "color": "yellow" }, { "value": 10485760, "color": "red" }]
+          }
+        }
+      }
+    },
+
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Free Storage",
+      "gridPos": { "x": 16, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/RDS,DBInstanceIdentifier} FreeStorageSpace DBInstanceIdentifier=\"${rds_instance}\"', 'Average', 60)",
+          "id": "q1",
+          "period": "60"
+        }
+      ],
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "value": null, "color": "red" }, { "value": 1073741824, "color": "yellow" }, { "value": 5368709120, "color": "green" }]
+          }
+        }
+      }
+    },
+
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Connections",
+      "gridPos": { "x": 20, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/RDS,DBInstanceIdentifier} DatabaseConnections DBInstanceIdentifier=\"${rds_instance}\"', 'Average', 60)",
+          "id": "q1",
+          "period": "60"
+        }
+      ],
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "none" } }
+    },
+
+    {
+      "id": 7,
+      "type": "row",
+      "title": "Compute",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 1 }
+    },
+
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "CPU Utilization",
+      "gridPos": { "x": 0, "y": 5, "w": 12, "h": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/RDS,DBInstanceIdentifier} CPUUtilization DBInstanceIdentifier=\"${rds_instance}\"', 'Average', 60)",
+          "id": "q1",
+          "period": "60",
+          "label": "CPU %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": { "lineWidth": 2 },
+          "thresholds": { "mode": "absolute", "steps": [{ "value": null, "color": "green" }, { "value": 70, "color": "yellow" }, { "value": 90, "color": "red" }] }
+        }
+      },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Burst Balance",
+      "description": "When this reaches 0%, CPU is throttled. Sustained workloads on t4g instances should stay above 20%.",
+      "gridPos": { "x": 12, "y": 5, "w": 12, "h": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/RDS,DBInstanceIdentifier} BurstBalance DBInstanceIdentifier=\"${rds_instance}\"', 'Average', 60)",
+          "id": "q1",
+          "period": "60",
+          "label": "Burst Balance %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": { "lineWidth": 2 },
+          "thresholds": { "mode": "absolute", "steps": [{ "value": null, "color": "red" }, { "value": 20, "color": "yellow" }, { "value": 50, "color": "green" }] }
+        }
+      },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Memory & Storage",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 13, "w": 24, "h": 1 }
+    },
+
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Memory – Freeable & Swap",
+      "description": "Swap > 0 means postgres has exceeded available RAM. Any sustained swap usage is a resize signal.",
+      "gridPos": { "x": 0, "y": 14, "w": 8, "h": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/RDS,DBInstanceIdentifier} FreeableMemory DBInstanceIdentifier=\"${rds_instance}\"', 'Average', 60)",
+          "id": "q1",
+          "period": "60",
+          "label": "Freeable Memory"
+        },
+        {
+          "refId": "B",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/RDS,DBInstanceIdentifier} SwapUsage DBInstanceIdentifier=\"${rds_instance}\"', 'Average', 60)",
+          "id": "q2",
+          "period": "60",
+          "label": "Swap Usage"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "bytes" },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Swap Usage" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
+          }
+        ]
+      },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Free Storage Space",
+      "gridPos": { "x": 8, "y": 14, "w": 8, "h": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/RDS,DBInstanceIdentifier} FreeStorageSpace DBInstanceIdentifier=\"${rds_instance}\"', 'Average', 60)",
+          "id": "q1",
+          "period": "60",
+          "label": "Free Storage"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Disk Queue Depth",
+      "description": "Sustained queue depth > 1 means storage throughput is saturated. Expect latency spikes when this is elevated.",
+      "gridPos": { "x": 16, "y": 14, "w": 8, "h": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/RDS,DBInstanceIdentifier} DiskQueueDepth DBInstanceIdentifier=\"${rds_instance}\"', 'Average', 60)",
+          "id": "q1",
+          "period": "60",
+          "label": "Queue Depth"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "value": null, "color": "green" }, { "value": 1, "color": "yellow" }, { "value": 5, "color": "red" }] },
+          "custom": { "lineWidth": 2 }
+        }
+      },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "id": 14,
+      "type": "row",
+      "title": "I/O",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 22, "w": 24, "h": 1 }
+    },
+
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "IOPS – Read & Write",
+      "gridPos": { "x": 0, "y": 23, "w": 12, "h": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/RDS,DBInstanceIdentifier} ReadIOPS DBInstanceIdentifier=\"${rds_instance}\"', 'Average', 60)",
+          "id": "q1",
+          "period": "60",
+          "label": "Read IOPS"
+        },
+        {
+          "refId": "B",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/RDS,DBInstanceIdentifier} WriteIOPS DBInstanceIdentifier=\"${rds_instance}\"', 'Average', 60)",
+          "id": "q2",
+          "period": "60",
+          "label": "Write IOPS"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "iops" } },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Latency – Read & Write",
+      "gridPos": { "x": 12, "y": 23, "w": 12, "h": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/RDS,DBInstanceIdentifier} ReadLatency DBInstanceIdentifier=\"${rds_instance}\"', 'Average', 60)",
+          "id": "q1",
+          "period": "60",
+          "label": "Read Latency"
+        },
+        {
+          "refId": "B",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/RDS,DBInstanceIdentifier} WriteLatency DBInstanceIdentifier=\"${rds_instance}\"', 'Average', 60)",
+          "id": "q2",
+          "period": "60",
+          "label": "Write Latency"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "id": 17,
+      "type": "row",
+      "title": "Connections & PostgreSQL Health",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 31, "w": 24, "h": 1 }
+    },
+
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Database Connections",
+      "gridPos": { "x": 0, "y": 32, "w": 8, "h": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/RDS,DBInstanceIdentifier} DatabaseConnections DBInstanceIdentifier=\"${rds_instance}\"', 'Average', 60)",
+          "id": "q1",
+          "period": "60",
+          "label": "Connections"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none" } },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Deadlocks",
+      "description": "Any deadlocks indicate transaction ordering issues in application code. Should be zero in steady state.",
+      "gridPos": { "x": 8, "y": 32, "w": 8, "h": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/RDS,DBInstanceIdentifier} Deadlocks DBInstanceIdentifier=\"${rds_instance}\"', 'Sum', 60)",
+          "id": "q1",
+          "period": "60",
+          "label": "Deadlocks"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "value": null, "color": "green" }, { "value": 1, "color": "red" }] }
+        }
+      },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Maximum Used Transaction IDs",
+      "description": "PostgreSQL anti-wraparound. If this climbs toward 2 billion autovacuum is falling behind — emergency VACUUM FREEZE required before it reaches ~1.6B.",
+      "gridPos": { "x": 16, "y": 32, "w": 8, "h": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/RDS,DBInstanceIdentifier} MaximumUsedTransactionIDs DBInstanceIdentifier=\"${rds_instance}\"', 'Average', 60)",
+          "id": "q1",
+          "period": "60",
+          "label": "Max Used XID"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 500000000, "color": "yellow" },
+              { "value": 1000000000, "color": "red" }
+            ]
+          }
+        }
+      },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "id": 21,
+      "type": "row",
+      "title": "Network",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 40, "w": 24, "h": 1 }
+    },
+
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Network Throughput – Receive & Transmit",
+      "gridPos": { "x": 0, "y": 41, "w": 24, "h": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/RDS,DBInstanceIdentifier} NetworkReceiveThroughput DBInstanceIdentifier=\"${rds_instance}\"', 'Average', 60)",
+          "id": "q1",
+          "period": "60",
+          "label": "Receive"
+        },
+        {
+          "refId": "B",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/RDS,DBInstanceIdentifier} NetworkTransmitThroughput DBInstanceIdentifier=\"${rds_instance}\"', 'Average', 60)",
+          "id": "q2",
+          "period": "60",
+          "label": "Transmit"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Bps" } },
+      "options": { "tooltip": { "mode": "multi" } }
+    }
+
+  ],
+  "annotations": { "list": [] },
+  "links": [
+    {
+      "title": "API Gateway",
+      "url": "/d/api-gateway",
+      "type": "link",
+      "icon": "external link",
+      "tooltip": "Platform API metrics"
+    },
+    {
+      "title": "Infrastructure",
+      "url": "/d/infrastructure",
+      "type": "link",
+      "icon": "external link",
+      "tooltip": "IoT Core & NAT Gateway"
+    }
+  ]
+}

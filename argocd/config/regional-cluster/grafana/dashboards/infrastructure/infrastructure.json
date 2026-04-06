@@ -1,0 +1,207 @@
+{
+  "title": "Infrastructure",
+  "uid": "infrastructure",
+  "description": "CloudWatch metrics for VPC-level and messaging infrastructure: AWS IoT Core (Maestro MQTT broker) and NAT Gateway. Neither is related to the customer-facing API — they are cross-cutting platform concerns.",
+  "tags": ["aws", "cloudwatch", "iot", "nat-gateway", "maestro", "networking", "sre"],
+  "timezone": "browser",
+  "refresh": "1m",
+  "schemaVersion": 38,
+  "graphTooltip": 1,
+  "time": { "from": "now-3h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "label": "Datasource",
+        "query": "cloudwatch",
+        "current": { "text": "CloudWatch", "value": "CloudWatch" },
+        "hide": 0,
+        "refresh": 1
+      }
+    ]
+  },
+  "panels": [
+
+    {
+      "id": 1,
+      "type": "row",
+      "title": "IoT Core – Maestro MQTT",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }
+    },
+
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "IoT Core – Connect Success / AuthError",
+      "description": "If no data appears, verify that iot_log_level is not DISABLED and Maestro has connected to the IoT endpoint.",
+      "gridPos": { "x": 0, "y": 1, "w": 12, "h": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "namespace": "AWS/IoT",
+          "metricName": "Connect.Success",
+          "dimensions": { "Protocol": ["MQTT"] },
+          "statistic": "Sum",
+          "period": "60",
+          "matchExact": true,
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "label": "Connect.Success"
+        },
+        {
+          "refId": "B",
+          "region": "default",
+          "namespace": "AWS/IoT",
+          "metricName": "Connect.AuthError",
+          "dimensions": { "Protocol": ["MQTT"] },
+          "statistic": "Sum",
+          "period": "60",
+          "matchExact": true,
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "label": "Connect.AuthError"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "none" },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Connect.AuthError" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
+          }
+        ]
+      },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "IoT Core – PublishIn / PublishOut Success",
+      "gridPos": { "x": 12, "y": 1, "w": 12, "h": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "namespace": "AWS/IoT",
+          "metricName": "PublishIn.Success",
+          "dimensions": { "Protocol": ["MQTT"] },
+          "statistic": "Sum",
+          "period": "60",
+          "matchExact": true,
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "label": "PublishIn.Success"
+        },
+        {
+          "refId": "B",
+          "region": "default",
+          "namespace": "AWS/IoT",
+          "metricName": "PublishOut.Success",
+          "dimensions": { "Protocol": ["MQTT"] },
+          "statistic": "Sum",
+          "period": "60",
+          "matchExact": true,
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "label": "PublishOut.Success"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none" } },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "id": 4,
+      "type": "row",
+      "title": "NAT Gateway",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 9, "w": 24, "h": 1 }
+    },
+
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "NAT Gateway – Packet Drops & Port Allocation Errors",
+      "description": "These metrics only emit when events occur. Empty graphs mean no drops or port exhaustion — that is the healthy state.",
+      "gridPos": { "x": 0, "y": 10, "w": 12, "h": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/NatGateway,NatGatewayId} PacketsDropCount', 'Sum', 60)",
+          "id": "q1",
+          "period": "60",
+          "label": "${PROP('Dim.NatGatewayId')} drops"
+        },
+        {
+          "refId": "B",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/NatGateway,NatGatewayId} ErrorPortAllocation', 'Sum', 60)",
+          "id": "q2",
+          "period": "60",
+          "label": "${PROP('Dim.NatGatewayId')} port err"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none" } },
+      "options": { "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "NAT Gateway – Active Connection Count",
+      "gridPos": { "x": 12, "y": 10, "w": 12, "h": 8 },
+      "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "region": "default",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "expression": "SEARCH('{AWS/NatGateway,NatGatewayId} ActiveConnectionCount', 'Sum', 60)",
+          "id": "q1",
+          "period": "60",
+          "label": "${PROP('Dim.NatGatewayId')}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none" } },
+      "options": { "tooltip": { "mode": "multi" } }
+    }
+
+  ],
+  "annotations": { "list": [] },
+  "links": [
+    {
+      "title": "API Gateway",
+      "url": "/d/api-gateway",
+      "type": "link",
+      "icon": "external link",
+      "tooltip": "Platform API metrics"
+    },
+    {
+      "title": "RDS",
+      "url": "/d/rds-overview",
+      "type": "link",
+      "icon": "external link",
+      "tooltip": "RDS per-instance metrics"
+    }
+  ]
+}
