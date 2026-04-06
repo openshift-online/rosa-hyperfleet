@@ -208,7 +208,7 @@
           "queryMode": "Metrics",
           "metricQueryType": 0,
           "metricEditorMode": 1,
-          "expression": "SEARCH('{AWS/AmazonMQ,Broker} MessageCount', 'Average', 60)",
+          "expression": "SUM(SEARCH('{AWS/AmazonMQ,Broker} MessageCount', 'Average', 60))",
           "id": "q1",
           "period": "60"
         }
@@ -240,7 +240,7 @@
           "queryMode": "Metrics",
           "metricQueryType": 0,
           "metricEditorMode": 1,
-          "expression": "SEARCH('{AWS/AmazonMQ,Broker} MessageUnacknowledgedCount', 'Average', 60)",
+          "expression": "SUM(SEARCH('{AWS/AmazonMQ,Broker} MessageUnacknowledgedCount', 'Average', 60))",
           "id": "q1",
           "period": "60"
         }
@@ -271,7 +271,7 @@
           "queryMode": "Metrics",
           "metricQueryType": 0,
           "metricEditorMode": 1,
-          "expression": "SEARCH('{AWS/AmazonMQ,Broker} ConsumerCount', 'Average', 60)",
+          "expression": "SUM(SEARCH('{AWS/AmazonMQ,Broker} ConsumerCount', 'Average', 60))",
           "id": "q1",
           "period": "60"
         }
@@ -293,7 +293,7 @@
           "queryMode": "Metrics",
           "metricQueryType": 0,
           "metricEditorMode": 1,
-          "expression": "SEARCH('{AWS/AmazonMQ,Broker} QueueCount', 'Average', 60)",
+          "expression": "SUM(SEARCH('{AWS/AmazonMQ,Broker} QueueCount', 'Average', 60))",
           "id": "q1",
           "period": "60"
         }
