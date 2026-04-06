@@ -318,20 +318,5 @@
     }
   ],
   "annotations": { "list": [] },
-  "links": [
-    {
-      "title": "RDS",
-      "url": "/d/rds-overview",
-      "type": "link",
-      "icon": "external link",
-      "tooltip": "RDS per-instance metrics"
-    },
-    {
-      "title": "Platform Services",
-      "url": "/d/platform-services",
-      "type": "link",
-      "icon": "external link",
-      "tooltip": "IoT Core, NAT Gateway, Amazon MQ, ACM"
-    }
-  ]
+  "links": []
 }

@@ -306,7 +306,7 @@
       "id": 12,
       "type": "timeseries",
       "title": "MQ – Message Counts",
-      "gridPos": { "x": 0, "y": 23, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 23, "w": 24, "h": 10 },
       "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
       "targets": [
         {
@@ -340,7 +340,7 @@
       "id": 13,
       "type": "timeseries",
       "title": "MQ – Network Throughput",
-      "gridPos": { "x": 12, "y": 23, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 33, "w": 24, "h": 10 },
       "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
       "targets": [
         {
@@ -375,7 +375,7 @@
       "type": "row",
       "title": "ACM – Certificate Expiry",
       "collapsed": false,
-      "gridPos": { "x": 0, "y": 31, "w": 24, "h": 1 }
+      "gridPos": { "x": 0, "y": 43, "w": 24, "h": 1 }
     },
 
     {
@@ -383,7 +383,7 @@
       "type": "stat",
       "title": "Days to Expiry",
       "description": "ACM publishes this metric once per day. Widen the time range to 7d or 30d if no data appears. Alert threshold: yellow at 30 days, red at 7 days.",
-      "gridPos": { "x": 0, "y": 32, "w": 6, "h": 6 },
+      "gridPos": { "x": 0, "y": 44, "w": 6, "h": 6 },
       "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
       "targets": [
         {
@@ -424,7 +424,7 @@
       "type": "timeseries",
       "title": "Certificate Days to Expiry – Trend",
       "description": "Should decrease by 1 per day. A flat line means ACM stopped publishing — check certificate status in the console.",
-      "gridPos": { "x": 6, "y": 32, "w": 18, "h": 6 },
+      "gridPos": { "x": 6, "y": 44, "w": 18, "h": 6 },
       "datasource": { "type": "cloudwatch", "uid": "${datasource}" },
       "targets": [
         {
@@ -458,20 +458,5 @@
 
   ],
   "annotations": { "list": [] },
-  "links": [
-    {
-      "title": "API Gateway",
-      "url": "/d/api-gateway",
-      "type": "link",
-      "icon": "external link",
-      "tooltip": "Platform API metrics"
-    },
-    {
-      "title": "RDS",
-      "url": "/d/rds-overview",
-      "type": "link",
-      "icon": "external link",
-      "tooltip": "RDS per-instance metrics"
-    }
-  ]
+  "links": []
 }
