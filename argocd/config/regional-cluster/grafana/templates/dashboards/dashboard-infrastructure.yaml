@@ -8,4 +8,4 @@ metadata:
   annotations:
     k8s-sidecar-target-directory: "Infrastructure"
 data:
-  infrastructure.json: {{ .Files.Get "dashboards/infrastructure/infrastructure.json" | quote }}
+  platform-services.json: {{ .Files.Get "dashboards/infrastructure/platform-services.json" | quote }}
