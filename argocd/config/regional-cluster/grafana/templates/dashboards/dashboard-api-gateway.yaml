@@ -8,4 +8,4 @@ metadata:
   annotations:
     k8s-sidecar-target-directory: "Infrastructure"
 data:
-  eks-control-plane.json: {{ .Files.Get "dashboards/infrastructure/api-gateway.json" | quote }}
+  api-gateway.json: {{ .Files.Get "dashboards/infrastructure/api-gateway.json" | quote }}
