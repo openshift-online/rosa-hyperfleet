@@ -117,6 +117,43 @@ CLOUDURL=$(jq -r '.spec.cloudUrl' < /tmp/$CLUSTER_NAME.json)
 rosactl cluster-oidc create $CLUSTER_NAME --region $REGION --oidc-issuer-url $CLOUDURL
 ```
 
+## Manual Cluster Creation Sequence
+
+```mermaid
+sequenceDiagram
+    actor Dev as Developer
+    participant CLI as rosactl
+    participant CF as Customer AWS Account<br/>(CloudFormation)
+    participant API as Platform API
+    participant MC as Management Cluster<br/>(HyperShift)
+
+    Dev->>CLI: rosactl login
+
+    Note over Dev,MC: Step 1 — Create IAM + VPC Resources
+    Dev->>CLI: rosactl cluster-iam create <cluster_name>
+    CLI->>CF: CreateStack rosa-<cluster_name>-iam (trust: PENDING)
+
+    Dev->>CLI: rosactl cluster-vpc create <cluster_name>
+    CLI->>CF: CreateStack rosa-<cluster_name>-vpc
+
+
+    Note over Dev,MC: Step 2 — Submit Cluster to Platform API
+    Dev->>CLI: rosactl cluster create <cluster_name>
+    CLI->>CF: DescribeStacks (IAM + VPC)
+    CF-->>CLI: IAM + VPC outputs
+    CLI->>API: POST /api/v0/clusters (HCP spec)
+    API->>MC: Create HostedCluster + NodePool<br/>(via Regional Cluster / Maestro)
+    
+    MC-->>API: (cloudUrl: OIDC issuer URL)
+    API-->>Dev: cloudUrl: https://d1234.cloudfront.net/my-cluster
+    Note over Dev,MC: Step 3 — Create OIDC Provider (using cloudUrl from Step 3)
+    Dev->>CLI: rosactl cluster-oidc create  <cluster_name> --oidc-issuer-url $CLOUDURL
+    CLI->>CF: CreateStack rosa-<cluster_name>-oidc
+    CF-->>CLI: OIDCProviderArn
+    CLI->>CF: UpdateStack rosa-<cluster_name>-iam (PENDING → real issuer domain)
+    CF-->>CLI: IAM trust policies updated
+```
+
 # Tear Down a Hosted Cluster (Temporary)
 
 > **Note:** This is a temporary workaround while cluster deletion through the
