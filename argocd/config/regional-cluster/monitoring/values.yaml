@@ -5,10 +5,23 @@ kube-prometheus-stack:
   crds:
     enabled: true
 
-  # Since these are not interactive clusters, we can turn off grafana
-  # and alertmanager. All of these metrics will be forwarded into RHOBS
   alertmanager:
-    enabled: false
+    enabled: true
+    alertmanagerSpec:
+      replicas: 2
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          memory: 128Mi
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: alertmanager
   grafana:
     enabled: false
 
