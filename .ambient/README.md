@@ -6,6 +6,5 @@ Each subdirectory contains a `README.md` that serves as the agent's prompt. Thes
 
 | Agent                        | Trigger             | Description                                                                   |
 | ---------------------------- | ------------------- | ----------------------------------------------------------------------------- |
-| `adversary`                  | Webhook (every PR)  | Scans PRs for security vulnerabilities, misconfigurations, and attack vectors |
 | `ci-analyser-agent`          | Scheduled (nightly) | Checks nightly CI jobs for failures, diagnoses root causes, and opens fix PRs |
 | `documentation-update-agent` | Scheduled (daily)   | Detects documentation staleness from recently merged PRs and opens update PRs |
