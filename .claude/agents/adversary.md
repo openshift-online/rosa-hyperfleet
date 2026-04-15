@@ -20,12 +20,12 @@ Always enforce the security principles and controls defined in `AGENTS.md` at th
 
 Given a set of changed files (from a PR diff or file list), categorize them by risk level:
 
-| Risk Level | File Patterns |
-| --- | --- |
+| Risk Level   | File Patterns                                                                                                                 |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------- |
 | **Critical** | `terraform/` (IAM, security groups, networking), `scripts/buildspec/`, `argocd/` (RBAC, secrets), `ci/` (credential handling) |
-| **High** | Go source files, Python scripts, Dockerfiles, Helm charts, shell scripts |
-| **Medium** | Configuration files (YAML, JSON), documentation with code examples |
-| **Low** | Markdown docs (non-code), test fixtures, static assets |
+| **High**     | Go source files, Python scripts, Dockerfiles, Helm charts, shell scripts                                                      |
+| **Medium**   | Configuration files (YAML, JSON), documentation with code examples                                                            |
+| **Low**      | Markdown docs (non-code), test fixtures, static assets                                                                        |
 
 Focus analysis effort on Critical and high-risk files first.
 
@@ -62,28 +62,28 @@ If the PR modifies dependency or package files, check for recent security incide
 
 ### Dependency Files to Watch
 
-| Ecosystem | Files |
-| --- | --- |
-| **Go** | `go.mod`, `go.sum` |
-| **Python** | `requirements.txt`, `pyproject.toml`, `uv.lock` |
-| **Node.js** | `package.json`, `package-lock.json` |
-| **Terraform** | `*.tf` (provider and module `source` blocks) |
+| Ecosystem      | Files                                                 |
+| -------------- | ----------------------------------------------------- |
+| **Go**         | `go.mod`, `go.sum`                                    |
+| **Python**     | `requirements.txt`, `pyproject.toml`, `uv.lock`       |
+| **Node.js**    | `package.json`, `package-lock.json`                   |
+| **Terraform**  | `*.tf` (provider and module `source` blocks)          |
 | **Containers** | `Dockerfile`, `Containerfile` (base image references) |
-| **Helm** | `Chart.yaml` (dependency entries) |
+| **Helm**       | `Chart.yaml` (dependency entries)                     |
 
 ### Tag Pinning Rules
 
 The `:latest` tag and equivalent unpinned version specifiers are **never acceptable** in this repository. Flag every occurrence as a finding.
 
-| Context | Violation Examples | Expected |
-| --- | --- | --- |
-| Dockerfile `FROM` | `FROM nginx:latest`, `FROM nginx` (implicit latest) | `FROM nginx:1.27.0` or `FROM nginx@sha256:...` |
-| Helm `image.tag` | `tag: latest`, `tag: ""` | `tag: "v1.2.3"` |
-| Terraform container image | `image = "nginx:latest"` | `image = "nginx:1.27.0"` |
-| Kubernetes manifests | `image: nginx:latest` | `image: nginx:1.27.0` |
-| Go dependencies | — (Go modules enforce versions) | — |
-| Python dependencies | `requests`, `requests>=2.0` | `requests==2.31.0` |
-| Node.js dependencies | `"lodash": "*"`, `"lodash": "latest"` | `"lodash": "4.17.21"` |
+| Context                   | Violation Examples                                  | Expected                                       |
+| ------------------------- | --------------------------------------------------- | ---------------------------------------------- |
+| Dockerfile `FROM`         | `FROM nginx:latest`, `FROM nginx` (implicit latest) | `FROM nginx:1.27.0` or `FROM nginx@sha256:...` |
+| Helm `image.tag`          | `tag: latest`, `tag: ""`                            | `tag: "v1.2.3"`                                |
+| Terraform container image | `image = "nginx:latest"`                            | `image = "nginx:1.27.0"`                       |
+| Kubernetes manifests      | `image: nginx:latest`                               | `image: nginx:1.27.0`                          |
+| Go dependencies           | — (Go modules enforce versions)                     | —                                              |
+| Python dependencies       | `requests`, `requests>=2.0`                         | `requests==2.31.0`                             |
+| Node.js dependencies      | `"lodash": "*"`, `"lodash": "latest"`               | `"lodash": "4.17.21"`                          |
 
 Report these as **MEDIUM** severity under `Infrastructure — Unpinned Image Tag` or `Application — Unpinned Dependency Version`.
 
@@ -152,13 +152,13 @@ curl -s "https://api.securityscorecards.dev/projects/github.com/{owner}/{repo}"
 
 **Mapping packages to repositories:**
 
-| Ecosystem | How to find the source repo |
-| --- | --- |
-| **Go** | Module path starting with `github.com/` maps directly (e.g., `github.com/foo/bar` → `foo/bar`) |
-| **Python** | Check the project's PyPI page or `pyproject.toml` for the `repository` or `homepage` URL |
-| **Node.js** | Check the `repository` field in the package's npm page |
-| **Terraform** | Module `source` block contains the GitHub reference |
-| **Container images** | Check the image's registry page for the source repository link |
+| Ecosystem            | How to find the source repo                                                                    |
+| -------------------- | ---------------------------------------------------------------------------------------------- |
+| **Go**               | Module path starting with `github.com/` maps directly (e.g., `github.com/foo/bar` → `foo/bar`) |
+| **Python**           | Check the project's PyPI page or `pyproject.toml` for the `repository` or `homepage` URL       |
+| **Node.js**          | Check the `repository` field in the package's npm page                                         |
+| **Terraform**        | Module `source` block contains the GitHub reference                                            |
+| **Container images** | Check the image's registry page for the source repository link                                 |
 
 If the source repository is not on GitHub or cannot be determined, skip the Scorecard check for that dependency and note it in the report.
 
@@ -168,15 +168,15 @@ The API returns an aggregate `score` (0–10) and individual `checks`, each with
 
 **Flag these conditions:**
 
-| Condition | Severity | Category |
-| --- | --- | --- |
-| Aggregate score < 3 | **HIGH** | `Supply Chain — Low Scorecard Rating` |
-| Aggregate score 3–5 | **MEDIUM** | `Supply Chain — Low Scorecard Rating` |
-| `Maintained` check score = 0 | **HIGH** | `Supply Chain — Unmaintained Dependency` |
-| `Dangerous-Workflow` check score < 5 | **HIGH** | `Supply Chain — Dangerous Upstream Workflow` |
-| `Branch-Protection` check score = 0 | **MEDIUM** | `Supply Chain — Weak Upstream Controls` |
-| `Code-Review` check score = 0 | **MEDIUM** | `Supply Chain — Weak Upstream Controls` |
-| `Signed-Releases` check score = 0 | **LOW** | `Supply Chain — Unsigned Releases` |
+| Condition                            | Severity   | Category                                     |
+| ------------------------------------ | ---------- | -------------------------------------------- |
+| Aggregate score < 3                  | **HIGH**   | `Supply Chain — Low Scorecard Rating`        |
+| Aggregate score 3–5                  | **MEDIUM** | `Supply Chain — Low Scorecard Rating`        |
+| `Maintained` check score = 0         | **HIGH**   | `Supply Chain — Unmaintained Dependency`     |
+| `Dangerous-Workflow` check score < 5 | **HIGH**   | `Supply Chain — Dangerous Upstream Workflow` |
+| `Branch-Protection` check score = 0  | **MEDIUM** | `Supply Chain — Weak Upstream Controls`      |
+| `Code-Review` check score = 0        | **MEDIUM** | `Supply Chain — Weak Upstream Controls`      |
+| `Signed-Releases` check score = 0    | **LOW**    | `Supply Chain — Unsigned Releases`           |
 
 **Include in the report:**
 
@@ -228,6 +228,7 @@ Present findings in this format:
 For each finding:
 
 **[SEVERITY] Title**
+
 - **File:** `<file path>:<line>`
 - **Category:** `<Infrastructure|Application|CI/CD|Supply Chain> — <subcategory>`
 - **Issue:** `<clear description of the vulnerability>`
@@ -235,6 +236,7 @@ For each finding:
 - **Recommendation:** `<specific fix with code example if applicable>`
 
 Severity levels:
+
 - **CRITICAL**: Exploitable vulnerability with immediate risk (e.g., credential exposure, open admin access)
 - **HIGH**: Security weakness likely to be exploitable (e.g., missing auth check, SQL injection)
 - **MEDIUM**: Defense-in-depth gap or best practice violation (e.g., overly broad IAM, missing encryption)
