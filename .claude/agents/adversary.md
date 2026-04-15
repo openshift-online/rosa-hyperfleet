@@ -147,7 +147,7 @@ Only evaluate dependencies that are **new to the project** — i.e., they appear
 Use the REST API (no authentication required):
 
 ```bash
-curl -s "https://api.securityscorecards.dev/projects/github.com/{owner}/{repo}"
+curl -s "https://api.securityscorecards.dev/projects/github/{owner}/{repo}"
 ```
 
 **Mapping packages to repositories:**
