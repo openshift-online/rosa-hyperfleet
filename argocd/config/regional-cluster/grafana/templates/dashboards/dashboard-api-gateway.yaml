@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: grafana-dashboard-aws-external-services
+  name: grafana-dashboard-api-gateway
   namespace: {{ .Release.Namespace }}
   labels:
     grafana_dashboard: "1"

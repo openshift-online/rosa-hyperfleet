@@ -1,0 +1,6 @@
+apiVersion: v2
+name: cluster-cleanup
+description: CronJob to clean up hosted clusters older than 24 hours
+type: application
+version: 0.1.0
+appVersion: "1.0"

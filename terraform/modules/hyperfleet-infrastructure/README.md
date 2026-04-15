@@ -312,9 +312,7 @@ module "hyperfleet_infrastructure" {
 
 3. **Deploy Updated HyperFleet**:
 
-   ```bash
-   kubectl apply -f argocd/config/regional-cluster/hyperfleet-system/
-   ```
+   ArgoCD manages the HyperFleet charts (`hyperfleet-api-chart`, `hyperfleet-sentinel-chart`, `hyperfleet-adapter1-chart`). Sync the relevant ArgoCD applications after updating values.
 
 4. **Verify**:
    - Check pods are running: `kubectl get pods -n hyperfleet-system`
@@ -348,7 +346,7 @@ If issues occur, revert to in-cluster services:
 
 ## Related Documentation
 
-- [HyperFleet System Chart](../../../argocd/config/regional-cluster/hyperfleet-system/README.md) - Helm chart deployment and operational guide
+- [HyperFleet Adapter1 Chart](../../../argocd/config/regional-cluster/hyperfleet-adapter1-chart/README.md) - Cluster status reporting and adapter architecture
 - [Architecture Overview](../../../docs/README.md) - ROSA Regional Platform three-layer architecture
 - [AWS RDS Documentation](https://docs.aws.amazon.com/rds/)
 - [Amazon MQ Documentation](https://docs.aws.amazon.com/amazon-mq/)

@@ -116,7 +116,7 @@ An AWS feature that enables private connectivity between API Gateway and VPC res
 
 **No** — OCM, CS, and AMS are replaced by **CLM** (Cluster Lifecycle Manager), developed as part of the HyperFleet project. One CLM instance runs in each Regional Cluster as the single source of truth for cluster state.
 
-For CLM component details (hyperfleet-api, hyperfleet-sentinel, hyperfleet-adapter), see the [HyperFleet System chart](../argocd/config/regional-cluster/hyperfleet-system/README.md) and [HyperFleet Infrastructure module](../terraform/modules/hyperfleet-infrastructure/README.md).
+For CLM component details (hyperfleet-api, hyperfleet-sentinel, hyperfleet-adapter), see the [HyperFleet Adapter1 chart](../argocd/config/regional-cluster/hyperfleet-adapter1-chart/README.md) and [HyperFleet Infrastructure module](../terraform/modules/hyperfleet-infrastructure/README.md).
 
 ### Is this design without App-Interface in favor of ArgoCD?
 

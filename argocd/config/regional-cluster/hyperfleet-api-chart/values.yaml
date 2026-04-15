@@ -70,7 +70,6 @@ hyperfleet-api-chart:
     adapters:
       cluster:
         - adapter1
-        - adapter2
       nodepool:
         - adapter3
 

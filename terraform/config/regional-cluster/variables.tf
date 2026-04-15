@@ -202,7 +202,7 @@ variable "hyperfleet_db_deletion_protection" {
 variable "hyperfleet_mq_instance_type" {
   description = "Amazon MQ instance type for HyperFleet RabbitMQ broker"
   type        = string
-  default     = "mq.t3.micro"
+  default     = "mq.m5.large"
 }
 
 variable "hyperfleet_mq_deployment_mode" {

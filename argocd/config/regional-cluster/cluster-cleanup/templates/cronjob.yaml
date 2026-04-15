@@ -1,0 +1,133 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cluster-cleanup
+  namespace: {{ .Values.clusterCleanup.namespace }}
+spec:
+  schedule: {{ .Values.clusterCleanup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 600
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: hyperfleet-api-sa
+          containers:
+            - name: cleanup
+              image: {{ .Values.clusterCleanup.image.repository }}:{{ .Values.clusterCleanup.image.tag }}
+              env:
+                - name: MAX_AGE_HOURS
+                  value: {{ .Values.clusterCleanup.maxAgeHours | quote }}
+                - name: MAESTRO_NS
+                  value: {{ .Values.clusterCleanup.maestroNamespace }}
+                - name: MAESTRO_URL
+                  value: {{ .Values.clusterCleanup.maestroRestUrl }}
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.clusterCleanup.dbSecretName }}
+                      key: db.user
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.clusterCleanup.dbSecretName }}
+                      key: db.password
+                - name: PGHOST
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.clusterCleanup.dbSecretName }}
+                      key: db.host
+                - name: PGPORT
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.clusterCleanup.dbSecretName }}
+                      key: db.port
+                - name: PGDATABASE
+                  value: hyperfleet
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+
+                  # Install kubectl
+                  wget -qO /usr/local/bin/kubectl "https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl"
+                  chmod +x /usr/local/bin/kubectl
+
+                  echo "=== Cluster Cleanup - $(date -u) ==="
+                  echo "Removing clusters older than ${MAX_AGE_HOURS} hours"
+
+                  # Find clusters older than MAX_AGE_HOURS
+                  STALE_CLUSTERS=$(psql -tAF'|' -c "
+                    SELECT id, name
+                    FROM clusters
+                    WHERE deleted_at IS NULL
+                      AND created_time < NOW() - INTERVAL '${MAX_AGE_HOURS} hours';
+                  ")
+
+                  if [ -z "$STALE_CLUSTERS" ]; then
+                    echo "No stale clusters found. Nothing to do."
+                    exit 0
+                  fi
+
+                  echo "Found stale clusters:"
+                  echo "$STALE_CLUSTERS" | while IFS='|' read -r id name; do
+                    echo "  - $name ($id)"
+                  done
+
+                  # Find a maestro pod for CLI exec
+                  maestro_exec() {
+                    kubectl exec -n "$MAESTRO_NS" "$MAESTRO_POD" -c service -- /usr/local/bin/maestro "$@"
+                  }
+                  MAESTRO_POD=$(kubectl get pod -n "$MAESTRO_NS" -l app=maestro,component=maestro-server \
+                    --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+                  echo "Using maestro pod: $MAESTRO_POD"
+
+                  # Get all bundle IDs upfront
+                  ALL_BUNDLE_IDS=$(maestro_exec resourcebundle list --rest-url="$MAESTRO_URL" --size=200 -o json 2>/dev/null \
+                    | grep -o '"href": "/api/maestro/v1/resource-bundles/[^"]*"' \
+                    | sed 's|.*/||;s|"||g')
+
+                  # Delete each cluster and its resource bundles
+                  echo "$STALE_CLUSTERS" | while IFS='|' read -r id name; do
+                    echo ""
+                    echo "--- Cleaning up cluster: $name ($id) ---"
+
+                    # Step 1: Delete from clusters table
+                    psql -c "DELETE FROM clusters WHERE id = '$id';"
+                    echo "Deleted from clusters table"
+
+                    # Step 2: Delete from adapter_statuses table
+                    psql -c "DELETE FROM adapter_statuses WHERE resource_id = '$id';" 2>/dev/null || true
+                    echo "Deleted from adapter_statuses table"
+
+                    # Step 3: Delete matching resource bundles via maestro CLI
+                    echo "Cleaning up resource bundles..."
+                    DELETED_COUNT=0
+                    for bid in $ALL_BUNDLE_IDS; do
+                      DETAIL=$(maestro_exec resourcebundle get "$bid" --rest-url="$MAESTRO_URL" -o json 2>/dev/null) || continue
+                      if echo "$DETAIL" | grep -q "$id"; then
+                        echo "  Deleting bundle: $bid"
+                        maestro_exec resourcebundle delete "$bid" -y --rest-url="$MAESTRO_URL" --grpc-server-address=127.0.0.1:8090 2>&1 || echo "    WARN: failed to delete $bid"
+                        DELETED_COUNT=$((DELETED_COUNT + 1))
+                      fi
+                    done
+                    echo "  Deleted $DELETED_COUNT resource bundle(s)"
+                    echo "Done cleaning up cluster: $name"
+                  done
+
+                  echo ""
+                  echo "=== Cleanup complete ==="
+                  REMAINING=$(psql -tA -c "SELECT COUNT(*) FROM clusters WHERE deleted_at IS NULL;")
+                  echo "Remaining active clusters: $REMAINING"
+              resources:
+                requests:
+                  cpu: {{ .Values.clusterCleanup.resources.requests.cpu }}
+                  memory: {{ .Values.clusterCleanup.resources.requests.memory }}
+                limits:
+                  cpu: {{ .Values.clusterCleanup.resources.limits.cpu }}
+                  memory: {{ .Values.clusterCleanup.resources.limits.memory }}

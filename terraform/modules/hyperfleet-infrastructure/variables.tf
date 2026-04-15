@@ -109,7 +109,7 @@ variable "db_skip_final_snapshot" {
 variable "mq_instance_type" {
   description = "Amazon MQ broker instance type"
   type        = string
-  default     = "mq.t3.micro"
+  default     = "mq.m5.large"
 }
 
 variable "mq_deployment_mode" {

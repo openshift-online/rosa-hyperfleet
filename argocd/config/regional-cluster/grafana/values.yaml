@@ -66,6 +66,11 @@ grafana:
       mode: console
       level: info
 
+  # Load AWS_DEFAULT_REGION from the region ConfigMap (rendered from
+  # global.aws_region by ApplicationSet) for CloudWatch datasource provisioning.
+  envFromConfigMaps:
+    - name: grafana-region-env
+
   service:
     type: ClusterIP
     port: 80
@@ -94,15 +99,15 @@ grafana:
 
         # CloudWatch datasource — credentials supplied via EKS Pod Identity
         # (see terraform/config/regional-cluster/grafana.tf).
-        # defaultRegion: default resolves the region from EC2 instance metadata,
-        # so no per-region configuration change is needed.
+        # AWS_DEFAULT_REGION is injected via grafana-region-env ConfigMap
+        # (see templates/grafana-region-env.yaml) using global.aws_region.
         - name: CloudWatch
           type: cloudwatch
           access: proxy
           editable: false
           jsonData:
             authType: default
-            defaultRegion: default
+            defaultRegion: ${AWS_DEFAULT_REGION}
 
   resources:
     requests:
@@ -147,6 +152,12 @@ grafana:
       labelValue: "1"
       searchNamespace: grafana
       folderAnnotation: k8s-sidecar-target-directory
+      # k8s-sidecar 1.28.0 only supports basic auth for the reload call, which
+      # is disabled in this deployment. skipReload stops the sidecar from calling
+      # POST /api/admin/provisioning/dashboards/reload (which would 403).
+      # Grafana's built-in file provisioner polls the dashboard directory on its
+      # own interval and picks up changes without the explicit reload trigger.
+      skipReload: true
       provider:
         foldersFromFilesStructure: true
         allowUiUpdates: true

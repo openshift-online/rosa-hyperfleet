@@ -1,49 +1,20 @@
 .PHONY: help terraform-fmt terraform-init terraform-validate terraform-upgrade terraform-output-management terraform-output-regional helm-lint check-rendered-files ephemeral-provision ephemeral-teardown ephemeral-resync ephemeral-list ephemeral-shell ephemeral-bastion-rc ephemeral-bastion-mc ephemeral-port-forward-rc ephemeral-port-forward-mc ephemeral-port-forward-rc-all ephemeral-port-forward-mc-all ephemeral-e2e ephemeral-collect-logs int-shell int-bastion-rc int-bastion-mc int-port-forward-rc int-port-forward-mc int-port-forward-rc-all int-port-forward-mc-all int-e2e int-collect-logs check-docs pre-push
 
-# Default target
-help:
-	@echo "🛠️ Terraform Utilities:"
-	@echo "  terraform-fmt                         - Format all Terraform files"
-	@echo "  terraform-upgrade                     - Upgrade provider versions"
-	@echo "  terraform-output-management           - Get Terraform output for Management Cluster"
-	@echo "  terraform-output-regional             - Get Terraform output for Regional Cluster"
-	@echo ""
-	@echo "🧪 Validation & Testing:"
-	@echo "  pre-push                              - Run all CI validation checks (parallel)"
-	@echo "  terraform-validate                    - Check formatting and validate all Terraform configs"
-	@echo "  helm-lint                             - Lint all Helm charts"
-	@echo "  check-rendered-files                  - Verify deploy/ is up to date with config.yaml"
-	@echo "  check-docs                            - Check documentation formatting"
-	@echo ""
-	@echo "🔄 Ephemeral Environments (dev) — Lifecycle:"
-	@echo "  ephemeral-provision                   - Provision an ephemeral environment"
-	@echo "  ephemeral-teardown                    - Tear down an ephemeral environment"
-	@echo "  ephemeral-resync                      - Resync an ephemeral environment to your branch"
-	@echo "  ephemeral-list                        - List ephemeral environments"
-	@echo ""
-	@echo "🔧 Ephemeral Environments (dev) — Interacting:"
-	@echo "  ephemeral-shell                       - Interactive shell for Platform API access"
-	@echo "  ephemeral-bastion-rc                  - Connect to RC bastion in an ephemeral env"
-	@echo "  ephemeral-bastion-mc                  - Connect to MC bastion in an ephemeral env"
-	@echo "  ephemeral-port-forward-rc             - Create a port-forward session to RC service in an ephemeral env"
-	@echo "  ephemeral-port-forward-mc             - Create a port-forward session to MC service in an ephemeral env"
-	@echo "  ephemeral-port-forward-rc-all         - Automatically port forward all services for an RC in an ephemeral env"
-	@echo "  ephemeral-port-forward-mc-all         - Automatically port forward all services for an MC in an ephemeral env"
-	@echo "  ephemeral-e2e                         - Run e2e tests against an ephemeral env"
-	@echo "  ephemeral-collect-logs                - Collect kubernetes logs from an ephemeral env (CLUSTER=rc|mc, default: both)"
-	@echo ""
-	@echo "🔧 Integration Environment — Interacting:"
-	@echo "  int-shell                             - Interactive shell for Platform API access"
-	@echo "  int-bastion-rc                        - Connect to RC bastion in int env"
-	@echo "  int-bastion-mc                        - Connect to MC bastion in int env"
-	@echo "  int-port-forward-rc                   - Create a port-forward session to RC service in int env"
-	@echo "  int-port-forward-mc                   - Create a port-forward session to MC service in int env"
-	@echo "  int-port-forward-rc-all               - Automatically port forward all services for RC in int env"
-	@echo "  int-port-forward-mc-all               - Automatically port forward all services for MC in int env"
-	@echo "  int-e2e                               - Run e2e tests against int env"
-	@echo "  int-collect-logs                      - Collect kubernetes logs from int env (CLUSTER=rc|mc, default: both)"
-	@echo ""
-	@echo "  help                                  - Show this help message"
+# Default target — interactive fzf picker, falls back to formatted list
+help: ## Show this help message
+	@if command -v fzf >/dev/null 2>&1; then \
+		target=$$(grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | \
+			awk -F ':.*## ' '{printf "%-35s - %s\n", $$1, $$2}' | \
+			fzf --layout=reverse --prompt="make > " --header="Select a target to run" --no-sort | \
+			awk '{print $$1}'); \
+		if [ -n "$$target" ]; then \
+			echo "Running: make $$target"; \
+			$(MAKE) "$$target"; \
+		fi; \
+	else \
+		grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | \
+			awk -F ':.*## ' '{printf "  %-35s - %s\n", $$1, $$2}'; \
+	fi
 
 # Discover all directories containing Terraform files (excluding .terraform subdirectories)
 TERRAFORM_DIRS := $(shell find ./terraform -name "*.tf" -type f -not -path "*/.terraform/*" | xargs dirname | sort -u)
@@ -52,8 +23,7 @@ TERRAFORM_DIRS := $(shell find ./terraform -name "*.tf" -type f -not -path "*/.t
 # standalone child modules that declare provider configuration_aliases.
 TERRAFORM_ROOT_DIRS := $(shell find ./terraform/config -name "*.tf" -type f -not -path "*/.terraform/*" | xargs dirname | sort -u)
 
-# Format all Terraform files
-terraform-fmt:
+terraform-fmt: ## Format all Terraform files
 	@echo "🔧 Formatting Terraform files..."
 	@echo "$(TERRAFORM_DIRS)" | tr ' ' '\n' | xargs -P 8 -I{} sh -c ' \
 		echo "   Formatting $$1"; \
@@ -61,8 +31,7 @@ terraform-fmt:
 	' _ {}
 	@echo "✅ Terraform formatting complete"
 
-# Upgrade provider versions in all Terraform configurations
-terraform-upgrade:
+terraform-upgrade: ## Upgrade provider versions
 	@echo "🔧 Upgrading Terraform provider versions..."
 	@for dir in $(TERRAFORM_DIRS); do \
 		echo "   Upgrading $$dir"; \
@@ -70,10 +39,10 @@ terraform-upgrade:
 	done
 	@echo "✅ Terraform upgrade complete"
 
-terraform-output-management:
+terraform-output-management: ## Get Terraform output for Management Cluster
 	@cd terraform/config/management-cluster && terraform output -json
 
-terraform-output-regional:
+terraform-output-regional: ## Get Terraform output for Regional Cluster
 	@cd terraform/config/regional-cluster && terraform output -json
 
 
@@ -93,11 +62,10 @@ terraform-init:
 	' _ {} || exit 1
 	@echo "✅ Terraform initialization complete"
 
-# Check formatting and validate all Terraform configurations
 # Note: fmt runs on all dirs (modules + configs), but validate only runs on
 # root configs because child modules with provider configuration_aliases
 # cannot be validated in isolation.
-terraform-validate: terraform-init
+terraform-validate: terraform-init ## Check formatting and validate all Terraform configs
 	@echo "🔍 Checking Terraform formatting..."
 	@echo "$(TERRAFORM_DIRS)" | tr ' ' '\n' | xargs -P 8 -I{} sh -c ' \
 		echo "   Checking formatting in $$1"; \
@@ -119,11 +87,10 @@ terraform-validate: terraform-init
 		exit 1; }
 	@echo "✅ Terraform validation complete"
 
-# Lint all Helm charts under argocd/config/
 # Global values (aws_region, environment, cluster_type) are injected by the
 # ApplicationSet at deploy time, so we supply stubs here for linting.
 HELM_LINT_SET := --set global.aws_region=us-east-1 --set global.environment=lint --set global.cluster_type=lint
-helm-lint:
+helm-lint: ## Lint all Helm charts
 	@echo "🔍 Linting Helm charts..."
 	@failed=false; \
 	for chart_dir in $$(find argocd/config -name "Chart.yaml" -exec dirname {} \; | sort); do \
@@ -138,8 +105,7 @@ helm-lint:
 	fi
 	@echo "✅ Helm lint complete"
 
-# Verify rendered files in deploy/ are up to date with config.yaml
-check-rendered-files:
+check-rendered-files: ## Verify deploy/ is up to date with config.yaml
 	@echo "🔍 Rendering deploy/ from config.yaml..."
 	@uv run --no-cache scripts/render.py
 	@echo "Checking for uncommitted changes in deploy/..."
@@ -161,14 +127,12 @@ check-rendered-files:
 	@echo "🔍 Checking config documentation..."
 	@uv run --no-cache scripts/render.py --check-docs
 
-# Check documentation formatting with prettier
-check-docs:
+check-docs: ## Check documentation formatting
 	@echo "🔍 Checking documentation formatting..."
 	@npx --no-install prettier --check '**/*.md'
 	@echo "✅ Documentation formatting check complete"
 
-# Run all CI validation checks in parallel
-pre-push:
+pre-push: ## Run all CI validation checks (parallel)
 	@echo "🚀 Running all CI validation checks..."
 	@echo ""
 	@echo "Formatting Terraform files..."
@@ -187,44 +151,44 @@ pre-push:
 REPO   ?= openshift-online/rosa-regional-platform
 BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 
-ephemeral-provision:
+ephemeral-provision: ## Provision an ephemeral environment
 	@ID="$(ID)" REPO="$(REPO)" BRANCH="$(if $(filter command line,$(origin BRANCH)),$(BRANCH),)" \
 		./scripts/dev/ephemeral-env.sh provision
 
-ephemeral-teardown:
+ephemeral-teardown: ## Tear down an ephemeral environment
 	@ID="$(ID)" ./scripts/dev/ephemeral-env.sh teardown
 
-ephemeral-resync:
+ephemeral-resync: ## Resync an ephemeral environment to your branch
 	@ID="$(ID)" ./scripts/dev/ephemeral-env.sh resync
 
-ephemeral-list:
+ephemeral-list: ## List ephemeral environments
 	@./scripts/dev/ephemeral-env.sh list
 
-ephemeral-shell:
+ephemeral-shell: ## Interactive shell for Platform API access (ephemeral)
 	@ID="$(ID)" ./scripts/dev/ephemeral-env.sh shell
 
-ephemeral-bastion-rc:
+ephemeral-bastion-rc: ## Connect to RC bastion in an ephemeral env
 	@ID="$(ID)" ./scripts/dev/ephemeral-env.sh bastion --cluster-type regional
 
-ephemeral-bastion-mc:
+ephemeral-bastion-mc: ## Connect to MC bastion in an ephemeral env
 	@ID="$(ID)" ./scripts/dev/ephemeral-env.sh bastion --cluster-type management
 
-ephemeral-port-forward-rc:
+ephemeral-port-forward-rc: ## Port-forward to RC service in an ephemeral env
 	@ID="$(ID)" ./scripts/dev/ephemeral-env.sh port-forward --cluster-type regional
 
-ephemeral-port-forward-mc:
+ephemeral-port-forward-mc: ## Port-forward to MC service in an ephemeral env
 	@ID="$(ID)" ./scripts/dev/ephemeral-env.sh port-forward --cluster-type management
 
-ephemeral-port-forward-rc-all:
+ephemeral-port-forward-rc-all: ## Port-forward all RC services in an ephemeral env
 	@ID="$(ID)" ./scripts/dev/ephemeral-env.sh port-forward --cluster-type regional --all
 
-ephemeral-port-forward-mc-all:
+ephemeral-port-forward-mc-all: ## Port-forward all MC services in an ephemeral env
 	@ID="$(ID)" ./scripts/dev/ephemeral-env.sh port-forward --cluster-type management --all
 
-ephemeral-e2e:
+ephemeral-e2e: ## Run e2e tests against an ephemeral env
 	@ID="$(ID)" E2E_REF="$(or $(E2E_REF),main)" E2E_REPO="$(E2E_REPO)" ./scripts/dev/ephemeral-env.sh e2e
 
-ephemeral-collect-logs:
+ephemeral-collect-logs: ## Collect logs from an ephemeral env (CLUSTER=rc|mc)
 	@ID="$(ID)" ./scripts/dev/ephemeral-env.sh collect-logs $(CLUSTER)
 
 # =============================================================================
@@ -233,29 +197,29 @@ ephemeral-collect-logs:
 # Thin wrappers around scripts/dev/int-env.sh.
 # Uses AWS profiles with SAML auth (via rosa-regional-platform-internal).
 
-int-shell:
+int-shell: ## Interactive shell for Platform API access (int)
 	@./scripts/dev/int-env.sh shell
 
-int-bastion-rc:
+int-bastion-rc: ## Connect to RC bastion in int env
 	@./scripts/dev/int-env.sh bastion --cluster-type regional
 
-int-bastion-mc:
+int-bastion-mc: ## Connect to MC bastion in int env
 	@./scripts/dev/int-env.sh bastion --cluster-type management
 
-int-port-forward-rc:
+int-port-forward-rc: ## Port-forward to RC service in int env
 	@./scripts/dev/int-env.sh port-forward --cluster-type regional
 
-int-port-forward-mc:
+int-port-forward-mc: ## Port-forward to MC service in int env
 	@./scripts/dev/int-env.sh port-forward --cluster-type management
 
-int-port-forward-rc-all:
+int-port-forward-rc-all: ## Port-forward all RC services in int env
 	@./scripts/dev/int-env.sh port-forward --cluster-type regional --all
 
-int-port-forward-mc-all:
+int-port-forward-mc-all: ## Port-forward all MC services in int env
 	@./scripts/dev/int-env.sh port-forward --cluster-type management --all
 
-int-e2e:
+int-e2e: ## Run e2e tests against int env
 	@E2E_REF="$(or $(E2E_REF),main)" E2E_REPO="$(E2E_REPO)" ./scripts/dev/int-env.sh e2e
 
-int-collect-logs:
+int-collect-logs: ## Collect logs from int env (CLUSTER=rc|mc)
 	@./scripts/dev/int-env.sh collect-logs $(CLUSTER)

@@ -1,0 +1,26 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cluster-cleanup-maestro-exec
+  namespace: {{ .Values.clusterCleanup.maestroNamespace }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cluster-cleanup-maestro-exec
+  namespace: {{ .Values.clusterCleanup.maestroNamespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cluster-cleanup-maestro-exec
+subjects:
+  - kind: ServiceAccount
+    name: hyperfleet-api-sa
+    namespace: {{ .Values.clusterCleanup.namespace }}

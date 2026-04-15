@@ -60,7 +60,9 @@ Each module has its own README with usage, inputs, outputs, and architecture:
 
 ### ArgoCD Helm Chart Documentation
 
-- [`hyperfleet-system`](../argocd/config/regional-cluster/hyperfleet-system/README.md) - HyperFleet components (API, Sentinel, Adapter)
+- [`hyperfleet-api-chart`](../argocd/config/regional-cluster/hyperfleet-api-chart/) - HyperFleet API (CLM)
+- [`hyperfleet-sentinel-chart`](../argocd/config/regional-cluster/hyperfleet-sentinel-chart/) - HyperFleet Sentinel
+- [`hyperfleet-adapter1-chart`](../argocd/config/regional-cluster/hyperfleet-adapter1-chart/README.md) - HyperFleet Adapter (cluster status reporting)
 - [`platform-api`](../argocd/config/regional-cluster/platform-api/README.md) - Platform API with Envoy sidecar
 - [`thanos`](../argocd/config/regional-cluster/thanos/) - Thanos platform resources (CRs, S3 secret, Pod Identity SA, ALB TargetGroupBinding) plus app-of-apps Application that installs the upstream operator
 - [`thanos-operator`](../argocd/config/regional-cluster/thanos-operator/) - Thin wrapper chart that delivers the Thanos operator via OCI-packaged Helm subchart

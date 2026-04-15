@@ -1,0 +1,31 @@
+# Injected by ApplicationSet at runtime — defaults here for helm lint only
+global:
+  cluster_name: ""
+  aws_region: ""
+
+clusterCleanup:
+  namespace: hyperfleet-system
+
+  schedule: "0 */6 * * *"
+
+  image:
+    repository: postgres
+    tag: "16-alpine"
+
+  # Maximum age in hours before a cluster is cleaned up
+  maxAgeHours: 24
+
+  # Database secret (created by hyperfleet-api SecretProviderClass)
+  dbSecretName: hyperfleet-api-db-credentials
+
+  # Maestro gRPC service for resource bundle cleanup
+  maestroNamespace: maestro-server
+  maestroRestUrl: http://maestro-http.maestro-server.svc.cluster.local:8080
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi

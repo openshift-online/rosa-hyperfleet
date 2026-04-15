@@ -25,4 +25,6 @@ spec:
         memory: {{ .Values.query.frontend.resources.requests.memory }}
       limits:
         memory: {{ .Values.query.frontend.resources.limits.memory }}
+    additionalArgs:
+      - "--tracing.config="
 {{- end }}

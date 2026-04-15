@@ -478,7 +478,7 @@ spec:
                   && resources.hostedCluster.statusFeedback.values.exists(v, has(v.name) && v.name == "degradedCondition")
                   ? (resources.hostedCluster.statusFeedback.values.filter(v, v.name == "degradedCondition")[0].fieldValue.string == "False"
                     ? "True" : "False")
-                  : "Unknown"
+                  : "False"
               reason:
                 expression: |
                   has(resources.hostedCluster) && has(resources.hostedCluster.statusFeedback)
@@ -486,7 +486,7 @@ spec:
                   && resources.hostedCluster.statusFeedback.values.exists(v, has(v.name) && v.name == "degradedCondition")
                   ? (resources.hostedCluster.statusFeedback.values.filter(v, v.name == "degradedCondition")[0].fieldValue.string == "False"
                     ? "NotDegraded" : "HostedClusterDegraded")
-                  : "ConditionNotFound"
+                  : "StatusNotReady"
               message:
                 expression: |
                   has(resources.hostedCluster) && has(resources.hostedCluster.statusFeedback)
@@ -495,7 +495,7 @@ spec:
                   ? (resources.hostedCluster.statusFeedback.values.filter(v, v.name == "degradedCondition")[0].fieldValue.string == "False"
                     ? "HostedCluster is healthy"
                     : "HostedCluster is degraded")
-                  : "Degraded condition not yet reported"
+                  : "Waiting for HostedCluster status feedback"
 
             - type: "Available"
               status:
@@ -504,7 +504,7 @@ spec:
                   && has(resources.hostedCluster.statusFeedback.values)
                   && resources.hostedCluster.statusFeedback.values.exists(v, has(v.name) && v.name == "availableCondition")
                   ? resources.hostedCluster.statusFeedback.values.filter(v, v.name == "availableCondition")[0].fieldValue.string
-                  : "Unknown"
+                  : "False"
               reason:
                 expression: |
                   has(resources.hostedCluster) && has(resources.hostedCluster.statusFeedback)
@@ -512,7 +512,7 @@ spec:
                   && resources.hostedCluster.statusFeedback.values.exists(v, has(v.name) && v.name == "availableCondition")
                   ? (resources.hostedCluster.statusFeedback.values.filter(v, v.name == "availableCondition")[0].fieldValue.string == "True"
                     ? "HostedClusterAvailable" : "HostedClusterNotAvailable")
-                  : "ConditionNotFound"
+                  : "StatusNotReady"
               message:
                 expression: |
                   has(resources.hostedCluster) && has(resources.hostedCluster.statusFeedback)
@@ -521,7 +521,7 @@ spec:
                   ? (resources.hostedCluster.statusFeedback.values.filter(v, v.name == "availableCondition")[0].fieldValue.string == "True"
                     ? "HostedCluster is available"
                     : "HostedCluster not yet available")
-                  : "HostedCluster Available condition not yet reported"
+                  : "Waiting for HostedCluster status feedback"
 
           # Use CEL expression for numeric fields to preserve type (not Go template which outputs strings)
           observed_generation:
