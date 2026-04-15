@@ -194,22 +194,22 @@ Logs expire after 7 days. If the failure is older than that, the S3 objects may 
 
 Use `git show <commit>:<path>` (or Read for nightly/main) to understand the failing code. Key CI files:
 
-| File                                | Purpose                                       |
-| ----------------------------------- | --------------------------------------------- |
-| `ci/check-docs.sh`                  | Checks markdown formatting with Prettier      |
-| `ci/pre-merge.py`                   | Orchestrates ephemeral provision and teardown |
-| `ci/e2e-tests.sh`                   | Runs the e2e test suite                       |
-| `ci/e2e-platform-api-test.sh`       | Platform API specific e2e tests               |
-| `ci/nightly.sh`                     | Entry point for nightly jobs                  |
-| `ci/ephemerallib/ephemeral.py`      | Ephemeral environment lifecycle               |
-| `ci/ephemerallib/pipeline.py`       | Pipeline provisioner management               |
-| `ci/ephemerallib/codebuild_logs.py` | CodeBuild log collection                      |
-| `ci/ephemerallib/aws.py`            | AWS utility functions                         |
-| `ci/ephemerallib/git.py`            | Git operations for CI branches                |
-| `terraform/modules/`                | Terraform modules (for provision failures)    |
-| `argocd/`                           | ArgoCD configs (for deployment/sync failures) |
-| `scripts/buildspec/`                | CodeBuild buildspec scripts                   |
-| `scripts/pipeline-common/`          | Shared pipeline helper scripts                |
+| File                                      | Purpose                                       |
+| ----------------------------------------- | --------------------------------------------- |
+| `ci/check-docs.sh`                        | Checks markdown formatting with Prettier      |
+| `ci/ephemeral-provider/main.py`           | Orchestrates ephemeral provision and teardown |
+| `ci/e2e-tests.sh`                         | Runs the e2e test suite                       |
+| `ci/e2e-platform-api-test.sh`             | Platform API specific e2e tests               |
+| `ci/nightly.sh`                           | Entry point for nightly jobs                  |
+| `ci/ephemeral-provider/orchestrator.py`   | Ephemeral environment lifecycle               |
+| `ci/ephemeral-provider/pipeline.py`       | Pipeline provisioner management               |
+| `ci/ephemeral-provider/codebuild_logs.py` | CodeBuild log collection                      |
+| `ci/ephemeral-provider/aws.py`            | AWS utility functions                         |
+| `ci/ephemeral-provider/git.py`            | Git operations for CI branches                |
+| `terraform/modules/`                      | Terraform modules (for provision failures)    |
+| `argocd/`                                 | ArgoCD configs (for deployment/sync failures) |
+| `scripts/buildspec/`                      | CodeBuild buildspec scripts                   |
+| `scripts/pipeline-common/`                | Shared pipeline helper scripts                |
 
 ## Step 7: Provide Diagnosis
 

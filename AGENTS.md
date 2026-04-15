@@ -5,7 +5,7 @@ This file provides guidance to AI agents when working with code in this reposito
 # General Guidelines
 
 - Use MCPs where appropriate.
-- Always use the architect agent to review changes to `docs/architecture/`, `docs/design-decisions/`, or any code changes.
+- Always use the architect agent to review changes to `docs/design/` or any code changes.
 
 # Meta Rules
 

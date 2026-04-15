@@ -46,10 +46,12 @@ The **ROSA Regional Platform** is a strategic redesign of Red Hat OpenShift Serv
 ### Agent Usage
 
 - **ALWAYS use the architect agent** for changes to:
-  - `docs/architecture/`
-  - `docs/design-decisions/`
+  - `docs/design/`
   - Any architectural decisions or patterns
-- **Use code-reviewer agent** for security-sensitive code (IAM, networking, etc.)
+- **Use adversary agent** for security review of code changes (supply chain, infrastructure, application security)
+- **Use code-reviewer agent** for code quality review
+- **Use ci-troubleshooter agent** for diagnosing CI/CD failures
+- **Use documentation-updater agent** for reviewing documentation freshness
 
 ### Architecture Patterns
 
@@ -61,7 +63,7 @@ The **ROSA Regional Platform** is a strategic redesign of Red Hat OpenShift Serv
 
 ### Key Design Decisions
 
-- **Bootstrap Strategy**: Use ECS Fargate for private EKS cluster bootstrap (see `docs/design-decisions/001-fully-private-eks-bootstrap.md`)
+- **Bootstrap Strategy**: Use ECS Fargate for private EKS cluster bootstrap (see `docs/design/fully-private-eks-bootstrap.md`)
 - **No Public APIs**: All EKS clusters are fully private with VPC-only access
 - **ArgoCD Self-Management**: Clusters manage their own ArgoCD installations via GitOps
 
@@ -78,14 +80,17 @@ argocd/
 │   ├── management-cluster/   # MC application templates
 │   ├── regional-cluster/     # RC application templates
 │   └── shared/              # Shared configurations
-├── applicationset/          # ApplicationSet templates
-├── rendered/                # Generated values and manifests
-└── scripts/                 # Rendering and utility scripts
+└── README.md
 
 docs/
 ├── README.md                 # Architecture overview
 ├── FAQ.md                   # Architecture decisions Q&A
-└── design-decisions/        # ADRs (Architecture Decision Records)
+├── design/                  # ADRs (Architecture Decision Records)
+├── environment-provisioning.md
+├── hostedcluster-provisioning.md
+├── development-environment.md
+├── adding-component-pre-merge.md
+└── sop/                     # Standard operating procedures
 ```
 
 ### Development Workflow
@@ -105,7 +110,7 @@ docs/
 
 #### For New Regions
 
-1. Add region config to `config/environments/` and render with `uv run scripts/render.py`
+1. Add region config to `config/<environment>/` and render with `uv run scripts/render.py`
 2. Bootstrap the central pipeline (see `docs/environment-provisioning.md`)
 3. ArgoCD bootstrap handles core service deployment
 4. Management Clusters auto-provision as needed
@@ -137,6 +142,6 @@ docs/
 - `Makefile` - Standardized provisioning commands
 - `bootstrap-argocd.sh` - ECS Fargate bootstrap script
 - `argocd/config/shared/argocd/` - ArgoCD self-management Helm chart
-- Design decisions follow ADR format in `docs/design-decisions/`
+- Design decisions follow ADR format in `docs/design/`
 
 Include AGENTS.md

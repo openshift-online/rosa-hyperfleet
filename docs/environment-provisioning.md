@@ -68,25 +68,22 @@ aws ssm put-parameter --name "/infra/${ENV}/${REGION}/mc01/account_id" \
 
 ### 2.2 Add the environment configuration
 
-Create a new file `config/environments/<environment>.config.yaml`. This inherits defaults from `config/defaults.config.yaml` — override only what differs.
+Create a new region config file at `config/<environment>/<region>.yaml`. This inherits defaults from `config/defaults.yaml` — override only what differs. Environment-level defaults can be set in `config/<environment>/defaults.yaml`.
 
 ```yaml
-# config/environments/my-env.config.yaml
-region_deployments:
-  us-east-1:
-    management_clusters:
-      mc01: {}
+# config/my-env/us-east-1.yaml
+management_clusters:
+  mc01: {}
 ```
 
 To enable the bastion:
 
 ```yaml
-region_deployments:
-  us-east-1:
-    terraform_vars:
-      enable_bastion: true
-    management_clusters:
-      mc01: {}
+# config/my-env/us-east-1.yaml
+terraform_vars:
+  enable_bastion: true
+management_clusters:
+  mc01: {}
 ```
 
 ### 2.3 Render and commit
