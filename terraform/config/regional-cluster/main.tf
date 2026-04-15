@@ -247,11 +247,25 @@ module "hyperfleet_infrastructure" {
 # =============================================================================
 
 # =============================================================================
-# CloudTrail Module (FedRAMP AU-12)
+# CloudTrail Module (FedRAMP AU-12, US regions only)
 # =============================================================================
 
 module "cloudtrail" {
+  count  = startswith(var.region, "us-") ? 1 : 0
   source = "../../modules/cloudtrail"
+
+  cluster_id = var.regional_id
+}
+
+# =============================================================================
+# Continuous Monitoring Module (FedRAMP CA-07 / SI-03)
+#
+# Includes GuardDuty with EKS Runtime Monitoring and Malware Protection,
+# AWS Config with managed rules, and GuardDuty→Security Hub integration.
+# =============================================================================
+
+module "continuous_monitoring" {
+  source = "../../modules/continuous-monitoring"
 
   cluster_id = var.regional_id
 }
