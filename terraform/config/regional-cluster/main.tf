@@ -247,13 +247,29 @@ module "hyperfleet_infrastructure" {
 # =============================================================================
 
 # =============================================================================
-# CloudTrail Module (FedRAMP AU-12)
+# CloudTrail Module (FedRAMP AU-12, US regions only)
 # =============================================================================
 
 module "cloudtrail" {
+  count  = startswith(var.region, "us-") ? 1 : 0
   source = "../../modules/cloudtrail"
 
   cluster_id = var.regional_id
+}
+
+# =============================================================================
+# Vulnerability Scanning Module (FedRAMP RA-05 / SI-02)
+# =============================================================================
+
+module "vulnerability_scanning" {
+  source = "../../modules/vulnerability-scanning"
+
+  cluster_id                = var.regional_id
+  security_alerts_topic_arn = var.vulnerability_alerts_topic_arn
+
+  # Amazon Inspector v2 is not available in all AWS regions.
+  # Disable for non-US regions that do not support Inspector v2.
+  enable_inspector = can(regex("^(us|us-gov)-", var.region)) ? true : false
 }
 
 module "thanos_infrastructure" {

@@ -288,3 +288,9 @@ variable "thanos_service_account" {
   default     = "thanos-operator"
 }
 
+
+variable "vulnerability_alerts_topic_arn" {
+  description = "ARN of the SNS topic for Inspector vulnerability finding alerts (FedRAMP RA-05/SI-02). Typically the output of the security-monitoring module."
+  type        = string
+  default     = ""
+}
