@@ -293,4 +293,9 @@ variable "vulnerability_alerts_topic_arn" {
   description = "ARN of the SNS topic for Inspector vulnerability finding alerts (FedRAMP RA-05/SI-02). Typically the output of the security-monitoring module."
   type        = string
   default     = ""
+
+  validation {
+    condition     = var.vulnerability_alerts_topic_arn == "" || can(regex("^arn:[a-z0-9-]+:sns:[a-z0-9-]+:[0-9]{12}:.+$", var.vulnerability_alerts_topic_arn))
+    error_message = "vulnerability_alerts_topic_arn must be an empty string or a valid SNS ARN (e.g. arn:aws:sns:us-east-1:123456789012:my-topic)."
+  }
 }
