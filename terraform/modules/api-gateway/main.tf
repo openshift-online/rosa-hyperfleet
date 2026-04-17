@@ -153,7 +153,8 @@ resource "aws_cloudwatch_log_group" "api_gateway_access" {
   }
 
   lifecycle {
-    prevent_destroy = true
+    # NOTE: prevent_destroy breaks ephemeral environment teardown
+    # prevent_destroy = true
   }
 }
 
