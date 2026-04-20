@@ -39,3 +39,25 @@ For local development and testing, use the ephemeral workflow to provision a sho
 CI is managed through the [OpenShift CI](https://docs.ci.openshift.org/) system (Prow + ci-operator). The job configuration lives in [openshift/release](https://github.com/openshift/release/tree/master/ci-operator/config/openshift-online/rosa-regional-platform).
 
 For the list of jobs, how to trigger them, AWS credentials setup, and local execution, see [ci/README.md](ci/README.md).
+
+## Usage
+
+### Deploying a Region
+
+Use the CI/CD pipeline to provision infrastructure for a new region:
+
+1. Create a region configuration in the appropriate environment directory
+2. Submit a pull request — the pipeline validates and plans changes
+3. On merge, the pipeline applies the Terraform configuration
+
+### Local Development
+
+For local testing with ephemeral environments:
+
+```bash
+# Reserve an ephemeral namespace
+bonfire namespace reserve
+
+# Deploy to the namespace
+make deploy NAMESPACE=<namespace>
+```
