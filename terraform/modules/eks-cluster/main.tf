@@ -12,7 +12,7 @@
 
 resource "aws_cloudwatch_log_group" "eks_cluster" {
   name              = "/aws/eks/${local.cluster_id}/cluster"
-  retention_in_days = 30
+  retention_in_days = local.log_retention_days
 }
 
 # -----------------------------------------------------------------------------
