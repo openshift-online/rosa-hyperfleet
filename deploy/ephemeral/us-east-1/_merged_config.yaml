@@ -58,6 +58,12 @@ regional_cluster:
   # @doc regional_cluster.enable_cloudtrail Enable CloudTrail audit logging (FedRAMP AU-12). Off by default; enable for environments requiring compliance.
   # @used-by regional_cluster.enable_cloudtrail pipeline-regional-cluster-inputs/terraform.json.j2
   enable_cloudtrail: false
+  # @doc regional_cluster.enable_pagerduty Enable PagerDuty service provisioning for the region.
+  # @used-by regional_cluster.enable_pagerduty pipeline-regional-cluster-inputs/terraform.json.j2
+  enable_pagerduty: true
+  # @doc regional_cluster.pagerduty_escalation_policy_id PagerDuty escalation policy ID for regional services.
+  # @used-by regional_cluster.pagerduty_escalation_policy_id pipeline-regional-cluster-inputs/terraform.json.j2
+  pagerduty_escalation_policy_id: "P5KE444"
   # @doc regional_cluster.node_instance_types EC2 instance types for regional cluster nodes.
   # @used-by regional_cluster.node_instance_types pipeline-regional-cluster-inputs/terraform.json.j2
   node_instance_types: ["t3.medium", "t3a.medium"]

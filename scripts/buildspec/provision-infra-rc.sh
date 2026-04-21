@@ -23,6 +23,22 @@ aws configure set aws_session_token     "$_CENTRAL_AWS_SESSION_TOKEN"     --prof
 aws configure set region                "${TARGET_REGION}"                --profile central
 export TF_VAR_central_aws_profile="central"
 
+# Fetch PagerDuty API token from Secrets Manager (central account, us-east-1)
+# But only if we are enabling PD - no need to fetch the secret otherwise
+PD_ENABLED="  PagerDuty Enabled: false"
+_RAW_PD=$(jq -r '.enable_pagerduty // false' "$DEPLOY_CONFIG_FILE")
+if [ "$_RAW_PD" == "true" ] || [ "$_RAW_PD" == "1" ]; then
+    export TF_VAR_enable_pagerduty="true"
+    export TF_VAR_pagerduty_escalation_policy_id=$(jq -r '.pagerduty_escalation_policy_id // ""' "$DEPLOY_CONFIG_FILE")
+    PAGERDUTY_TOKEN=$(aws secretsmanager get-secret-value \
+        --secret-id "pagerduty/service-account" \
+        --region us-east-1 \
+        --query SecretString \
+        --output text)
+    export PAGERDUTY_TOKEN
+    PD_ENABLED=$(printf "  PagerDuty Enabled: true\n    - PagerDuty token loaded from Secrets Manager\n  Escalation Policy ID: %s" "$TF_VAR_pagerduty_escalation_policy_id")
+fi
+
 # Assume target account role for both state and resource operations
 use_mc_account
 echo ""
@@ -112,6 +128,7 @@ echo "  Environment Domain: ${TF_VAR_environment_domain:-<not set>}"
 echo "  Environment Hosted Zone ID: ${TF_VAR_environment_hosted_zone_id:-<not set>}"
 echo "  Regional ID: $TF_VAR_regional_id"
 echo "  Environment: $TF_VAR_environment"
+echo "$PD_ENABLED"
 echo ""
 
 export ENVIRONMENT="${ENVIRONMENT:-staging}"
