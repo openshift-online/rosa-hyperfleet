@@ -100,6 +100,17 @@ module "hypershift_oidc" {
 }
 
 # =============================================================================
+# CloudTrail Module
+# =============================================================================
+
+module "cloudtrail" {
+  source = "../../modules/cloudtrail"
+
+  cluster_id  = var.management_id
+  environment = var.environment
+}
+
+# =============================================================================
 # Prometheus Remote Write (MC -> RC metrics forwarding via API Gateway)
 # =============================================================================
 

@@ -59,6 +59,22 @@ variable "cost_center" {
 }
 
 # =============================================================================
+# PIV/CAC Federation Variables
+# =============================================================================
+
+variable "idp_saml_metadata_xml" {
+  description = "SAML 2.0 metadata XML from the agency PIV/CAC identity provider (e.g. AD FS or Okta). Leave empty to disable PIV/CAC federation."
+  type        = string
+  default     = ""
+  sensitive   = true
+
+  validation {
+    condition     = var.idp_saml_metadata_xml == "" || trimspace(var.idp_saml_metadata_xml) != ""
+    error_message = "idp_saml_metadata_xml must be empty to disable PIV/CAC federation or contain valid SAML XML (whitespace-only is not allowed)."
+  }
+}
+
+# =============================================================================
 # ArgoCD Bootstrap Configuration Variables
 # =============================================================================
 

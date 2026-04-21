@@ -8,8 +8,7 @@ variable "cluster_id" {
   }
 }
 
-variable "force_destroy" {
-  description = "Allow the CloudTrail S3 bucket to be destroyed even if it contains objects. Set to true only for ephemeral/CI environments; leave false for production."
-  type        = bool
-  default     = false
+variable "environment" {
+  description = "Deployment environment name (e.g. 'ephemeral', 'integration', 'production'). The S3 bucket force_destroy is enabled only for ephemeral environments."
+  type        = string
 }

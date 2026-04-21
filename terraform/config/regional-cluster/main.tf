@@ -250,19 +250,32 @@ module "hyperfleet_infrastructure" {
 }
 
 # =============================================================================
-# Thanos Infrastructure Module (Observability)
-# =============================================================================
-
-# =============================================================================
-# CloudTrail Module (FedRAMP AU-12)
+# CloudTrail Module
 # =============================================================================
 
 module "cloudtrail" {
   source = "../../modules/cloudtrail"
 
-  cluster_id    = var.regional_id
-  force_destroy = var.environment == "ephemeral"
+  cluster_id  = var.regional_id
+  environment = var.environment
 }
+
+# =============================================================================
+# PIV/CAC Federation Module (FedRAMP IA-02(12) / IA-08(01))
+# =============================================================================
+
+module "piv_federation" {
+  count  = trimspace(var.idp_saml_metadata_xml) != "" && startswith(var.region, "us-") ? 1 : 0
+  source = "../../modules/piv-federation"
+
+  cluster_id            = var.regional_id
+  eks_cluster_name      = module.regional_cluster.cluster_name
+  idp_saml_metadata_xml = var.idp_saml_metadata_xml
+}
+
+# =============================================================================
+# Thanos Infrastructure Module (Observability)
+# =============================================================================
 
 module "thanos_infrastructure" {
   source = "../../modules/thanos-infrastructure"
