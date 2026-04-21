@@ -22,6 +22,15 @@ rosa-regional-platform/
     └── modules/                      # Reusable Terraform modules
 ```
 
+## Quick Start
+
+```bash
+make help                     # Show all available targets
+make terraform-validate       # Validate Terraform configurations
+make helm-lint                # Lint Helm charts
+make ephemeral-provision      # Provision ephemeral dev environment
+```
+
 ## Getting Started
 
 ### Pipeline-Based Provisioning (CI/CD)
