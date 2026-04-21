@@ -9,6 +9,8 @@
   "alias": "regional-us-east-1",
   "enable_bastion": true,
   "enable_cloudtrail": true,
+  "enable_pagerduty": false,
+  "pagerduty_escalation_policy_id": "P5KE444",
   "regional_id": "regional",
   "node_instance_types": ["t3.medium", "t3a.medium"],
   "iot_log_level": "WARN",
