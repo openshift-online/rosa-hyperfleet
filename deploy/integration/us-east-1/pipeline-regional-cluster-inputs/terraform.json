@@ -12,6 +12,7 @@
   "enable_pagerduty": false,
   "pagerduty_escalation_policy_id": "P5KE444",
   "regional_id": "regional",
+  "eph_prefix": "",
   "node_instance_types": ["t3.medium", "t3a.medium"],
   "iot_log_level": "WARN",
   "management_cluster_account_ids": ["ssm:///infra/integration/us-east-1/mc01/account_id"]

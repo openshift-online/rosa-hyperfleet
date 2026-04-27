@@ -26,6 +26,12 @@ variable "escalation_policy_id" {
 # Optional Variables
 # =============================================================================
 
+variable "eph_prefix" {
+  description = "Ephemeral environment prefix (e.g., xg4y). When set, prepended to the PagerDuty service name to avoid collisions."
+  type        = string
+  default     = ""
+}
+
 variable "service_description" {
   description = "Description for the PagerDuty service"
   type        = string

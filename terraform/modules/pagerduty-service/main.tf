@@ -7,7 +7,7 @@
 # =============================================================================
 
 locals {
-  service_name = "rrp-${var.environment}-${var.region}"
+  service_name = var.eph_prefix != "" ? "rrp-${var.eph_prefix}-${var.environment}-${var.region}" : "rrp-${var.environment}-${var.region}"
 }
 
 # =============================================================================

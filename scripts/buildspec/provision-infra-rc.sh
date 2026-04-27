@@ -112,6 +112,7 @@ fi
 # Extract regional_id and environment from rendered config
 export TF_VAR_regional_id=$(jq -r '.regional_id' "$DEPLOY_CONFIG_FILE")
 export TF_VAR_environment=$(jq -r '.environment' "$DEPLOY_CONFIG_FILE")
+export TF_VAR_eph_prefix=$(jq -r '.eph_prefix // ""' "$DEPLOY_CONFIG_FILE")
 
 echo "Terraform variables:"
 echo "  Region: $TF_VAR_region"
