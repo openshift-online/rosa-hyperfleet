@@ -12,6 +12,7 @@
   "enable_pagerduty": {{ regional_cluster.enable_pagerduty | default(false) | tojson }},
   "pagerduty_escalation_policy_id": {{ regional_cluster.pagerduty_escalation_policy_id | default('') | tojson }},
   "regional_id": "{% if ci_prefix %}{{ ci_prefix }}-regional{% else %}regional{% endif %}",
+  "ci_prefix": "{{ ci_prefix | default('') }}",
   "node_instance_types": {{ regional_cluster.node_instance_types | tojson }},
   "iot_log_level": {{ applications['regional-cluster'].maestro.iotLogLevel | default('WARN') | tojson }}
 {%- set mc_account_ids = management_clusters | selectattr("account_id", "defined") | map(attribute="account_id") | list %}

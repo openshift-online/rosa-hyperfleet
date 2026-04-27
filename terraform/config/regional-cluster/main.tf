@@ -276,6 +276,7 @@ module "pagerduty_service" {
   regional_id          = var.regional_id
   environment          = var.environment
   region               = var.region
+  ci_prefix            = var.ci_prefix
   escalation_policy_id = var.pagerduty_escalation_policy_id
 }
 
