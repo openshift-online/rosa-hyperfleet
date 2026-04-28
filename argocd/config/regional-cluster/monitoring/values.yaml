@@ -1,3 +1,6 @@
+pagerduty:
+  enabled: false
+
 kube-prometheus-stack:
   nameOverride: "monitoring"
   namespaceOverride: "monitoring"

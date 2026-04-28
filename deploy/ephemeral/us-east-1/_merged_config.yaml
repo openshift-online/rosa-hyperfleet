@@ -102,6 +102,10 @@ applications:
     # @doc applications.regional-cluster.someOtherSetting Example setting for regional cluster.
     # @used-by applications.regional-cluster.someOtherSetting _context
     someOtherSetting: "value"
+    pagerduty:
+      # @doc applications.regional-cluster.pagerduty.enabled Enable PagerDuty alerting in the monitoring stack.
+      # @used-by applications.regional-cluster.pagerduty.enabled _context
+      enabled: "{{ regional_cluster.enable_pagerduty | default(false) | lower }}"
 
 # provision_mcs: MC topology, defined per-region. Keys are MC IDs.
 # Fields below are injected into templates as mc.* by render.py.

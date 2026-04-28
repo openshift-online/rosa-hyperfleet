@@ -9,3 +9,5 @@ maestro:
   mqttEndpoint: xxx.iot.us-east-1.amazonaws.com
   iotLogLevel: WARN
 someOtherSetting: value
+pagerduty:
+  enabled: 'false'

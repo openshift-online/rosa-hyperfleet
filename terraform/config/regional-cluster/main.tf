@@ -278,6 +278,7 @@ module "pagerduty_service" {
   region               = var.region
   ci_prefix            = var.ci_prefix
   escalation_policy_id = var.pagerduty_escalation_policy_id
+  eks_cluster_name     = module.regional_cluster.cluster_name
 }
 
 # =============================================================================

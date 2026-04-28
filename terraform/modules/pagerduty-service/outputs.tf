@@ -26,3 +26,8 @@ output "integration_key_secret_arn" {
   description = "AWS Secrets Manager secret ARN containing the PagerDuty integration key"
   value       = aws_secretsmanager_secret.pagerduty_integration_key.arn
 }
+
+output "eso_role_arn" {
+  description = "IAM role ARN for ESO to access the PagerDuty integration key"
+  value       = aws_iam_role.eso_pagerduty.arn
+}
