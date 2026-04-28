@@ -37,3 +37,24 @@ variable "service_description" {
   type        = string
   default     = "ROSA Regional Platform alerting"
 }
+
+# =============================================================================
+# IAM / Pod Identity Variables
+# =============================================================================
+
+variable "eks_cluster_name" {
+  description = "EKS cluster name for pod identity association (required for ESO to access the integration key secret)"
+  type        = string
+}
+
+variable "eso_namespace" {
+  description = "Kubernetes namespace where External Secrets Operator is deployed"
+  type        = string
+  default     = "external-secrets"
+}
+
+variable "eso_service_account" {
+  description = "Kubernetes service account name for External Secrets Operator"
+  type        = string
+  default     = "external-secrets"
+}

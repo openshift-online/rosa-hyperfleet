@@ -99,6 +99,10 @@ applications:
       # @doc applications.regional-cluster.maestro.iotLogLevel AWS IoT Core default log level (DISABLED, ERROR, WARN, INFO, DEBUG).
       # @used-by applications.regional-cluster.maestro.iotLogLevel pipeline-regional-cluster-inputs/terraform.json.j2
       iotLogLevel: "WARN"
+    pagerduty:
+      # @doc applications.regional-cluster.pagerduty.enabled Enable PagerDuty alerting in the monitoring stack.
+      # @used-by applications.regional-cluster.pagerduty.enabled _context
+      enabled: "{{ regional_cluster.enable_pagerduty | default(false) | lower }}"
 
 # provision_mcs: MC topology, defined per-region. Keys are MC IDs.
 # Fields below are injected into templates as mc.* by render.py.
