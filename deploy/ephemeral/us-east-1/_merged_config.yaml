@@ -60,7 +60,7 @@ regional_cluster:
   enable_cloudtrail: false
   # @doc regional_cluster.enable_pagerduty Enable PagerDuty service provisioning for the region.
   # @used-by regional_cluster.enable_pagerduty pipeline-regional-cluster-inputs/terraform.json.j2
-  enable_pagerduty: true
+  enable_pagerduty: false
   # @doc regional_cluster.pagerduty_escalation_policy_id PagerDuty escalation policy ID for regional services.
   # @used-by regional_cluster.pagerduty_escalation_policy_id pipeline-regional-cluster-inputs/terraform.json.j2
   pagerduty_escalation_policy_id: "P5KE444"

@@ -10,4 +10,4 @@ maestro:
   iotLogLevel: WARN
 someOtherSetting: value
 pagerduty:
-  enabled: 'true'
+  enabled: 'false'
