@@ -9,7 +9,7 @@
   "alias": "regional-us-east-1",
   "enable_bastion": true,
   "enable_cloudtrail": false,
-  "enable_pagerduty": true,
+  "enable_pagerduty": false,
   "pagerduty_escalation_policy_id": "P5KE444",
   "regional_id": "regional",
   "eph_prefix": "",
