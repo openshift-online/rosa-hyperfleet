@@ -5,6 +5,9 @@ kube-prometheus-stack:
   crds:
     enabled: true
 
+  defaultRules:
+    create: false
+
   # Since these are not interactive clusters, we can turn off grafana
   # and alertmanager. All of these metrics will be forwarded into RHOBS
   alertmanager:

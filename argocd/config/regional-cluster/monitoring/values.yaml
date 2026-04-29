@@ -5,6 +5,14 @@ kube-prometheus-stack:
   crds:
     enabled: true
 
+  defaultRules:
+    create: true
+    rules:
+      etcd: false
+      kubeSchedulerAlerting: false
+      kubeSchedulerRecording: false
+      kubeControllerManager: false
+
   alertmanager:
     enabled: true
     alertmanagerSpec:
