@@ -4,6 +4,9 @@ dns:
 regional_cluster:
   enable_bastion: true
   enable_cloudtrail: true
+  observability:
+    prometheus:
+      enabled: true
 
 management_cluster_defaults:
   enable_bastion: true

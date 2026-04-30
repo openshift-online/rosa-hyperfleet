@@ -58,15 +58,21 @@ regional_cluster:
   # @doc regional_cluster.enable_cloudtrail Enable CloudTrail audit logging (FedRAMP AU-12). Off by default; enable for environments requiring compliance.
   # @used-by regional_cluster.enable_cloudtrail pipeline-regional-cluster-inputs/terraform.json.j2
   enable_cloudtrail: true
-  # @doc regional_cluster.enable_pagerduty Enable PagerDuty service provisioning for the region.
-  # @used-by regional_cluster.enable_pagerduty pipeline-regional-cluster-inputs/terraform.json.j2
-  enable_pagerduty: false
-  # @doc regional_cluster.pagerduty_escalation_policy_id PagerDuty escalation policy ID for regional services.
-  # @used-by regional_cluster.pagerduty_escalation_policy_id pipeline-regional-cluster-inputs/terraform.json.j2
-  pagerduty_escalation_policy_id: "P5KE444"
   # @doc regional_cluster.node_instance_types EC2 instance types for regional cluster nodes.
   # @used-by regional_cluster.node_instance_types pipeline-regional-cluster-inputs/terraform.json.j2
   node_instance_types: ["t3.medium", "t3a.medium"]
+
+  observability:
+    pagerduty:
+      # @doc regional_cluster.enable_pagerduty Enable PagerDuty service provisioning for the region.
+      # @used-by regional_cluster.enable_pagerduty pipeline-regional-cluster-inputs/terraform.json.j2
+      enabled: false
+      # @doc regional_cluster.pagerduty_escalation_policy_id PagerDuty escalation policy ID for regional services.
+      # @used-by regional_cluster.pagerduty_escalation_policy_id pipeline-regional-cluster-inputs/terraform.json.j2
+      escalation_policy_id: "P5KE444"
+
+    prometheus:
+      enabled: true
 
 management_cluster_defaults:
   # @doc management_cluster_defaults.enable_bastion Default enable bastion for management clusters.
@@ -99,13 +105,11 @@ applications:
       # @doc applications.regional-cluster.maestro.iotLogLevel AWS IoT Core default log level (DISABLED, ERROR, WARN, INFO, DEBUG).
       # @used-by applications.regional-cluster.maestro.iotLogLevel pipeline-regional-cluster-inputs/terraform.json.j2
       iotLogLevel: "WARN"
-    # @doc applications.regional-cluster.someOtherSetting Example setting for regional cluster.
-    # @used-by applications.regional-cluster.someOtherSetting _context
-    someOtherSetting: "value"
     pagerduty:
       # @doc applications.regional-cluster.pagerduty.enabled Enable PagerDuty alerting in the monitoring stack.
       # @used-by applications.regional-cluster.pagerduty.enabled _context
-      enabled: "{{ regional_cluster.enable_pagerduty | default(false) | lower }}"
+      # This should generally not be changed here unless you explicitly know what you're doing.
+      enabled: "{{ regional_cluster.observability.pagerduty.enabled | default(false) | lower }}"
 
 # provision_mcs: MC topology, defined per-region. Keys are MC IDs.
 # Fields below are injected into templates as mc.* by render.py.
