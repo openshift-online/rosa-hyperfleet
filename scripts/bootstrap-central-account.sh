@@ -300,6 +300,26 @@ echo "Importing CodeStar connection into Terraform state..."
 terraform import -var="github_repository=${GITHUB_REPOSITORY}" \
     aws_codestarconnections_connection.github "$GITHUB_CONNECTION_ARN" 2>/dev/null || true
 
+# Load tag values from rendered pipeline-provisioner-inputs if available
+_PROVISIONER_JSON="${REPO_ROOT}/deploy/${TARGET_ENVIRONMENT}/${REGION}/pipeline-provisioner-inputs/terraform.json"
+if [ -f "$_PROVISIONER_JSON" ]; then
+    APP_CODE=$(jq -r '.app_code // "infra"' "$_PROVISIONER_JSON")
+    SERVICE_PHASE=$(jq -r '.service_phase // "dev"' "$_PROVISIONER_JSON")
+    COST_CENTER=$(jq -r '.cost_center // "000"' "$_PROVISIONER_JSON")
+    OWNER=$(jq -r '.owner // "placeholder"' "$_PROVISIONER_JSON")
+    ORGANIZATION=$(jq -r '.organization // "placeholder"' "$_PROVISIONER_JSON")
+    APP=$(jq -r '.app // "rosa-regionality"' "$_PROVISIONER_JSON")
+    echo "Loaded tags from: $_PROVISIONER_JSON"
+else
+    APP_CODE="infra"
+    SERVICE_PHASE="dev"
+    COST_CENTER="000"
+    OWNER="placeholder"
+    ORGANIZATION="placeholder"
+    APP="rosa-regionality"
+    echo "ℹ️  No rendered config found at $_PROVISIONER_JSON, using default tags"
+fi
+
 # Create tfvars file
 cat > terraform.tfvars <<EOF
 github_repository     = "${GITHUB_REPOSITORY}"
@@ -308,6 +328,12 @@ region                = "${REGION}"
 environment           = "${TARGET_ENVIRONMENT}"
 name_prefix           = "${NAME_PREFIX}"
 slack_webhook_ssm_param = "${SLACK_WEBHOOK_SSM_PARAM}"
+app_code              = "${APP_CODE}"
+service_phase         = "${SERVICE_PHASE}"
+cost_center           = "${COST_CENTER}"
+owner                  = "${OWNER}"
+organization           = "${ORGANIZATION}"
+app                    = "${APP}"
 EOF
 
 echo "Terraform configuration created (terraform.tfvars)"

@@ -1,5 +1,18 @@
 provider "aws" {
   region = var.region
+
+  default_tags {
+    tags = {
+      "app"                    = var.app
+      "app-code"               = var.app_code
+      "cost-center"            = var.cost_center
+      "managed_by_integration" = "https://github.com/openshift-online/rosa-regional-platform"
+      "organization"           = var.organization
+      "owner"                  = var.owner
+      "service-phase"          = var.service_phase
+      "environment"            = var.environment
+    }
+  }
 }
 
 provider "aws" {
@@ -47,6 +60,12 @@ module "pipeline_provisioner" {
   codebuild_image       = module.platform_image.container_image
   platform_ecr_repo     = module.platform_image.ecr_repository_url
   name_prefix           = var.name_prefix
+  app_code              = var.app_code
+  cost_center           = var.cost_center
+  owner                 = var.owner
+  service_phase         = var.service_phase
+  organization          = var.organization
+  app                   = var.app
 }
 
 # Pipeline Failure Notifications

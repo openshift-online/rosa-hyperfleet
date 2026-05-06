@@ -1,6 +1,13 @@
 dns:
   domain: int0.rosa.devshift.net
 
+terraform_tags:
+  app_code: "OSD-002"
+  cost_center: "732"
+  owner: "rrp-admin-team"
+  service_phase: "stage"
+  organization: "Hybrid Cloud Management"
+
 regional_cluster:
   enable_bastion: true
   enable_cloudtrail: true

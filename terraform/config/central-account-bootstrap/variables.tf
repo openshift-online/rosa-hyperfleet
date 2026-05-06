@@ -44,6 +44,47 @@ variable "environment" {
 }
 
 # =============================================================================
+# Resource Tagging
+# =============================================================================
+
+variable "app_code" {
+  description = "Application code for cost tagging (CMDB Application ID)"
+  type        = string
+  default     = "infra"
+}
+
+variable "service_phase" {
+  description = "Service deployment phase (e.g., dev, stage, production)"
+  type        = string
+  default     = "dev"
+}
+
+variable "cost_center" {
+  description = "Cost center code for billing"
+  type        = string
+  default     = "000"
+}
+
+variable "owner" {
+  description = "Resource owner team identifier"
+  type        = string
+  default     = "placeholder"
+}
+
+variable "organization" {
+  description = "Organization name for cost attribution"
+  type        = string
+  default     = "placeholder"
+}
+
+
+variable "app" {
+  description = "Application identifier for resource tagging"
+  type        = string
+  default     = "rosa-regionality"
+}
+
+# =============================================================================
 # Notifications Configuration
 # =============================================================================
 

@@ -38,15 +38,33 @@ terraform_tags:
   # @doc terraform_tags.app_code Application code for cost tagging.
   # @used-by terraform_tags.app_code pipeline-management-cluster-inputs/terraform.json.j2
   # @used-by terraform_tags.app_code pipeline-regional-cluster-inputs/terraform.json.j2
+  # @used-by terraform_tags.app_code pipeline-provisioner-inputs/terraform.json.j2
   app_code: "infra"
   # @doc terraform_tags.service_phase Service deployment phase.
   # @used-by terraform_tags.service_phase pipeline-management-cluster-inputs/terraform.json.j2
   # @used-by terraform_tags.service_phase pipeline-regional-cluster-inputs/terraform.json.j2
+  # @used-by terraform_tags.service_phase pipeline-provisioner-inputs/terraform.json.j2
   service_phase: "dev"
   # @doc terraform_tags.cost_center Cost center code for billing.
   # @used-by terraform_tags.cost_center pipeline-management-cluster-inputs/terraform.json.j2
   # @used-by terraform_tags.cost_center pipeline-regional-cluster-inputs/terraform.json.j2
+  # @used-by terraform_tags.cost_center pipeline-provisioner-inputs/terraform.json.j2
   cost_center: "000"
+  # @doc terraform_tags.owner Resource owner team identifier.
+  # @used-by terraform_tags.owner pipeline-management-cluster-inputs/terraform.json.j2
+  # @used-by terraform_tags.owner pipeline-regional-cluster-inputs/terraform.json.j2
+  # @used-by terraform_tags.owner pipeline-provisioner-inputs/terraform.json.j2
+  owner: "placeholder"
+  # @doc terraform_tags.organization Organization name for cost attribution.
+  # @used-by terraform_tags.organization pipeline-management-cluster-inputs/terraform.json.j2
+  # @used-by terraform_tags.organization pipeline-regional-cluster-inputs/terraform.json.j2
+  # @used-by terraform_tags.organization pipeline-provisioner-inputs/terraform.json.j2
+  organization: "placeholder"
+  # @doc terraform_tags.app Application identifier for resource tagging.
+  # @used-by terraform_tags.app pipeline-management-cluster-inputs/terraform.json.j2
+  # @used-by terraform_tags.app pipeline-regional-cluster-inputs/terraform.json.j2
+  # @used-by terraform_tags.app pipeline-provisioner-inputs/terraform.json.j2
+  app: "rosa-regionality"
 
 regional_cluster:
   # @doc regional_cluster.enable_bastion Enable bastion host for regional cluster access.
