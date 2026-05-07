@@ -102,10 +102,10 @@ rosactl cluster-vpc create $CLUSTER_NAME --region $REGION --availability-zones $
 # --placement (required only in ephemeral environment)
 PLACEMENT=$(awscurl --service execute-api $API_URL/api/v0/management_clusters --region $REGION | jq -r '.items[0].name')
 
-rosactl cluster create $CLUSTER_NAME --region $REGION --placement $PLACEMENT | tee /tmp/$CLUSTER_NAME.json
+rosactl cluster create $CLUSTER_NAME --region $REGION --placement $PLACEMENT
 
-# export CLOUDURL with the value of cloudUrl in the response above
-CLOUDURL=$(jq -r '.spec.cloudUrl' < /tmp/$CLUSTER_NAME.json)
+# 4. set the CLOUDURL variable to the output for the cluster creation
+CLOUDURL=
 
 # 4. create the oidc for the hcp
 rosactl cluster-oidc create $CLUSTER_NAME --region $REGION --oidc-issuer-url $CLOUDURL
