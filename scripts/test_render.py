@@ -5,6 +5,7 @@
 #     "PyYAML>=6.0",
 #     "Jinja2>=3.1",
 #     "pytest>=8.0",
+#     "ruamel.yaml>=0.18",
 # ]
 # ///
 """Unit tests for render.py"""
@@ -62,6 +63,13 @@ def _create_config_structure(
 
     # Start with base required fields (mirrors real config/defaults.yaml)
     base_defaults = {
+        "aws": {
+            "account_id": "",
+            "management_cluster_account_id": "000000000000",
+        },
+        "dns": {
+            "domain": "",
+        },
         "terraform_tags": {
             "app_code": "infra",
             "service_phase": "dev",
@@ -382,6 +390,60 @@ class TestResolveTemplates:
         result = resolve_templates(data, {"x": "val"})
         assert result == ["val", 42, {"k": "val"}]
 
+    def test_asbool_filter_true(self):
+        result = resolve_templates("{{ val | asbool }}", {"val": True})
+        assert result is True
+
+    def test_asbool_filter_false(self):
+        result = resolve_templates("{{ val | asbool }}", {"val": False})
+        assert result is False
+
+    def test_asbool_filter_string_true(self):
+        assert resolve_templates("{{ val | asbool }}", {"val": "true"}) is True
+        assert resolve_templates("{{ val | asbool }}", {"val": "True"}) is True
+        assert resolve_templates("{{ val | asbool }}", {"val": "TRUE"}) is True
+
+    def test_asbool_filter_string_false(self):
+        assert resolve_templates("{{ val | asbool }}", {"val": "false"}) is False
+        assert resolve_templates("{{ val | asbool }}", {"val": "False"}) is False
+        assert resolve_templates("{{ val | asbool }}", {"val": "0"}) is False
+
+    def test_asbool_filter_numeric(self):
+        assert resolve_templates("{{ val | asbool }}", {"val": 1}) is True
+        assert resolve_templates("{{ val | asbool }}", {"val": 0}) is False
+
+    def test_asbool_rejects_invalid_value(self):
+        with pytest.raises(ValueError, match="asbool filter"):
+            resolve_templates("{{ val | asbool }}", {"val": "anything"})
+
+    def test_asbool_in_nested_dict(self):
+        data = {"outer": {"enabled": "{{ flag | asbool }}"}}
+        result = resolve_templates(data, {"flag": False})
+        assert result == {"outer": {"enabled": False}}
+
+    def test_no_coercion_without_asbool(self):
+        result = resolve_templates("{{ val }}", {"val": True})
+        assert result == "True"
+
+    def test_plain_string_false_not_coerced(self):
+        result = resolve_templates("false", {})
+        assert result == "false"
+
+    def test_undefined_variable_raises(self):
+        with pytest.raises(ValueError, match="undefined"):
+            resolve_templates("{{ regional_cluster.observe.nothere }}", {})
+
+    def test_undefined_nested_with_default_ok(self):
+        result = resolve_templates(
+            "{{ regional_cluster.observe.nothere | default('fallback') }}", {}
+        )
+        assert result == "fallback"
+
+    def test_undefined_in_dict_raises(self):
+        data = {"key": "{{ missing.nested.path }}"}
+        with pytest.raises(ValueError, match="undefined"):
+            resolve_templates(data, {})
+
 
 # =============================================================================
 # write_output
@@ -423,12 +485,10 @@ class TestBuildContext:
         ctx = build_context({}, "staging", "us-east-1", "")
         assert ctx["environment"] == "staging"
         assert ctx["aws_region"] == "us-east-1"
-        assert ctx["region"] == "us-east-1"
-        assert ctx["regional_id"] == "regional"
 
-    def test_eph_prefix_in_regional_id(self):
+    def test_eph_prefix_injected(self):
         ctx = build_context({}, "staging", "us-east-1", "xg4y")
-        assert ctx["regional_id"] == "xg4y-regional"
+        assert ctx["ci_prefix"] == "xg4y"
 
     def test_resolves_account_id_template(self):
         merged = {"aws": {"account_id": "account-{{ environment }}-{{ aws_region }}"}}
@@ -450,16 +510,15 @@ class TestBuildMcList:
     def test_builds_mc_entries(self):
         merged = {"provision_mcs": {"mc01": {"account_id": "111"}}}
         ctx = build_context(merged, "staging", "us-east-1", "")
-        mc_list, mc_account_ids = build_mc_list(ctx, merged, "")
+        mc_list = build_mc_list(ctx, merged, "")
         assert len(mc_list) == 1
         assert mc_list[0]["management_id"] == "mc01"
         assert mc_list[0]["account_id"] == "111"
-        assert mc_account_ids == ["111"]
 
     def test_eph_prefix_applied(self):
         merged = {"provision_mcs": {"mc01": {"account_id": "111"}}}
         ctx = build_context(merged, "staging", "us-east-1", "xg4y")
-        mc_list, _ = build_mc_list(ctx, merged, "xg4y")
+        mc_list = build_mc_list(ctx, merged, "xg4y")
         assert mc_list[0]["management_id"] == "xg4y-mc01"
 
     def test_default_account_id(self):
@@ -468,7 +527,7 @@ class TestBuildMcList:
             "provision_mcs": {"mc01": {}},
         }
         ctx = build_context(merged, "staging", "us-east-1", "")
-        mc_list, _ = build_mc_list(ctx, merged, "")
+        mc_list = build_mc_list(ctx, merged, "")
         assert mc_list[0]["account_id"] == "default-account"
 
     def test_explicit_account_overrides_default(self):
@@ -477,7 +536,7 @@ class TestBuildMcList:
             "provision_mcs": {"mc01": {"account_id": "explicit-account"}},
         }
         ctx = build_context(merged, "staging", "us-east-1", "")
-        mc_list, _ = build_mc_list(ctx, merged, "")
+        mc_list = build_mc_list(ctx, merged, "")
         assert mc_list[0]["account_id"] == "explicit-account"
 
     def test_cluster_prefix_template_resolution(self):
@@ -486,7 +545,7 @@ class TestBuildMcList:
             "provision_mcs": {"mc01": {}},
         }
         ctx = build_context(merged, "staging", "us-east-1", "")
-        mc_list, _ = build_mc_list(ctx, merged, "")
+        mc_list = build_mc_list(ctx, merged, "")
         assert mc_list[0]["account_id"] == "mc-mc01-us-east-1"
 
 
@@ -747,7 +806,7 @@ class TestConfigMergeAndRendering:
         merged = deep_merge(gd, ed)
         merged = deep_merge(merged, rc)
         ctx = build_context(merged, "staging", "us-east-1", "")
-        mc_list, _ = build_mc_list(ctx, merged, "")
+        mc_list = build_mc_list(ctx, merged, "")
         assert mc_list[0]["account_id"] == "default-mc-account"
 
     def test_management_cluster_explicit_account_overrides_default(self, tmp_path):
@@ -776,7 +835,7 @@ class TestConfigMergeAndRendering:
         merged = deep_merge(gd, ed)
         merged = deep_merge(merged, rc)
         ctx = build_context(merged, "staging", "us-east-1", "")
-        mc_list, _ = build_mc_list(ctx, merged, "")
+        mc_list = build_mc_list(ctx, merged, "")
         assert mc_list[0]["account_id"] == "explicit-account"
 
     def test_eph_prefix_applied_to_management_id(self, tmp_path):
@@ -805,13 +864,13 @@ class TestConfigMergeAndRendering:
         assert len(mc_list) == 1
         assert mc_list[0]["management_id"] == "xg4y-mc01"
 
-    def test_eph_prefix_applied_to_regional_id(self):
+    def test_eph_prefix_stored_in_context(self):
         ctx = build_context({}, "staging", "us-east-1", "xg4y")
-        assert ctx["regional_id"] == "xg4y-regional"
+        assert ctx["ci_prefix"] == "xg4y"
 
-    def test_no_eph_prefix(self):
+    def test_empty_eph_prefix(self):
         ctx = build_context({}, "staging", "us-east-1", "")
-        assert ctx["regional_id"] == "regional"
+        assert ctx["ci_prefix"] == ""
 
     def test_revision_inheritance(self, tmp_path):
         config_dir = _create_config_structure(
@@ -961,7 +1020,7 @@ class TestConfigMergeAndRendering:
         merged = deep_merge(gd, ed)
         merged = deep_merge(merged, rc)
         ctx = build_context(merged, "staging", "us-east-1", "")
-        mc_list, _ = build_mc_list(ctx, merged, "")
+        mc_list = build_mc_list(ctx, merged, "")
         assert mc_list[0]["account_id"] == "mc-mc01-us-east-1"
 
 

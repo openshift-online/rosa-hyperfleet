@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from jinja2 import Environment
+from jinja2 import ChainableUndefined, Environment, Undefined
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 
@@ -73,10 +73,65 @@ def deep_merge_ruamel(base: CommentedMap, overlay: CommentedMap) -> CommentedMap
     return result
 
 
+_UNDEFINED_SENTINEL = "__UNDEFINED__"
+_BOOL_SENTINEL_TRUE = "__BOOL:true__"
+_BOOL_SENTINEL_FALSE = "__BOOL:false__"
+
+
+class _StrictChainableUndefined(ChainableUndefined):
+    """Undefined that chains attribute access but fails loudly when rendered."""
+
+    def __str__(self) -> str:
+        return _UNDEFINED_SENTINEL
+
+    def __iter__(self):
+        return iter([])
+
+    def __bool__(self) -> bool:
+        return False
+
+
+_TRUTHY = {"true", "1"}
+_FALSY = {"false", "0"}
+
+
+def _asbool(value: Any) -> str:
+    """Jinja2 filter that marks a value for boolean coercion after rendering."""
+    if isinstance(value, bool):
+        return _BOOL_SENTINEL_TRUE if value else _BOOL_SENTINEL_FALSE
+    if isinstance(value, (int, float)):
+        if value == 1:
+            return _BOOL_SENTINEL_TRUE
+        if value == 0:
+            return _BOOL_SENTINEL_FALSE
+    if isinstance(value, str):
+        lower = value.lower()
+        if lower in _TRUTHY:
+            return _BOOL_SENTINEL_TRUE
+        if lower in _FALSY:
+            return _BOOL_SENTINEL_FALSE
+    raise ValueError(f"asbool filter: cannot convert {value!r} to bool")
+
+
+def _make_jinja_env() -> "Environment":
+    env = Environment(undefined=_StrictChainableUndefined)
+    env.filters["asbool"] = _asbool
+    return env
+
+
 def resolve_templates(value: Any, context: dict[str, Any]) -> Any:
     """Recursively resolve Jinja2 expressions in config values."""
     if isinstance(value, str):
-        return Environment().from_string(value).render(context)
+        rendered = _make_jinja_env().from_string(value).render(context)
+        if _UNDEFINED_SENTINEL in rendered:
+            raise ValueError(
+                f"undefined variable in template: {value!r} rendered to {rendered!r}"
+            )
+        if rendered == _BOOL_SENTINEL_TRUE:
+            return True
+        if rendered == _BOOL_SENTINEL_FALSE:
+            return False
+        return rendered
     elif isinstance(value, dict):
         return {k: resolve_templates(v, context) for k, v in value.items()}
     elif isinstance(value, list):
@@ -109,9 +164,17 @@ def discover_regions(env_dir: Path) -> list[str]:
 
 def render_template(template_path: Path, context: dict[str, Any]) -> str:
     """Render a Jinja2 template file with context."""
-    env = Environment()
+    env = _make_jinja_env()
     env.filters["toyaml"] = _toyaml
-    return env.from_string(template_path.read_text()).render(context)
+    rendered = env.from_string(template_path.read_text()).render(context)
+    if _UNDEFINED_SENTINEL in rendered:
+        raise ValueError(
+            f"undefined variable in template {template_path}: "
+            f"rendered output contains unresolved references"
+        )
+    rendered = rendered.replace(_BOOL_SENTINEL_TRUE, "true")
+    rendered = rendered.replace(_BOOL_SENTINEL_FALSE, "false")
+    return rendered
 
 
 def _toyaml(value: Any) -> str:
