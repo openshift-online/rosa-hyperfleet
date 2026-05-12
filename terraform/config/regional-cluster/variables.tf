@@ -43,6 +43,11 @@ variable "central_aws_profile" {
   default     = ""
 }
 
+variable "ou_path" {
+  description = "OU path value for this regional cluster. Resolved from central account SSM by the pipeline."
+  type        = string
+}
+
 variable "app_code" {
   description = "Application code for tagging (CMDB Application ID)"
   type        = string

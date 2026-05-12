@@ -1,5 +1,6 @@
 regional_cluster:
   enable_bastion: true
+  ou_path: "ssm:///infra/dev/e2e/ou-path"
 
 management_cluster_defaults:
   enable_bastion: true

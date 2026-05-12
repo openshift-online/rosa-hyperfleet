@@ -14,7 +14,8 @@
   "regional_id": "{% if eph_prefix %}{{ eph_prefix }}-regional{% else %}regional{% endif %}",
   "eph_prefix": "{{ eph_prefix | default('') }}",
   "node_instance_types": {{ regional_cluster.node_instance_types | tojson }},
-  "iot_log_level": {{ applications['regional-cluster'].maestro.iotLogLevel | default('WARN') | tojson }}
+  "iot_log_level": {{ applications['regional-cluster'].maestro.iotLogLevel | default('WARN') | tojson }},
+  "ou_path": "{{ regional_cluster.ou_path }}"
 {%- set mc_account_ids = management_clusters | selectattr("account_id", "defined") | map(attribute="account_id") | list %}
 {%- if mc_account_ids %},
   "management_cluster_account_ids": {{ mc_account_ids | tojson }}{% endif %}{% if delete %},

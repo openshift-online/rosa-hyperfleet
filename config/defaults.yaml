@@ -58,6 +58,9 @@ regional_cluster:
   # @doc regional_cluster.node_instance_types EC2 instance types for regional cluster nodes.
   # @used-by regional_cluster.node_instance_types pipeline-regional-cluster-inputs/terraform.json.j2
   node_instance_types: ["t3.medium", "t3a.medium"]
+  # @doc regional_cluster.ou_path SSM parameter path for the OU path in the central account.
+  # @used-by regional_cluster.ou_path pipeline-regional-cluster-inputs/terraform.json.j2
+  ou_path: "ssm:///infra/{{ environment }}/{{ aws_region }}/ou-path"
 
 management_cluster_defaults:
   # @doc management_cluster_defaults.enable_bastion Default enable bastion for management clusters.
