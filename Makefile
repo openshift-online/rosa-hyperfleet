@@ -125,7 +125,7 @@ check-rendered-files: ## Verify deploy/ is up to date with config.yaml
 	fi
 	@echo ""
 	@echo "🔍 Validating Terraform provider versions..."
-	@uv run --no-cache scripts/validate-provider-versions.py
+	@uv run --no-cache scripts/dev/validate-provider-versions.py
 	@echo "✅ Rendered files are up to date"
 	@echo "🔍 Checking config documentation..."
 	@uv run --no-cache scripts/render.py --check-docs

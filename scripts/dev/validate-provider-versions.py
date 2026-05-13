@@ -145,7 +145,7 @@ def validate_module(versions_file: Path, standard: dict) -> tuple[bool, list[str
 
 
 def main():
-    repo_root = Path(__file__).parent.parent
+    repo_root = Path(__file__).parent.parent.parent
     versions_config = repo_root / "terraform/provider-versions.yaml"
 
     if not versions_config.exists():

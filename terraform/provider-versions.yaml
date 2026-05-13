@@ -8,19 +8,19 @@ terraform_version: "1.14.3"
 
 providers:
   aws:
-    version: "6.28.0"  # Satisfies >= 6.28 (most restrictive constraint)
+    version: "6.28.0"
     source: "hashicorp/aws"
 
   time:
-    version: "0.12.0"  # Satisfies >= 0.9
+    version: "0.12.0"
     source: "hashicorp/time"
 
   random:
-    version: "3.6.0"  # Satisfies ~> 3.0
+    version: "3.6.0"
     source: "hashicorp/random"
 
   http:
-    version: "3.4.0"  # Satisfies >= 3.4 and ~> 3.0
+    version: "3.4.0"
     source: "hashicorp/http"
 
   "null":  # Quoted because 'null' is a YAML keyword
