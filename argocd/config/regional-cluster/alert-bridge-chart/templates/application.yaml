@@ -1,0 +1,34 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ index .Values "alert-bridge-chart" "applicationName" }}
+  namespace: {{ index .Values "alert-bridge-chart" "namespace" }}
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: {{ index .Values "alert-bridge-chart" "project" }}
+
+  source:
+    repoURL: {{ index .Values "alert-bridge-chart" "source" "repoURL" }}
+    targetRevision: {{ index .Values "alert-bridge-chart" "source" "targetRevision" }}
+    path: {{ index .Values "alert-bridge-chart" "source" "path" }}
+    helm:
+      {{- if index .Values "alert-bridge-chart" "helmValues" }}
+      values: |
+        {{- toYaml (index .Values "alert-bridge-chart" "helmValues") | nindent 8 }}
+      {{- end }}
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ index .Values "alert-bridge-chart" "targetNamespace" }}
+
+  syncPolicy:
+    {{- if index .Values "alert-bridge-chart" "syncPolicy" "automated" }}
+    automated:
+      prune: {{ index .Values "alert-bridge-chart" "syncPolicy" "automated" "prune" }}
+      selfHeal: {{ index .Values "alert-bridge-chart" "syncPolicy" "automated" "selfHeal" }}
+    {{- end }}
+    {{- if index .Values "alert-bridge-chart" "syncPolicy" "syncOptions" }}
+    syncOptions:
+      {{- toYaml (index .Values "alert-bridge-chart" "syncPolicy" "syncOptions") | nindent 6 }}
+    {{- end }}

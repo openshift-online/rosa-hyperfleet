@@ -19,7 +19,7 @@ variable "eks_cluster_name" {
 variable "webhook_bridge_namespace" {
   description = "Kubernetes namespace where the webhook bridge service will be deployed"
   type        = string
-  default     = "alerting"
+  default     = "monitoring"
 }
 
 variable "webhook_bridge_service_account" {
