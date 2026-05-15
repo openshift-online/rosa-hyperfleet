@@ -6,6 +6,10 @@ The ROSA Regional Platform project is a strategic initiative to redesign the arc
 
 The goal is to improve reliability, reduce dependencies on global services, and provide customers with lower-latency access to cluster management through regional API endpoints.
 
+## Infrastructure Platform
+
+The ROSA Regional Platform runs on **Benji**, Red Hat's internal infrastructure automation platform. Benji provides the underlying infrastructure automation layer that drives provisioning, lifecycle management, and operational tooling for the platform. This allows the ROSA Regional Platform to focus on ROSA-specific concerns while leveraging Benji's standardised infrastructure primitives.
+
 ## Architecture at a Glance
 
 The architecture consists of three layers within each region:
