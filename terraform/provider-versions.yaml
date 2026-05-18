@@ -4,7 +4,7 @@
 # These versions are chosen to satisfy the most restrictive constraints
 # across all modules in this repository.
 
-terraform_version: "1.14.3"
+terraform_version: "1.15.3"
 
 providers:
   aws:
