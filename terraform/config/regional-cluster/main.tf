@@ -133,7 +133,7 @@ resource "aws_eks_pod_identity_association" "external_secrets_operator" {
 }
 
 resource "aws_ssm_parameter" "ou_path" {
-  name  = "/infra/${var.environment}/${var.regional_id}/ou-path"
+  name  = "/infra/${var.regional_id}/ou-path"
   type  = "String"
   value = var.ou_path
 }
