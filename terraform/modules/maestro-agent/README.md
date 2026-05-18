@@ -155,7 +155,7 @@ Create the secret first (see Prerequisites).
 
 ## Requirements
 
-- Terraform >= 1.14.3
+- Terraform >= 1.15.3
 - AWS Provider >= 6.0
 - EKS cluster with Pod Identity enabled
 - Pre-existing Secrets Manager secret with MQTT certificate

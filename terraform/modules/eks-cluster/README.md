@@ -156,6 +156,6 @@ For the FIPS node strategy, including why the built-in `system` pool is retained
 
 ## Requirements
 
-- Terraform >= 1.14.3
+- Terraform >= 1.15.3
 - AWS Provider >= 6.0
 - Required provider `default_tags` configuration

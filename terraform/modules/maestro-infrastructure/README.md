@@ -99,6 +99,6 @@ For complete architecture diagrams and message flows, see [Maestro MQTT Resource
 
 ## Requirements
 
-- Terraform >= 1.14.3
+- Terraform >= 1.15.3
 - AWS Provider >= 6.0
 - Regional EKS cluster with Pod Identity enabled

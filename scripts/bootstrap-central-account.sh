@@ -11,7 +11,7 @@ set -euo pipefail
 #
 # Prerequisites:
 # - AWS CLI configured with central account credentials
-# - Terraform >= 1.14.3 installed
+# - Terraform >= 1.15.3 installed
 # - GitHub repository set up
 #
 # Usage:
@@ -92,7 +92,7 @@ if ! command -v aws &> /dev/null; then
 fi
 
 if ! command -v terraform &> /dev/null; then
-    echo "❌ Error: Terraform not found. Please install Terraform >= 1.14.3"
+    echo "❌ Error: Terraform not found. Please install Terraform >= 1.15.3"
     exit 1
 fi
 

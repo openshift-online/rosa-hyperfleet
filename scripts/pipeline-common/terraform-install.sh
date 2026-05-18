@@ -13,7 +13,7 @@ pip3 install boto3 pyyaml
 
 echo "Installing Terraform..."
 
-TF_VERSION="1.14.3"
+TF_VERSION="1.15.3"
 TF_PACKAGE="terraform_${TF_VERSION}_linux_amd64.zip"
 TF_BASE_URL="https://releases.hashicorp.com/terraform/${TF_VERSION}"
 
