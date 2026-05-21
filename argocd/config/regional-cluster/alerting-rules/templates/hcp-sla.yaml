@@ -24,6 +24,15 @@ spec:
               }
             )
 
+        # Clusters still in initial rollout (under grace period).
+        # label_replace maps exported_namespace → namespace for join.
+        - record: hcp:initial_rollout_in_progress
+          expr: |
+            label_replace(
+              hypershift_cluster_initial_rolling_out_duration_seconds{cluster_type="management-cluster"} <= {{ .Values.sla.initialRolloutGracePeriod }},
+              "namespace", "$1", "exported_namespace", "(.*)"
+            )
+
     - name: hcp-availability-alerts
       rules:
         # Fast burn: detects severe outages within ~6 minutes.
@@ -31,9 +40,12 @@ spec:
         # confirms the issue is still active.
         - alert: HCPAvailabilityErrorBudgetFastBurn
           expr: |
-            (1 - avg_over_time(hcp:hostedcluster_available[5m])) > (14.4 * (1 - {{ .Values.sla.target }}))
-            and
-            (1 - avg_over_time(hcp:hostedcluster_available[2m])) > (14.4 * (1 - {{ .Values.sla.target }}))
+            (
+              (1 - avg_over_time(hcp:hostedcluster_available[5m])) > (14.4 * (1 - {{ .Values.sla.target }}))
+              and
+              (1 - avg_over_time(hcp:hostedcluster_available[2m])) > (14.4 * (1 - {{ .Values.sla.target }}))
+            )
+            unless on(namespace, name, cluster) hcp:initial_rollout_in_progress
           for: 1m
           labels:
             severity: critical
@@ -50,9 +62,12 @@ spec:
         # confirms the issue is still active.
         - alert: HCPAvailabilityErrorBudgetSlowBurn
           expr: |
-            (1 - avg_over_time(hcp:hostedcluster_available[30m])) > (6 * (1 - {{ .Values.sla.target }}))
-            and
-            (1 - avg_over_time(hcp:hostedcluster_available[5m])) > (6 * (1 - {{ .Values.sla.target }}))
+            (
+              (1 - avg_over_time(hcp:hostedcluster_available[30m])) > (6 * (1 - {{ .Values.sla.target }}))
+              and
+              (1 - avg_over_time(hcp:hostedcluster_available[5m])) > (6 * (1 - {{ .Values.sla.target }}))
+            )
+            unless on(namespace, name, cluster) hcp:initial_rollout_in_progress
           for: 2m
           labels:
             severity: critical

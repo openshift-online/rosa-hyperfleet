@@ -7,3 +7,5 @@ global:
 sla:
   # 99.95% availability target — 0.05% error budget over 30 days
   target: 0.9995
+  # Suppress burn rate alerts during initial HCP rollout until this many seconds have elapsed
+  initialRolloutGracePeriod: 900
