@@ -437,3 +437,11 @@ output "loki_query_frontend_target_group_arn" {
   description = "Target group ARN for Loki Query Frontend TargetGroupBinding (dedicated RHOBS ALB)"
   value       = module.rhobs_api_gateway.loki_query_frontend_target_group_arn
 }
+# =============================================================================
+# DNS Zone Operator Outputs
+# =============================================================================
+
+output "dns_zone_operator_role_arn" {
+  description = "IAM role ARN for DNS zone operator (cross-account DNS record management by MC operators)"
+  value       = length(module.dns_zone_operator) > 0 ? module.dns_zone_operator[0].role_arn : ""
+}
