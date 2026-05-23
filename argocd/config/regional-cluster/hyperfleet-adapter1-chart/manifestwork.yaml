@@ -95,6 +95,7 @@ spec:
               remoteRef:
                 key: /infra/pull-secret
 
+      {{- if .dnsZoneOperatorRoleArn }}
       - apiVersion: cert-manager.io/v1
         kind: Certificate
         metadata:
@@ -111,6 +112,7 @@ spec:
             kind: ClusterIssuer
           dnsNames:
             - "api.{{ .clusterName }}.{{ $hash4 }}.{{ .baseDomain }}"
+      {{- end }}
 
       - apiVersion: hypershift.openshift.io/v1beta1
         kind: HostedCluster
@@ -178,6 +180,7 @@ spec:
                   value: owned
                 - key: red-hat-managed
                   value: "true"
+          {{- if .dnsZoneOperatorRoleArn }}
           configuration:
             apiServer:
               servingCerts:
@@ -186,6 +189,7 @@ spec:
                       - "api.{{ .clusterName }}.{{ $hash4 }}.{{ .baseDomain }}"
                     servingCertificate:
                       name: api-serving-cert
+          {{- end }}
           issuerURL: "{{ .cloudUrl }}/{{ .clusterId }}"
           # On EKS (non-OpenShift), using Route with explicit hostnames for KAS
           # and OAuth forces HyperShift to deploy a dedicated HCP router, avoiding
