@@ -52,6 +52,64 @@ else
     _RC_REGIONAL_ID=$(jq -r '.regional_id // "regional"' "deploy/${ENVIRONMENT}/${TARGET_REGION}/pipeline-regional-cluster-inputs/terraform.json" 2>/dev/null || echo "regional")
     export DNS_ZONE_OPERATOR_ROLE_ARN="arn:aws:iam::${RESOLVED_REGIONAL_ACCOUNT_ID}:role/${_RC_REGIONAL_ID}-dns-zone-operator"
     echo "  DNS Zone Operator Role ARN: ${DNS_ZONE_OPERATOR_ROLE_ARN}"
+
+    # Read RHOBS API URL and OIDC outputs from RC terraform state.
+    # The RC and MC pipelines run in parallel; the RC apply can take 30-40
+    # minutes. Retry until the OIDC outputs appear in the RC state or we
+    # exhaust the timeout.
+    echo "Reading outputs from RC terraform state..."
+    _RC_STATE_BUCKET="terraform-state-${RESOLVED_REGIONAL_ACCOUNT_ID}-${TARGET_REGION}"
+    _RC_STATE_KEY="regional-cluster/${_RC_REGIONAL_ID}.tfstate"
+    _RC_TF_DIR="terraform/config/regional-cluster"
+    (cd "$_RC_TF_DIR" && terraform init -reconfigure \
+        -backend-config="bucket=${_RC_STATE_BUCKET}" \
+        -backend-config="key=${_RC_STATE_KEY}" \
+        -backend-config="region=${TARGET_REGION}" \
+        -backend-config="use_lockfile=true" >/dev/null 2>&1)
+    export TF_VAR_rhobs_api_url=$(cd "$_RC_TF_DIR" && terraform output -raw rhobs_api_url 2>/dev/null || echo "")
+    echo "  RHOBS API URL:  ${TF_VAR_rhobs_api_url:-<not available>}"
+
+    # Retry loop: the RC pipeline may still be running when the MC pipeline
+    # starts. Wait up to 45 minutes (90 × 30s) for the OIDC outputs to be
+    # written to the RC terraform state backend.
+    _OIDC_MAX_RETRIES=90
+    _OIDC_RETRY_DELAY=30
+    _OIDC_RETRY_COUNT=0
+    TF_VAR_oidc_cloudfront_domain=""
+    TF_VAR_oidc_bucket_name=""
+    TF_VAR_oidc_bucket_arn=""
+    TF_VAR_oidc_bucket_region=""
+    while [ $_OIDC_RETRY_COUNT -lt $_OIDC_MAX_RETRIES ]; do
+        _OIDC_RETRY_COUNT=$((_OIDC_RETRY_COUNT + 1))
+        TF_VAR_oidc_cloudfront_domain=$(cd "$_RC_TF_DIR" && terraform output -raw oidc_cloudfront_domain 2>/dev/null || true)
+        TF_VAR_oidc_bucket_name=$(cd "$_RC_TF_DIR" && terraform output -raw oidc_bucket_name 2>/dev/null || true)
+        TF_VAR_oidc_bucket_arn=$(cd "$_RC_TF_DIR" && terraform output -raw oidc_bucket_arn 2>/dev/null || true)
+        TF_VAR_oidc_bucket_region=$(cd "$_RC_TF_DIR" && terraform output -raw oidc_bucket_region 2>/dev/null || true)
+        if [ -n "${TF_VAR_oidc_cloudfront_domain}" ] && \
+           [ -n "${TF_VAR_oidc_bucket_name}" ] && \
+           [ -n "${TF_VAR_oidc_bucket_arn}" ] && \
+           [ -n "${TF_VAR_oidc_bucket_region}" ]; then
+            break
+        fi
+        echo "  OIDC outputs not yet available in RC state (attempt ${_OIDC_RETRY_COUNT}/${_OIDC_MAX_RETRIES}) — RC pipeline may still be running. Retrying in ${_OIDC_RETRY_DELAY}s..."
+        sleep "$_OIDC_RETRY_DELAY"
+    done
+    if [ -z "${TF_VAR_oidc_cloudfront_domain}" ] || \
+       [ -z "${TF_VAR_oidc_bucket_name}" ] || \
+       [ -z "${TF_VAR_oidc_bucket_arn}" ] || \
+       [ -z "${TF_VAR_oidc_bucket_region}" ]; then
+        echo "ERROR: OIDC outputs still missing from RC terraform state after $((_OIDC_MAX_RETRIES * _OIDC_RETRY_DELAY / 60))+ minutes." >&2
+        echo "  Ensure the RC pipeline completed successfully before the MC pipeline times out." >&2
+        exit 1
+    fi
+    export TF_VAR_oidc_cloudfront_domain
+    export TF_VAR_oidc_bucket_name
+    export TF_VAR_oidc_bucket_arn
+    export TF_VAR_oidc_bucket_region
+    echo "  OIDC CloudFront: ${TF_VAR_oidc_cloudfront_domain}"
+    echo "  OIDC Bucket:     ${TF_VAR_oidc_bucket_name}"
+    echo "  OIDC Bucket ARN: ${TF_VAR_oidc_bucket_arn}"
+    echo "  OIDC Region:     ${TF_VAR_oidc_bucket_region}"
 fi
 
 # =====================================================================

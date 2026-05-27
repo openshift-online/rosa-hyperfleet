@@ -107,6 +107,30 @@ variable "rhobs_api_url" {
   default     = ""
 }
 
+variable "oidc_bucket_name" {
+  description = "S3 bucket name for regional OIDC discovery documents (read from RC terraform state)"
+  type        = string
+  default     = ""
+}
+
+variable "oidc_bucket_arn" {
+  description = "S3 bucket ARN for regional OIDC discovery documents (read from RC terraform state)"
+  type        = string
+  default     = ""
+}
+
+variable "oidc_bucket_region" {
+  description = "AWS region of the regional OIDC S3 bucket (read from RC terraform state)"
+  type        = string
+  default     = ""
+}
+
+variable "oidc_cloudfront_domain" {
+  description = "CloudFront domain for the regional OIDC issuer URL (read from RC terraform state)"
+  type        = string
+  default     = ""
+}
+
 variable "node_instance_types" {
   description = "List of EC2 instance types for worker nodes (configurable via config.yaml terraform_vars)"
   type        = list(string)

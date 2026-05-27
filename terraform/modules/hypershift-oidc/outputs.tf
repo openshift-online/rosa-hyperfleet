@@ -2,28 +2,6 @@
 # HyperShift OIDC Module - Outputs
 # =============================================================================
 
-# S3
-output "oidc_bucket_name" {
-  description = "S3 bucket name for OIDC discovery documents"
-  value       = aws_s3_bucket.oidc.id
-}
-
-output "oidc_bucket_arn" {
-  description = "S3 bucket ARN for OIDC discovery documents"
-  value       = aws_s3_bucket.oidc.arn
-}
-
-# CloudFront
-output "cloudfront_domain_name" {
-  description = "CloudFront domain name — this is the OIDC issuer base URL (prefix with https://)"
-  value       = aws_cloudfront_distribution.oidc.domain_name
-}
-
-output "cloudfront_distribution_id" {
-  description = "CloudFront distribution ID"
-  value       = aws_cloudfront_distribution.oidc.id
-}
-
 # IAM / Pod Identity
 output "role_arn" {
   description = "IAM role ARN for the HyperShift operator"

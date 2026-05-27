@@ -388,6 +388,30 @@ output "cloudwatch_exporter_role_arn" {
 }
 
 # =============================================================================
+# Regional OIDC Outputs
+# =============================================================================
+
+output "oidc_cloudfront_domain" {
+  description = "CloudFront domain for the regional OIDC issuer URL (prefix with https://)"
+  value       = module.regional_oidc.cloudfront_domain_name
+}
+
+output "oidc_bucket_name" {
+  description = "S3 bucket name for regional OIDC discovery documents"
+  value       = module.regional_oidc.bucket_name
+}
+
+output "oidc_bucket_arn" {
+  description = "S3 bucket ARN for regional OIDC discovery documents"
+  value       = module.regional_oidc.bucket_arn
+}
+
+output "oidc_bucket_region" {
+  description = "AWS region of the regional OIDC S3 bucket"
+  value       = module.regional_oidc.bucket_region
+}
+
+# =============================================================================
 # Thanos Infrastructure Outputs
 # =============================================================================
 output "thanos_helm_values" {
@@ -413,4 +437,3 @@ output "loki_query_frontend_target_group_arn" {
   description = "Target group ARN for Loki Query Frontend TargetGroupBinding (dedicated RHOBS ALB)"
   value       = module.rhobs_api_gateway.loki_query_frontend_target_group_arn
 }
-

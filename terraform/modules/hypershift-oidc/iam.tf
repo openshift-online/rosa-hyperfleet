@@ -47,8 +47,8 @@ resource "aws_iam_role_policy" "hypershift_operator_s3" {
         "s3:ListBucket",
       ]
       Resource = [
-        aws_s3_bucket.oidc.arn,
-        "${aws_s3_bucket.oidc.arn}/*",
+        var.oidc_bucket_arn,
+        "${var.oidc_bucket_arn}/*",
       ]
     }]
   })

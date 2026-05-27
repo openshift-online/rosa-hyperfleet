@@ -142,13 +142,13 @@ output "hypershift_operator_role_arn" {
 }
 
 output "oidc_bucket_name" {
-  description = "S3 bucket name for OIDC discovery documents"
-  value       = module.hypershift_oidc.oidc_bucket_name
+  description = "S3 bucket name for regional OIDC discovery documents"
+  value       = var.oidc_bucket_name
 }
 
 output "oidc_cloudfront_domain" {
-  description = "CloudFront domain for OIDC issuer URL (prefix with https://)"
-  value       = module.hypershift_oidc.cloudfront_domain_name
+  description = "CloudFront domain for regional OIDC issuer URL (prefix with https://)"
+  value       = var.oidc_cloudfront_domain
 }
 
 # =============================================================================

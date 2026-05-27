@@ -430,6 +430,20 @@ module "cloudwatch_exporter" {
 }
 
 # =============================================================================
+# Regional OIDC Module
+#
+# Provisions the shared OIDC S3 bucket and CloudFront distribution owned by
+# the RC. Management Clusters write to this bucket cross-account.
+# =============================================================================
+
+module "regional_oidc" {
+  source = "../../modules/regional-oidc"
+
+  regional_id = var.regional_id
+  mc_ou_path  = var.mc_ou_path
+}
+
+# =============================================================================
 # CloudTrail Module (FedRAMP AU-12)
 # =============================================================================
 

@@ -1,21 +1,19 @@
 # =============================================================================
 # HyperShift OIDC Module
 #
-# Creates the OIDC infrastructure for a Management Cluster:
-# - Private S3 bucket for OIDC discovery documents
-# - CloudFront distribution for public OIDC endpoint
-# - Pod Identity for the HyperShift operator to write to S3
+# Creates the MC-side OIDC infrastructure:
+# - IAM role and Pod Identity for the HyperShift operator (writes to regional S3)
+# - IAM role and Pod Identity for the HyperShift installer Job
+# - Secrets Manager secret with OIDC configuration
 #
-# The CloudFront domain becomes the OIDC issuer base URL given to customers.
-# Each hosted cluster gets a path prefix under this domain.
+# S3 and CloudFront are owned by the Regional Cluster (regional-oidc module).
+# The bucket ARN, name, region, and CloudFront domain are passed in as variables.
 # =============================================================================
 
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 locals {
-  oidc_bucket_name = "hypershift-${var.cluster_id}-oidc-${data.aws_caller_identity.current.account_id}"
-
   common_tags = merge(
     var.tags,
     {

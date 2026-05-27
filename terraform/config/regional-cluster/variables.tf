@@ -305,6 +305,20 @@ variable "node_instance_types" {
 }
 
 # =============================================================================
+# Regional OIDC Configuration Variables
+# =============================================================================
+
+variable "mc_ou_path" {
+  description = "AWS Organizations OU path for Management Cluster accounts (StringLike condition, supports wildcards, e.g. 'o-*/r-*/ou-*/*')"
+  type        = string
+
+  validation {
+    condition     = var.mc_ou_path != ""
+    error_message = "mc_ou_path must be set to an AWS Organizations OU path to enable cross-account OIDC writes from Management Cluster accounts."
+  }
+}
+
+# =============================================================================
 # Thanos Configuration Variables
 # =============================================================================
 
