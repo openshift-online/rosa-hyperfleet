@@ -308,11 +308,15 @@ ELAPSED=0
 MAX_WAIT=60
 
 while [[ "${ELAPSED}" -lt "${MAX_WAIT}" ]]; do
-  MESSAGES="$(aws sqs receive-message \
+  if ! MESSAGES="$(aws sqs receive-message \
       --queue-url "${QUEUE_URL}" \
       --wait-time-seconds 5 \
       --max-number-of-messages 1 \
-      --region "${REGION}" 2>/dev/null || echo '{}')"
+      --region "${REGION}")"; then
+    log_error "SQS receive-message failed (retrying)"
+    ELAPSED=$((ELAPSED + 5))
+    continue
+  fi
 
   if echo "${MESSAGES}" | jq -e '.Messages[0]' &>/dev/null; then
     BODY="$(echo "${MESSAGES}" | jq -r '.Messages[0].Body')"
