@@ -115,7 +115,7 @@ else
 fi
 
 RHOBS_API_URL="${RHOBS_API_URL:-}"
-DNS_ZONE_OPERATOR_ROLE_ARN="${DNS_ZONE_OPERATOR_ROLE_ARN:-}"
+DNS_ZONE_OPERATOR_ROLE_ARN=$(echo "$OUTPUTS" | jq -r '.dns_zone_operator_role_arn.value // ""')
 
 echo "Bootstrapping ArgoCD on cluster: $CLUSTER_NAME"
 
