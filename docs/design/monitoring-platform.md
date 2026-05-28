@@ -144,7 +144,7 @@ Management cluster metrics reach the regional cluster through a secure cross-acc
 - sigv4-proxy signs requests using EKS Pod Identity credentials (`execute-api` service name)
 - A dedicated REST API Gateway (RHOBS) authenticates via AWS IAM and forwards to Thanos Receive through a VPC Link and internal ALB
 - Cluster identity is carried by Prometheus `externalLabels` (`cluster`, `cluster_type`), not by Thanos tenant headers
-- The RHOBS API Gateway resource policy restricts `POST /api/v1/receive` to any authenticated principal within the same AWS Organization; query endpoints (`GET /api/v1/query`, `GET /api/v1/query_range`) are restricted to the RC account only
+- The RHOBS API Gateway resource policy restricts `POST /api/v1/receive` to any authenticated principal within the same AWS Organization; query endpoints (`GET /api/v1/query`, `GET /api/v1/query_range`, `GET /api/v1/rules`) are restricted to the RC account only
 
 ## Grafana Dashboards
 
@@ -181,7 +181,7 @@ Dashboards are provisioned as ConfigMaps via Helm templates and loaded by the Gr
 ## Security
 
 - **Authentication**: AWS IAM SigV4 for cross-account metrics ingestion; EKS Pod Identity for all IAM credentials
-- **Authorization**: RHOBS API Gateway resource policy enforces per-path access: `POST /api/v1/receive` allows any principal in the same AWS Organization (`aws:PrincipalOrgID`); `GET /api/v1/query` and `GET /api/v1/query_range` are restricted to the RC account only (`aws:PrincipalAccount`)
+- **Authorization**: RHOBS API Gateway resource policy enforces per-path access: `POST /api/v1/receive` allows any principal in the same AWS Organization (`aws:PrincipalOrgID`); `GET /api/v1/query`, `GET /api/v1/query_range`, and `GET /api/v1/rules` are restricted to the RC account only (`aws:PrincipalAccount`)
 - **Encryption**: S3 at rest via KMS; all cross-account traffic through HTTPS API Gateway
 - **Network isolation**: No direct MC-to-RC network path; all traffic flows through API Gateway + VPC Link
 - **FIPS**: S3 FIPS endpoints for US regions; YACE runs with `--fips` flag
