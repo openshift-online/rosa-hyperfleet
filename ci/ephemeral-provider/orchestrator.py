@@ -1,12 +1,17 @@
+import json
 import logging
 import os
 import re
 import shutil
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+import boto3
 import yaml
 
 from __init__ import TARGET_ENVIRONMENT
@@ -18,6 +23,7 @@ from yaml_utils import deep_merge, load_and_merge
 
 PROVISION_TIMEOUT = 3600  # seconds (1 hour); total time for provisioning
 TEARDOWN_TIMEOUT = 3600  # seconds (1 hour); total time for teardown
+PURGE_TIMEOUT = 600  # seconds (10 min); budget for cluster/bundle purge before infra teardown
 
 log = logging.getLogger(__name__)
 
@@ -143,6 +149,12 @@ class EphemeralEnvOrchestrator:
         # In Prow, teardown runs as a separate step — this captures logs
         # from the provisioning phase that would otherwise be lost.
         self.collect_codebuild_logs()
+
+        # Purge clusters and resource bundles before infrastructure teardown.
+        # Deleting bundles triggers ManifestWork removal on the MC, which is
+        # what actually tears down the HostedClusters. Without this, terraform
+        # destroy on the MC can be blocked by active HCPs.
+        self._purge_clusters(git)
 
         self.central_monitor = PipelineMonitor(self.aws.session)
         self.target_monitor = PipelineMonitor(self.aws.target_session)
@@ -464,6 +476,214 @@ class EphemeralEnvOrchestrator:
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         dest_path.write_text(result.stdout)
         log.info("Terraform outputs written to %s", dest)
+
+    def _purge_clusters(self, git: GitManager):
+        """Delete all clusters and resource bundles via Platform API before infra teardown.
+
+        Follows the same pattern as the cluster-cleanup cronjob but operates
+        externally via the Platform API Gateway:
+          1. Fetch the API URL from terraform state
+          2. Delete all clusters (removes DB entries)
+          3. Delete all resource bundles (triggers ManifestWork removal → HC teardown)
+          4. Poll until both clusters and bundles are confirmed gone
+
+        Best-effort with timeout: if the API is unreachable or purge exceeds
+        PURGE_TIMEOUT, logs a warning and returns so infra teardown can proceed.
+        """
+        log.info("")
+        log.info("==========================================")
+        log.info("Teardown: Cluster & Bundle Purge")
+        log.info("==========================================")
+
+        deadline = time.time() + PURGE_TIMEOUT
+
+        # --- Get API URL from terraform state ---
+        api_url = self._get_api_url(git)
+        if not api_url:
+            log.warning("Could not determine API URL — skipping cluster purge")
+            return
+        api_url = api_url.rstrip("/")
+        log.info("Platform API: %s", api_url)
+
+        # --- Set up SigV4-signed request helper ---
+        rc_session = boto3.Session(
+            profile_name="rrp-rc",
+            region_name=self.region,
+        )
+        credentials = rc_session.get_credentials().get_frozen_credentials()
+        account_id = rc_session.client("sts").get_caller_identity()["Account"]
+
+        def sigv4_request(method: str, path: str) -> dict | None:
+            """Make a SigV4-signed request to the Platform API. Returns parsed JSON or None."""
+            from botocore.auth import SigV4Auth
+            from botocore.awsrequest import AWSRequest
+
+            url = f"{api_url}{path}"
+            request = AWSRequest(method=method, url=url, headers={
+                "X-Amz-Account-Id": account_id,
+            })
+            SigV4Auth(credentials, "execute-api", self.region).add_auth(request)
+
+            req = urllib.request.Request(
+                url,
+                method=method,
+                headers=dict(request.headers),
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    body = resp.read().decode()
+                    return json.loads(body) if body else {}
+            except urllib.error.HTTPError as e:
+                if e.code in (404, 410):
+                    return {"_gone": True}
+                log.warning("API %s %s returned HTTP %d", method, path, e.code)
+                return None
+            except (urllib.error.URLError, TimeoutError, OSError) as e:
+                log.warning("API %s %s failed: %s", method, path, e)
+                return None
+
+        def timed_out() -> bool:
+            if time.time() >= deadline:
+                log.warning("Purge timeout (%ds) reached — proceeding with infra teardown", PURGE_TIMEOUT)
+                return True
+            return False
+
+        # TODO: remove the manual resource bundle deletion in favor of just
+        # calling the API Endpoint which does the full deletion on its own.
+
+        # --- 1. Delete all clusters ---
+        log.info("Listing clusters...")
+        clusters_resp = sigv4_request("GET", "/api/v0/clusters?limit=100")
+        if clusters_resp is None:
+            log.warning("Could not list clusters — skipping purge")
+            return
+
+        cluster_items = clusters_resp.get("items", [])
+        if cluster_items:
+            log.info("Found %d cluster(s) — deleting...", len(cluster_items))
+            for cluster in cluster_items:
+                if timed_out():
+                    return
+                cid = cluster.get("id", "")
+                cname = cluster.get("name", "unknown")
+                log.info("  Deleting cluster: %s (%s)", cname, cid)
+                sigv4_request("DELETE", f"/api/v0/clusters/{cid}")
+        else:
+            log.info("No clusters found.")
+
+        if timed_out():
+            return
+
+        # --- 2. Delete all resource bundles ---
+        log.info("Listing resource bundles...")
+        all_bundle_ids = []
+        page = 1
+        while not timed_out():
+            bundles_resp = sigv4_request("GET", f"/api/v0/resource_bundles?page={page}&size=100")
+            if bundles_resp is None:
+                log.warning("Could not list resource bundles — skipping bundle deletion")
+                break
+            items = bundles_resp.get("items", [])
+            if not items:
+                break
+            for item in items:
+                bid = item.get("id", "")
+                if bid:
+                    all_bundle_ids.append(bid)
+            total = bundles_resp.get("total", 0)
+            if len(all_bundle_ids) >= total:
+                break
+            page += 1
+
+        if all_bundle_ids:
+            log.info("Found %d resource bundle(s) — deleting...", len(all_bundle_ids))
+            for bid in all_bundle_ids:
+                if timed_out():
+                    return
+                log.info("  Deleting bundle: %s", bid)
+                sigv4_request("DELETE", f"/api/v0/resource_bundles/{bid}")
+        else:
+            log.info("No resource bundles found.")
+
+        if timed_out():
+            return
+
+        # --- 3. Verify clusters gone ---
+        log.info("Verifying cluster deletion...")
+        while not timed_out():
+            resp = sigv4_request("GET", "/api/v0/clusters?limit=100")
+            if resp is None:
+                break
+            remaining = len(resp.get("items", []))
+            if remaining == 0:
+                log.info("All clusters confirmed deleted.")
+                break
+            log.info("  %d cluster(s) still present — waiting 10s...", remaining)
+            time.sleep(10)
+
+        if timed_out():
+            return
+
+        # --- 4. Verify bundles gone ---
+        log.info("Verifying resource bundle removal...")
+        while not timed_out():
+            resp = sigv4_request("GET", "/api/v0/resource_bundles?page=1&size=100")
+            if resp is None:
+                break
+            remaining = len(resp.get("items", []))
+            if remaining == 0:
+                log.info("All resource bundles confirmed removed.")
+                break
+            log.info("  %d bundle(s) still present — waiting 10s...", remaining)
+            time.sleep(10)
+
+        log.info("Cluster & bundle purge complete.")
+
+    def _get_api_url(self, git: GitManager) -> str | None:
+        """Fetch the API Gateway URL from terraform state.
+
+        Returns the URL string, or None if it cannot be determined.
+        """
+        try:
+            regional_account_id = self.aws.get_target_account_id("regional")
+            state_bucket = f"terraform-state-{regional_account_id}-{self.region}"
+            state_key = f"regional-cluster/{self.eph_prefix}-regional.tfstate"
+            tf_dir = git.work_dir / "terraform" / "config" / "regional-cluster"
+
+            env = os.environ.copy()
+            env.update(self.aws.target_subprocess_env("regional"))
+
+            subprocess.run(
+                [
+                    "terraform", "init", "-reconfigure",
+                    f"-backend-config=bucket={state_bucket}",
+                    f"-backend-config=key={state_key}",
+                    f"-backend-config=region={self.region}",
+                    "-backend-config=use_lockfile=true",
+                ],
+                cwd=tf_dir,
+                env=env,
+                check=True,
+                capture_output=True,
+                timeout=120,
+            )
+
+            result = subprocess.run(
+                ["terraform", "output", "-raw", "api_gateway_invoke_url"],
+                cwd=tf_dir,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+
+            log.warning("terraform output api_gateway_invoke_url returned empty or failed (rc=%d)", result.returncode)
+            return None
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, RuntimeError) as e:
+            log.warning("Failed to fetch API URL from terraform state: %s", e)
+            return None
 
     def _run_teardown(self, git: GitManager, fire_and_forget: bool = False):
         """Tear down infrastructure via GitOps and destroy the pipeline-provisioner."""
