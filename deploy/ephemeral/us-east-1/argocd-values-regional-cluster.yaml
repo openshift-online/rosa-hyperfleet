@@ -16,3 +16,52 @@ maestro:
   iotLogLevel: WARN
 pagerduty:
   enabled: false
+receive:
+  resources:
+    requests:
+      cpu: 700m
+      memory: 3Gi
+    limits:
+      memory: 5Gi
+  router:
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
+      limits:
+        memory: 4Gi
+query:
+  resources:
+    requests:
+      cpu: 1
+      memory: 1Gi
+    limits:
+      memory: 5Gi
+  frontend:
+    resources:
+      requests:
+        cpu: 1
+        memory: 500Mi
+      limits:
+        memory: 3Gi
+storeGateway:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+compactor:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+ruler:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi

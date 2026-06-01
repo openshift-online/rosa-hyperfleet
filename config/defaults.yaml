@@ -100,6 +100,71 @@ observability:
     # @used-by observability.sns_alerting.enabled pipeline-regional-cluster-inputs/terraform.json.j2
     enabled: true
 
+  thanos:
+    # @doc observability.thanos.receive Thanos Receive (ingester) resource requests and limits.
+    # @used-by observability.thanos.receive _context
+    receive:
+      resources:
+        requests:
+          cpu: 700m
+          memory: 3Gi
+        limits:
+          memory: 5Gi
+    # @doc observability.thanos.receiveRouter Thanos Receive Router resource requests and limits.
+    # @used-by observability.thanos.receiveRouter _context
+    receiveRouter:
+      resources:
+        requests:
+          cpu: 250m
+          memory: 1Gi
+        limits:
+          memory: 4Gi
+    # @doc observability.thanos.query Thanos Query resource requests and limits.
+    # @used-by observability.thanos.query _context
+    query:
+      resources:
+        requests:
+          cpu: 1
+          memory: 1Gi
+        limits:
+          memory: 5Gi
+    # @doc observability.thanos.queryFrontend Thanos Query Frontend resource requests and limits.
+    # @used-by observability.thanos.queryFrontend _context
+    queryFrontend:
+      resources:
+        requests:
+          cpu: 1
+          memory: 1Gi
+        limits:
+          memory: 5Gi
+    # @doc observability.thanos.storeGateway Thanos Store Gateway resource requests and limits.
+    # @used-by observability.thanos.storeGateway _context
+    storeGateway:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          memory: 1Gi
+    # @doc observability.thanos.compactor Thanos Compactor resource requests and limits.
+    # @used-by observability.thanos.compactor _context
+    compactor:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          memory: 1Gi
+    # @doc observability.thanos.ruler Thanos Ruler resource requests and limits.
+    # @used-by observability.thanos.ruler _context
+    ruler:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          memory: 512Mi
+
 applications:
   management-cluster:
     eksNodePool:
@@ -138,6 +203,34 @@ applications:
       # @doc applications.regional-cluster.pagerduty.enabled Enable PagerDuty alerting in the monitoring stack.
       # @used-by applications.regional-cluster.pagerduty.enabled _context
       enabled: "{{ observability.pagerduty.enabled | default(false) }}"
+    receive:
+      # @doc applications.regional-cluster.receive.resources Thanos Receive resource requests and limits, from observability.thanos.receive.
+      # @used-by applications.regional-cluster.receive.resources _context
+      resources: "{{ observability.thanos.receive.resources }}"
+      router:
+        # @doc applications.regional-cluster.receive.router.resources Thanos Receive Router resource requests and limits, from observability.thanos.receiveRouter.
+        # @used-by applications.regional-cluster.receive.router.resources _context
+        resources: "{{ observability.thanos.receiveRouter.resources }}"
+    query:
+      # @doc applications.regional-cluster.query.resources Thanos Query resource requests and limits, from observability.thanos.query.
+      # @used-by applications.regional-cluster.query.resources _context
+      resources: "{{ observability.thanos.query.resources }}"
+      frontend:
+        # @doc applications.regional-cluster.query.frontend.resources Thanos Query Frontend resource requests and limits, from observability.thanos.queryFrontend.
+        # @used-by applications.regional-cluster.query.frontend.resources _context
+        resources: "{{ observability.thanos.queryFrontend.resources }}"
+    storeGateway:
+      # @doc applications.regional-cluster.storeGateway.resources Thanos Store Gateway resource requests and limits, from observability.thanos.storeGateway.
+      # @used-by applications.regional-cluster.storeGateway.resources _context
+      resources: "{{ observability.thanos.storeGateway.resources }}"
+    compactor:
+      # @doc applications.regional-cluster.compactor.resources Thanos Compactor resource requests and limits, from observability.thanos.compactor.
+      # @used-by applications.regional-cluster.compactor.resources _context
+      resources: "{{ observability.thanos.compactor.resources }}"
+    ruler:
+      # @doc applications.regional-cluster.ruler.resources Thanos Ruler resource requests and limits, from observability.thanos.ruler.
+      # @used-by applications.regional-cluster.ruler.resources _context
+      resources: "{{ observability.thanos.ruler.resources }}"
 
 # provision_mcs: MC topology, defined per-region. Keys are MC IDs.
 # Fields below are injected into templates as mc.* by render.py.
