@@ -28,6 +28,10 @@ while getopts ":n:x:N:i:" opt; do
   esac
 done
 shift $((OPTIND - 1))
+if [[ $# -ne 0 ]]; then
+  echo "Error: unexpected positional arguments: $*" >&2
+  exit 1
+fi
 
 PASS=0; FAIL=0; SKIP=0
 FAILURES=()
