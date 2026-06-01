@@ -97,6 +97,15 @@ grafana:
           jsonData:
             timeInterval: "30s"
             httpMethod: POST
+        - name: RC Prometheus
+          type: prometheus
+          url: http://monitoring-prometheus.monitoring:9090
+          isDefault: false
+          access: proxy
+          editable: false
+          jsonData:
+            timeInterval: "30s"
+            httpMethod: POST
         - name: Loki
           type: loki
           url: http://loki-query-frontend.loki.svc:3100
