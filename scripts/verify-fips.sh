@@ -3,23 +3,36 @@
 # Covers: Kubernetes objects, node host state, distroless container FIPS, container user space, application binaries.
 #
 # Usage:
-#   ./verify-fips.sh
+#   ./verify-fips.sh [-n <namespace>] [-x <namespaces>] [-N <namespace>] [-i <image>]
 #
-# Environment variables:
-#   CHECK_NAMESPACES   Comma-separated namespaces to check (default: all non-system)
-#   EXCLUDE_NAMESPACES Comma-separated namespaces to exclude (default: kube-node-lease)
-#   NODE_CHECK_NS      Namespace for the diagnostic DaemonSet (default: kube-system)
-#   NODE_CHECK_IMAGE   Image for the diagnostic DaemonSet (default: alpine:3)
+# Flags:
+#   -n <namespace>     Check only this namespace (default: all non-system namespaces)
+#   -x <namespaces>    Comma-separated namespaces to exclude (default: kube-node-lease)
+#   -N <namespace>     Namespace for the diagnostic DaemonSet (default: kube-system)
+#   -i <image>         Image for the diagnostic DaemonSet (default: alpine:3)
 set -euo pipefail
+
+CHECK_NAMESPACES=""
+EXCLUDE_NAMESPACES="kube-node-lease"
+NODE_CHECK_NS="kube-system"
+NODE_CHECK_IMAGE="alpine:3"
+
+while getopts ":n:x:N:i:" opt; do
+  case $opt in
+    n) CHECK_NAMESPACES="$OPTARG" ;;
+    x) EXCLUDE_NAMESPACES="$OPTARG" ;;
+    N) NODE_CHECK_NS="$OPTARG" ;;
+    i) NODE_CHECK_IMAGE="$OPTARG" ;;
+    :) echo "Error: -$OPTARG requires an argument" >&2; exit 1 ;;
+    \?) echo "Error: unknown option -$OPTARG" >&2; exit 1 ;;
+  esac
+done
+shift $((OPTIND - 1))
 
 PASS=0; FAIL=0; SKIP=0
 FAILURES=()
+PASSES=()
 WORKLOAD_FAILS=()  # entries: "pod_short|binary_basename|binary_type"
-
-CHECK_NAMESPACES="${CHECK_NAMESPACES:-}"
-EXCLUDE_NAMESPACES="${EXCLUDE_NAMESPACES:-kube-node-lease}"
-NODE_CHECK_NS="${NODE_CHECK_NS:-kube-system}"
-NODE_CHECK_IMAGE="${NODE_CHECK_IMAGE:-alpine:3}"
 
 # ─── Colors ───────────────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then
@@ -30,7 +43,7 @@ else
 fi
 
 # ─── Output helpers ───────────────────────────────────────────────────────────
-pass()   { printf "  ${GREEN}[PASS]${RESET} %s\n" "$1"; ((++PASS)); }
+pass()   { printf "  ${GREEN}[PASS]${RESET} %s\n" "$1"; ((++PASS)); PASSES+=("$1"); }
 fail()   { printf "  ${RED}[FAIL]${RESET} %s\n" "$1"; ((++FAIL)); FAILURES+=("$1"); }
 skip()   { printf "  ${YELLOW}[SKIP]${RESET} %s\n" "$1"; ((++SKIP)); }
 header() { printf "\n${BOLD}=== %s ===${RESET}\n" "$1"; }
@@ -314,15 +327,19 @@ EOF
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 3. Distroless Container FIPS Verification
-#    For containers without nm/strings (distroless images), the node DaemonSet
-#    from check_node_host_state is reused to run three host-level checks:
+# 3. Minimal-Image Container FIPS Verification
+#    "Distroless" / minimal images strip out shell, package manager, and debug
+#    tools (nm, strings) to reduce attack surface. Because we cannot inspect
+#    binaries from inside the container, the node DaemonSet from
+#    check_node_host_state is reused to reach the container's process via the
+#    host /proc filesystem. Three host-level checks are run:
 #      - Image label   (com.redhat.fips=true on Red Hat FIPS images)
 #      - /proc/<pid>/maps  (libcrypto loaded by the running process)
 #      - /proc/<pid>/exe   (FIPS crypto symbols compiled into the binary)
 # ─────────────────────────────────────────────────────────────────────────────
 check_distroless_fips() {
-  header "Distroless Container FIPS Verification"
+  header "Minimal/Distroless Container FIPS Verification"
+  printf "  %s\n" "(Distroless = stripped-down image with no shell or debug tools; checks run via host /proc)"
 
   local ds_pods
   ds_pods=$(kubectl get pods -n "$NODE_CHECK_NS" -l app=fips-node-check \
@@ -372,7 +389,7 @@ check_distroless_fips() {
         pod_short=$(echo "$pod" | sed -E 's/-[a-z0-9]{5,10}-[a-z0-9]{4,5}$//' 2>/dev/null || echo "$pod")
 
         echo ""
-        printf "  --- %s (distroless) ---\n" "$target"
+        printf "  --- %s (minimal/distroless image — no shell or debug tools inside container) ---\n" "$target"
 
         local node
         node=$(kubectl get pod "$pod" -n "$ns" \
@@ -643,7 +660,7 @@ check_workload_fips() {
 
           # If no scan tool, we cannot inspect the binary at all (distroless image).
           if [[ -z "$scan_tool" ]]; then
-            skip "$target: nm and strings unavailable (distroless image) — verify FIPS compliance via build provenance"
+            skip "$target: nm and strings unavailable (minimal/distroless image — no debug tools in container). Verify FIPS compliance via build provenance: check SBOM, build logs, or image labels for the Red Hat FIPS toolchain."
             continue
           fi
 
@@ -712,6 +729,16 @@ echo ""
 printf "${BOLD}════════════════════════════════════════════${RESET}\n"
 printf "${GREEN}  PASS: %d${RESET}  ${RED}FAIL: %d${RESET}  ${YELLOW}SKIP: %d${RESET}\n" "$PASS" "$FAIL" "$SKIP"
 printf "${BOLD}════════════════════════════════════════════${RESET}\n"
+
+if [[ ${#PASSES[@]} -gt 0 ]]; then
+  echo ""
+  printf "${BOLD}${GREEN}Passing Checks:${RESET}\n"
+  printf "${GREEN}────────────────────────────────────────────${RESET}\n"
+  for p in "${PASSES[@]}"; do
+    printf "  ${GREEN}✓${RESET} %s\n" "$p"
+  done
+  printf "${GREEN}────────────────────────────────────────────${RESET}\n"
+fi
 
 if [[ ${#FAILURES[@]} -gt 0 ]]; then
   echo ""
