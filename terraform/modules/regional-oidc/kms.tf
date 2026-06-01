@@ -47,7 +47,7 @@ resource "aws_kms_key" "oidc" {
         Resource = "*"
         Condition = {
           StringLike = {
-            "aws:PrincipalOrgPaths"            = var.mc_ou_path
+            "aws:PrincipalOrgPaths"            = "${var.mc_ou_path}*"
             "aws:PrincipalArn"                 = "arn:*:iam::*:role/*-hypershift-operator"
             "kms:EncryptionContext:aws:s3:arn" = "arn:${data.aws_partition.current.partition}:s3:::${local.bucket_name}*"
           }
