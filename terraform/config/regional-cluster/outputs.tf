@@ -411,6 +411,11 @@ output "oidc_bucket_region" {
   value       = module.regional_oidc.bucket_region
 }
 
+output "oidc_kms_key_arn" {
+  description = "ARN of the KMS key used for regional OIDC S3 bucket encryption"
+  value       = module.regional_oidc.kms_key_arn
+}
+
 # =============================================================================
 # Thanos Infrastructure Outputs
 # =============================================================================

@@ -57,6 +57,16 @@ variable "oidc_cloudfront_domain" {
   }
 }
 
+variable "oidc_kms_key_arn" {
+  description = "ARN of the KMS key used for OIDC S3 bucket encryption (owned by the Regional Cluster)"
+  type        = string
+
+  validation {
+    condition     = length(trimspace(var.oidc_kms_key_arn)) > 0
+    error_message = "oidc_kms_key_arn must be provided from RC Terraform state."
+  }
+}
+
 variable "tags" {
   description = "Additional tags to apply to all resources"
   type        = map(string)

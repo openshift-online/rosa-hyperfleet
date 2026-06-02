@@ -131,3 +131,9 @@ variable "oidc_cloudfront_domain" {
   default     = ""
 }
 
+variable "oidc_kms_key_arn" {
+  description = "ARN of the KMS key used for regional OIDC S3 bucket encryption (read from RC terraform state)"
+  type        = string
+  default     = ""
+}
+

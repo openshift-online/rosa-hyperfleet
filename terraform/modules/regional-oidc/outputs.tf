@@ -21,3 +21,8 @@ output "bucket_region" {
   description = "AWS region where the OIDC S3 bucket is deployed"
   value       = data.aws_region.current.name
 }
+
+output "kms_key_arn" {
+  description = "ARN of the KMS key used for OIDC S3 bucket encryption"
+  value       = aws_kms_key.oidc.arn
+}
