@@ -47,6 +47,7 @@ if [ "${DELETE_FLAG}" == "true" ]; then
     export TF_VAR_oidc_bucket_name="placeholder"
     export TF_VAR_oidc_bucket_arn="arn:aws:s3:::placeholder"
     export TF_VAR_oidc_bucket_region="us-east-1"
+    export TF_VAR_oidc_kms_key_arn="arn:aws:kms:us-east-1:000000000000:key/placeholder"
 else
     echo "Reading IoT certificate data from RC account state..."
     use_rc_account
@@ -83,16 +84,19 @@ else
     TF_VAR_oidc_bucket_name=""
     TF_VAR_oidc_bucket_arn=""
     TF_VAR_oidc_bucket_region=""
+    TF_VAR_oidc_kms_key_arn=""
     while [ $_OIDC_RETRY_COUNT -lt $_OIDC_MAX_RETRIES ]; do
         _OIDC_RETRY_COUNT=$((_OIDC_RETRY_COUNT + 1))
         TF_VAR_oidc_cloudfront_domain=$(cd "$_RC_TF_DIR" && terraform output -raw oidc_cloudfront_domain 2>/dev/null || true)
         TF_VAR_oidc_bucket_name=$(cd "$_RC_TF_DIR" && terraform output -raw oidc_bucket_name 2>/dev/null || true)
         TF_VAR_oidc_bucket_arn=$(cd "$_RC_TF_DIR" && terraform output -raw oidc_bucket_arn 2>/dev/null || true)
         TF_VAR_oidc_bucket_region=$(cd "$_RC_TF_DIR" && terraform output -raw oidc_bucket_region 2>/dev/null || true)
+        TF_VAR_oidc_kms_key_arn=$(cd "$_RC_TF_DIR" && terraform output -raw oidc_kms_key_arn 2>/dev/null || true)
         if [ -n "${TF_VAR_oidc_cloudfront_domain}" ] && \
            [ -n "${TF_VAR_oidc_bucket_name}" ] && \
            [ -n "${TF_VAR_oidc_bucket_arn}" ] && \
-           [ -n "${TF_VAR_oidc_bucket_region}" ]; then
+           [ -n "${TF_VAR_oidc_bucket_region}" ] && \
+           [ -n "${TF_VAR_oidc_kms_key_arn}" ]; then
             break
         fi
         echo "  OIDC outputs not yet available in RC state (attempt ${_OIDC_RETRY_COUNT}/${_OIDC_MAX_RETRIES}) — RC pipeline may still be running. Retrying in ${_OIDC_RETRY_DELAY}s..."
@@ -101,7 +105,8 @@ else
     if [ -z "${TF_VAR_oidc_cloudfront_domain}" ] || \
        [ -z "${TF_VAR_oidc_bucket_name}" ] || \
        [ -z "${TF_VAR_oidc_bucket_arn}" ] || \
-       [ -z "${TF_VAR_oidc_bucket_region}" ]; then
+       [ -z "${TF_VAR_oidc_bucket_region}" ] || \
+       [ -z "${TF_VAR_oidc_kms_key_arn}" ]; then
         echo "ERROR: OIDC outputs still missing from RC terraform state after $((_OIDC_MAX_RETRIES * _OIDC_RETRY_DELAY / 60))+ minutes." >&2
         echo "  Ensure the RC pipeline completed successfully before the MC pipeline times out." >&2
         exit 1
@@ -110,10 +115,12 @@ else
     export TF_VAR_oidc_bucket_name
     export TF_VAR_oidc_bucket_arn
     export TF_VAR_oidc_bucket_region
+    export TF_VAR_oidc_kms_key_arn
     echo "  OIDC CloudFront: ${TF_VAR_oidc_cloudfront_domain}"
     echo "  OIDC Bucket:     ${TF_VAR_oidc_bucket_name}"
     echo "  OIDC Bucket ARN: ${TF_VAR_oidc_bucket_arn}"
     echo "  OIDC Region:     ${TF_VAR_oidc_bucket_region}"
+    echo "  OIDC KMS Key:    ${TF_VAR_oidc_kms_key_arn}"
 fi
 
 # =====================================================================
