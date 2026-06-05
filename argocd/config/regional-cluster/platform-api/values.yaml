@@ -14,8 +14,8 @@ platformApi:
   app:
     name: platform-api
     image:
-      repository: quay.io/cdoan0/rosa-regional-platform-api
-      tag: latest
+      repository: quay.io/slopezz/rosa-regional-platform-api
+      tag: zoa-poc
       pullPolicy: Always
 
     # Application arguments
@@ -71,6 +71,13 @@ platformApi:
   targetGroup:
     arn: "PLACEHOLDER"
     targetType: ip
+
+  # ZOA (Zero Operator Access) configuration
+  zoa:
+    enabled: true
+    tableName: ""
+    bucketName: ""
+    jobRoleArn: ""
 
   # Health probe configuration
   probes:

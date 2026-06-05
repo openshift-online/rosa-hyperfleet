@@ -105,6 +105,9 @@ if [[ "$CLUSTER_TYPE" == "regional-cluster" ]]; then
     LOKI_KMS_KEY_ARN=$(echo "$OUTPUTS" | jq -r '.loki_kms_key_arn.value // ""')
     LOKI_DISTRIBUTOR_TARGET_GROUP_ARN=$(echo "$OUTPUTS" | jq -r '.loki_distributor_target_group_arn.value // ""')
     LOKI_QUERY_FRONTEND_TARGET_GROUP_ARN=$(echo "$OUTPUTS" | jq -r '.loki_query_frontend_target_group_arn.value // ""')
+    ZOA_TABLE_NAME=$(echo "$OUTPUTS" | jq -r '.zoa_table_name.value // ""')
+    ZOA_BUCKET_NAME=$(echo "$OUTPUTS" | jq -r '.zoa_bucket_name.value // ""')
+    ZOA_JOB_ROLE_ARN=$(echo "$OUTPUTS" | jq -r '.zoa_job_role_arn.value // ""')
 else
     API_TARGET_GROUP_ARN=""
     THANOS_TARGET_GROUP_ARN=""
@@ -112,6 +115,9 @@ else
     LOKI_KMS_KEY_ARN=""
     LOKI_DISTRIBUTOR_TARGET_GROUP_ARN=""
     LOKI_QUERY_FRONTEND_TARGET_GROUP_ARN=""
+    ZOA_TABLE_NAME=""
+    ZOA_BUCKET_NAME=""
+    ZOA_JOB_ROLE_ARN=""
 fi
 
 RHOBS_API_URL="${RHOBS_API_URL:-}"
@@ -148,7 +154,10 @@ RUN_TASK_OUTPUT=$(aws ecs run-task \
         {\"name\": \"LOKI_DISTRIBUTOR_TARGET_GROUP_ARN\", \"value\": \"$LOKI_DISTRIBUTOR_TARGET_GROUP_ARN\"},
         {\"name\": \"LOKI_QUERY_FRONTEND_TARGET_GROUP_ARN\", \"value\": \"$LOKI_QUERY_FRONTEND_TARGET_GROUP_ARN\"},
         {\"name\": \"RHOBS_API_URL\", \"value\": \"$RHOBS_API_URL\"},
-        {\"name\": \"DNS_ZONE_OPERATOR_ROLE_ARN\", \"value\": \"$DNS_ZONE_OPERATOR_ROLE_ARN\"}
+        {\"name\": \"DNS_ZONE_OPERATOR_ROLE_ARN\", \"value\": \"$DNS_ZONE_OPERATOR_ROLE_ARN\"},
+        {\"name\": \"ZOA_TABLE_NAME\", \"value\": \"$ZOA_TABLE_NAME\"},
+        {\"name\": \"ZOA_BUCKET_NAME\", \"value\": \"$ZOA_BUCKET_NAME\"},
+        {\"name\": \"ZOA_JOB_ROLE_ARN\", \"value\": \"$ZOA_JOB_ROLE_ARN\"}
       ]
     }]
   }" 2>&1)

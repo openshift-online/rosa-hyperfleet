@@ -1,0 +1,62 @@
+name: get_nodes
+scope: kube-api
+description: List all nodes in the target cluster
+manifests:
+  - apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: zoa-get-nodes-{{ .ExecID }}
+      namespace: {{ .Namespace }}
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: zoa-get-nodes-{{ .ExecID }}
+    rules:
+      - apiGroups: [""]
+        resources: ["nodes"]
+        verbs: ["get", "list"]
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: zoa-get-nodes-{{ .ExecID }}
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: zoa-get-nodes-{{ .ExecID }}
+    subjects:
+      - kind: ServiceAccount
+        name: zoa-get-nodes-{{ .ExecID }}
+        namespace: {{ .Namespace }}
+  - apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: zoa-get-nodes-{{ .ExecID }}
+      namespace: {{ .Namespace }}
+      labels:
+        zoa.rosa.io/execution-id: "{{ .ExecID }}"
+        zoa.rosa.io/action: "{{ .ActionName }}"
+    spec:
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            zoa.rosa.io/execution-id: "{{ .ExecID }}"
+        spec:
+          serviceAccountName: zoa-get-nodes-{{ .ExecID }}
+          restartPolicy: Never
+          containers:
+            - name: ta
+              image: amazon/aws-cli:latest
+              command:
+                - sh
+                - -c
+                - |
+                  kubectl get nodes -o json > /tmp/output.json &&
+                  aws s3 cp /tmp/output.json "s3://{{ .OutputBucket }}/{{ .ExecID }}/output.json"
+              env:
+                - name: EXEC_ID
+                  value: "{{ .ExecID }}"
+                - name: ZOA_BUCKET
+                  value: "{{ .OutputBucket }}"
+                - name: AWS_ROLE_ARN
+                  value: "{{ .JobRoleARN }}"

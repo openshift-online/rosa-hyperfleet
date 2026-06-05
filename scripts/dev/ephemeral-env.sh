@@ -382,6 +382,7 @@ cmd_provision() {
     echo "  ENV CONFIG:        $OVERRIDE_INFO"
     echo "  CONTAINER_ENGINE:  $CONTAINER_ENGINE"
     echo "  IMAGE:             $CI_IMAGE"
+    [[ -n "${API_IMAGE:-}" ]] && echo "  API_IMAGE:         $API_IMAGE"
 
     # Record initial state
     echo "$ID REPO=$repo BRANCH=$branch STATE=provisioning CREATED=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -392,6 +393,28 @@ cmd_provision() {
     tmpdir=$(mktemp -d)
     _prev_trap=$(trap -p EXIT | sed "s/^trap -- '//;s/' EXIT$//")
     trap 'rm -rf "${tmpdir:-}"; eval "$_prev_trap"' EXIT
+
+    # Build API image override argument if API_IMAGE is set
+    local api_image_override_args=""
+    if [[ -n "${API_IMAGE:-}" ]]; then
+        local api_repo api_tag
+        local _suffix="${API_IMAGE##*:}"
+        if [[ "$API_IMAGE" == *:* && "$_suffix" != */* ]]; then
+            api_repo="${API_IMAGE%:*}"
+            api_tag="$_suffix"
+        else
+            api_repo="$API_IMAGE"
+            api_tag="latest"
+        fi
+        cat > "${tmpdir}/api-image-override.yaml" <<EOF
+platformApi:
+  app:
+    image:
+      repository: ${api_repo}
+      tag: ${api_tag}
+EOF
+        api_image_override_args="--provision-override-file argocd/config/regional-cluster/platform-api/values.yaml:/output/api-image-override.yaml"
+    fi
 
     local rc=0
     # shellcheck disable=SC2086
@@ -408,6 +431,7 @@ cmd_provision() {
             --id "$ID" \
             --repo "$repo" --branch "$branch" \
             --save-regional-state /output/tf-outputs.json \
+            $api_image_override_args \
     || rc=$?
 
     # Record results

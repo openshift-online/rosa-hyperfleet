@@ -44,6 +44,23 @@ spec:
             - --metrics-port={{ .Values.platformApi.app.args.metricsPort }}
             - --dynamodb-region={{ .Values.platformApi.app.args.dynamodbRegion }}
             - --dynamodb-prefix={{ .Values.platformApi.app.args.dynamodbPrefix }}
+          {{- if .Values.platformApi.zoa.enabled }}
+          env:
+            - name: ZOA_ENABLED
+              value: "true"
+            - name: ZOA_TABLE_NAME
+              value: {{ .Values.platformApi.zoa.tableName | quote }}
+            - name: ZOA_BUCKET_NAME
+              value: {{ .Values.platformApi.zoa.bucketName | quote }}
+            - name: ZOA_JOB_ROLE_ARN
+              value: {{ .Values.platformApi.zoa.jobRoleArn | quote }}
+            - name: ZOA_TEMPLATES_DIR
+              value: /etc/zoa/templates
+          volumeMounts:
+            - name: zoa-templates
+              mountPath: /etc/zoa/templates
+              readOnly: true
+          {{- end }}
           ports:
             - name: api
               containerPort: {{ .Values.platformApi.app.args.apiPort }}
@@ -116,3 +133,8 @@ spec:
         - name: envoy-config
           configMap:
             name: envoy-config
+        {{- if .Values.platformApi.zoa.enabled }}
+        - name: zoa-templates
+          configMap:
+            name: zoa-ta-templates
+        {{- end }}

@@ -442,3 +442,22 @@ output "loki_query_frontend_target_group_arn" {
   description = "Target group ARN for Loki Query Frontend TargetGroupBinding (dedicated RHOBS ALB)"
   value       = module.rhobs_api_gateway.loki_query_frontend_target_group_arn
 }
+
+# =============================================================================
+# ZOA Outputs
+# =============================================================================
+
+output "zoa_table_name" {
+  description = "DynamoDB table name for ZOA executions"
+  value       = var.enable_zoa ? module.zoa[0].table_name : ""
+}
+
+output "zoa_bucket_name" {
+  description = "S3 bucket name for ZOA outputs"
+  value       = var.enable_zoa ? module.zoa[0].bucket_name : ""
+}
+
+output "zoa_job_role_arn" {
+  description = "IAM role ARN for ZOA jobs"
+  value       = var.enable_zoa ? module.zoa[0].job_role_arn : ""
+}

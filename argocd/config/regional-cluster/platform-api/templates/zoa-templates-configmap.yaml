@@ -1,0 +1,15 @@
+{{- if .Values.platformApi.zoa.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zoa-ta-templates
+  namespace: {{ .Values.platformApi.namespace }}
+  labels:
+    app: {{ .Values.platformApi.app.name }}
+    component: zoa
+data:
+{{- range $path, $content := .Files.Glob "ta-templates/*.yaml" }}
+  {{ base $path }}: |
+{{ $content | toString | indent 4 }}
+{{- end }}
+{{- end }}
