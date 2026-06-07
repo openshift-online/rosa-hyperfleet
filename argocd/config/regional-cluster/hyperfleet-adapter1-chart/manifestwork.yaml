@@ -19,7 +19,7 @@ metadata:
     # Standard Kubernetes application labels
     app.kubernetes.io/name: "rosa-hcp-cluster"
     app.kubernetes.io/instance: "{{ .clusterId }}"
-    app.kubernetes.io/version: "v1.0.0"
+    app.kubernetes.io/version: "v1.1.0"
     app.kubernetes.io/component: "infrastructure"
     app.kubernetes.io/part-of: "hyperfleet"
     app.kubernetes.io/managed-by: "hyperfleet-adapter"
