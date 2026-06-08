@@ -9,6 +9,7 @@ metadata:
     component: zoa
 data:
   image: {{ .Values.platformApi.zoa.jobImage | quote }}
+  revision: {{ .Values.global.git_revision | default "unknown" | quote }}
   cpu_request: {{ .Values.platformApi.zoa.jobResources.requests.cpu | quote }}
   memory_request: {{ .Values.platformApi.zoa.jobResources.requests.memory | quote }}
   cpu_limit: {{ .Values.platformApi.zoa.jobResources.limits.cpu | quote }}

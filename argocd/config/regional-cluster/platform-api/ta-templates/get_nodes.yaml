@@ -15,13 +15,15 @@ rbac:
       resources: ["nodes"]
       verbs: ["get", "list"]
 script: |
-  ARGS=""
-  if [ -n "${PARAM_NODE_SELECTOR}" ]; then
-    ARGS="-l ${PARAM_NODE_SELECTOR}"
+  set -euo pipefail
+
+  SELECTOR_ARGS=()
+  if [ -n "${PARAM_NODE_SELECTOR:-}" ]; then
+    SELECTOR_ARGS=(-l "${PARAM_NODE_SELECTOR}")
   fi
 
   echo "Retrieving nodes..."
-  kubectl get nodes ${ARGS} -o wide
+  kubectl get nodes "${SELECTOR_ARGS[@]}" -o wide
 
-  kubectl get nodes ${ARGS} -o json > /artifacts/output.json
+  kubectl get nodes "${SELECTOR_ARGS[@]}" -o json > /artifacts/output.json
   echo "Nodes retrieved successfully"

@@ -21,6 +21,8 @@ rbac:
       resources: ["pods"]
       verbs: ["get", "list"]
 script: |
+  set -euo pipefail
+
   echo "Validating deployment exists: ${PARAM_DEPLOYMENT_NAME} in ${PARAM_NAMESPACE}"
   if ! kubectl get deployment "${PARAM_DEPLOYMENT_NAME}" -n "${PARAM_NAMESPACE}" &>/dev/null; then
     echo '{"error": "Deployment not found"}' > /artifacts/output.json
@@ -39,7 +41,8 @@ script: |
   echo "Waiting for rollout to complete..."
   kubectl rollout status "deployment/${PARAM_DEPLOYMENT_NAME}" -n "${PARAM_NAMESPACE}" --timeout=300s
 
-  kubectl get deployment "${PARAM_DEPLOYMENT_NAME}" -n "${PARAM_NAMESPACE}" -o json > /artifacts/output.json
+  kubectl get deployment "${PARAM_DEPLOYMENT_NAME}" -n "${PARAM_NAMESPACE}" -o json | \
+    jq '{affected_resources: [{kind: "Deployment", namespace: .metadata.namespace, name: .metadata.name, action: "restarted", replicas: .status.readyReplicas}], summary: "Rollout restart completed successfully"}' \
+    > /artifacts/output.json
 
-  echo '{"affected_resources": [{"kind": "Deployment", "namespace": "'"${PARAM_NAMESPACE}"'", "name": "'"${PARAM_DEPLOYMENT_NAME}"'", "action": "restarted"}], "summary": "Rollout restart completed successfully"}' > /artifacts/output.json
   echo "Rollout restart completed successfully"

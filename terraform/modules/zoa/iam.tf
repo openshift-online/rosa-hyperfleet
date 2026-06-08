@@ -23,7 +23,6 @@ resource "aws_iam_role_policy" "platform_api_zoa_dynamodb" {
           "dynamodb:PutItem",
           "dynamodb:UpdateItem",
           "dynamodb:Query",
-          "dynamodb:Scan",
         ]
         Resource = [
           aws_dynamodb_table.executions.arn,

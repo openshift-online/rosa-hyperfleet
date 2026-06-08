@@ -67,6 +67,7 @@ spec:
               management_clusters: '{{ .metadata.annotations.management_clusters }}'
               rhobs_api_url: '{{ .metadata.annotations.rhobs_api_url }}'
               dns_zone_operator_role_arn: '{{ .metadata.annotations.dns_zone_operator_role_arn }}'
+              git_revision: '{{ .metadata.annotations.git_revision }}'
             platformApi:
               targetGroup:
                 arn: '{{ .metadata.annotations.api_target_group_arn }}'

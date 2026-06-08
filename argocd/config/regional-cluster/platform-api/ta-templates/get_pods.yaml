@@ -22,13 +22,15 @@ rbac:
       resources: ["events"]
       verbs: ["get", "list"]
 script: |
-  ARGS="-n ${PARAM_NAMESPACE}"
-  if [ -n "${PARAM_LABEL_SELECTOR}" ]; then
-    ARGS="${ARGS} -l ${PARAM_LABEL_SELECTOR}"
+  set -euo pipefail
+
+  SELECTOR_ARGS=()
+  if [ -n "${PARAM_LABEL_SELECTOR:-}" ]; then
+    SELECTOR_ARGS=(-l "${PARAM_LABEL_SELECTOR}")
   fi
 
   echo "Retrieving pods in namespace: ${PARAM_NAMESPACE}"
-  kubectl get pods ${ARGS} -o wide
+  kubectl get pods -n "${PARAM_NAMESPACE}" "${SELECTOR_ARGS[@]}" -o wide
 
-  kubectl get pods ${ARGS} -o json > /artifacts/output.json
+  kubectl get pods -n "${PARAM_NAMESPACE}" "${SELECTOR_ARGS[@]}" -o json > /artifacts/output.json
   echo "Pods retrieved successfully"
