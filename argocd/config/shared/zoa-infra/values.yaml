@@ -1,0 +1,22 @@
+namespace: zoa-jobs
+
+serviceAccounts:
+  kube:
+    name: zoa-kube-sa
+    description: "Kube-API read/write TAs — kubectl commands against local cluster"
+  awsRead:
+    name: zoa-aws-read-sa
+    description: "AWS read TAs — describe, list, get against AWS APIs"
+  awsWrite:
+    name: zoa-aws-write-sa
+    description: "AWS write TAs — modify, restart, scale via AWS APIs"
+  breakglassRead:
+    name: zoa-breakglass-read-sa
+    description: "Breakglass read operations — broad read AWS access"
+  breakglassWrite:
+    name: zoa-breakglass-write-sa
+    description: "Breakglass write operations — broad write AWS access"
+
+labels:
+  managed-by: zoa
+  part-of: rosa-regional-platform

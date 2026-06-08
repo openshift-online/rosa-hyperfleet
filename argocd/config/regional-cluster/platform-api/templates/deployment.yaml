@@ -54,6 +54,8 @@ spec:
               value: {{ .Values.platformApi.zoa.bucketName | quote }}
             - name: ZOA_JOB_ROLE_ARN
               value: {{ .Values.platformApi.zoa.jobRoleArn | quote }}
+            - name: ZOA_JOB_IMAGE
+              value: {{ .Values.platformApi.zoa.jobImage | quote }}
             - name: ZOA_TEMPLATES_DIR
               value: /etc/zoa/templates
           volumeMounts:

@@ -78,6 +78,7 @@ platformApi:
     tableName: ""
     bucketName: ""
     jobRoleArn: ""
+    jobImage: "quay.io/redhat-rosa/zoa-tools:latest"
 
   # Health probe configuration
   probes:

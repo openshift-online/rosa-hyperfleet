@@ -1,37 +1,40 @@
-name: get_nodes
+name: rollout_restart
 profile: kube
 scope: kube-api
-type: read
-description: List all nodes in the target cluster
+type: write
+description: Perform a rolling restart of a deployment
 params:
-  - name: node_selector
-    required: false
-    default: ""
+  - name: namespace
+    required: true
+  - name: deployment_name
+    required: true
 manifests:
   - apiVersion: rbac.authorization.k8s.io/v1
-    kind: ClusterRole
+    kind: Role
     metadata:
-      name: zoa-get-nodes-{{ .ExecID }}
+      name: zoa-rollout-restart-{{ .ExecID }}
+      namespace: {{ index .Params "namespace" }}
       labels:
         zoa.rosa.io/execution-id: "{{ .ExecID }}"
         zoa.rosa.io/action: "{{ .ActionName }}"
         zoa.rosa.io/managed: "true"
     rules:
-      - apiGroups: [""]
-        resources: ["nodes"]
-        verbs: ["get", "list"]
+      - apiGroups: ["apps"]
+        resources: ["deployments"]
+        verbs: ["get", "patch"]
   - apiVersion: rbac.authorization.k8s.io/v1
-    kind: ClusterRoleBinding
+    kind: RoleBinding
     metadata:
-      name: zoa-get-nodes-{{ .ExecID }}
+      name: zoa-rollout-restart-{{ .ExecID }}
+      namespace: {{ index .Params "namespace" }}
       labels:
         zoa.rosa.io/execution-id: "{{ .ExecID }}"
         zoa.rosa.io/action: "{{ .ActionName }}"
         zoa.rosa.io/managed: "true"
     roleRef:
       apiGroup: rbac.authorization.k8s.io
-      kind: ClusterRole
-      name: zoa-get-nodes-{{ .ExecID }}
+      kind: Role
+      name: zoa-rollout-restart-{{ .ExecID }}
     subjects:
       - kind: ServiceAccount
         name: zoa-kube-sa
@@ -45,7 +48,7 @@ manifests:
         zoa.rosa.io/execution-id: "{{ .ExecID }}"
         zoa.rosa.io/action: "{{ .ActionName }}"
         zoa.rosa.io/profile: "kube"
-        zoa.rosa.io/type: "read"
+        zoa.rosa.io/type: "write"
         zoa.rosa.io/managed: "true"
     spec:
       ttlSecondsAfterFinished: 3600
@@ -72,6 +75,10 @@ manifests:
                   value: "{{ .OutputBucket }}"
                 - name: ACTION_NAME
                   value: "{{ .ActionName }}"
+                - name: TARGET_NAMESPACE
+                  value: "{{ index .Params "namespace" }}"
+                - name: DEPLOYMENT_NAME
+                  value: "{{ index .Params "deployment_name" }}"
               volumeMounts:
                 - name: artifacts
                   mountPath: /artifacts
@@ -129,5 +136,12 @@ manifests:
       run.sh: |
         #!/bin/bash
         set -euo pipefail
-        kubectl get nodes -o json > /artifacts/output.json
-        echo "Nodes retrieved successfully"
+
+        echo "Rolling restart deployment: ${DEPLOYMENT_NAME} in namespace: ${TARGET_NAMESPACE}"
+        kubectl rollout restart deployment/${DEPLOYMENT_NAME} -n ${TARGET_NAMESPACE}
+
+        echo "Waiting for rollout to complete..."
+        kubectl rollout status deployment/${DEPLOYMENT_NAME} -n ${TARGET_NAMESPACE} --timeout=300s
+
+        kubectl get deployment ${DEPLOYMENT_NAME} -n ${TARGET_NAMESPACE} -o json > /artifacts/output.json
+        echo "Rollout restart completed successfully"

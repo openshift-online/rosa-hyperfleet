@@ -1,37 +1,44 @@
-name: get_nodes
+name: get_pods
 profile: kube
 scope: kube-api
 type: read
-description: List all nodes in the target cluster
+description: List pods in a namespace with optional label selector
 params:
-  - name: node_selector
+  - name: namespace
+    required: true
+  - name: label_selector
     required: false
     default: ""
 manifests:
   - apiVersion: rbac.authorization.k8s.io/v1
-    kind: ClusterRole
+    kind: Role
     metadata:
-      name: zoa-get-nodes-{{ .ExecID }}
+      name: zoa-get-pods-{{ .ExecID }}
+      namespace: {{ index .Params "namespace" }}
       labels:
         zoa.rosa.io/execution-id: "{{ .ExecID }}"
         zoa.rosa.io/action: "{{ .ActionName }}"
         zoa.rosa.io/managed: "true"
     rules:
       - apiGroups: [""]
-        resources: ["nodes"]
+        resources: ["pods"]
+        verbs: ["get", "list"]
+      - apiGroups: [""]
+        resources: ["events"]
         verbs: ["get", "list"]
   - apiVersion: rbac.authorization.k8s.io/v1
-    kind: ClusterRoleBinding
+    kind: RoleBinding
     metadata:
-      name: zoa-get-nodes-{{ .ExecID }}
+      name: zoa-get-pods-{{ .ExecID }}
+      namespace: {{ index .Params "namespace" }}
       labels:
         zoa.rosa.io/execution-id: "{{ .ExecID }}"
         zoa.rosa.io/action: "{{ .ActionName }}"
         zoa.rosa.io/managed: "true"
     roleRef:
       apiGroup: rbac.authorization.k8s.io
-      kind: ClusterRole
-      name: zoa-get-nodes-{{ .ExecID }}
+      kind: Role
+      name: zoa-get-pods-{{ .ExecID }}
     subjects:
       - kind: ServiceAccount
         name: zoa-kube-sa
@@ -72,6 +79,10 @@ manifests:
                   value: "{{ .OutputBucket }}"
                 - name: ACTION_NAME
                   value: "{{ .ActionName }}"
+                - name: TARGET_NAMESPACE
+                  value: "{{ index .Params "namespace" }}"
+                - name: LABEL_SELECTOR
+                  value: "{{ index .Params "label_selector" }}"
               volumeMounts:
                 - name: artifacts
                   mountPath: /artifacts
@@ -129,5 +140,14 @@ manifests:
       run.sh: |
         #!/bin/bash
         set -euo pipefail
-        kubectl get nodes -o json > /artifacts/output.json
-        echo "Nodes retrieved successfully"
+
+        ARGS=""
+        if [ -n "${TARGET_NAMESPACE}" ]; then
+          ARGS="-n ${TARGET_NAMESPACE}"
+        fi
+        if [ -n "${LABEL_SELECTOR}" ]; then
+          ARGS="${ARGS} -l ${LABEL_SELECTOR}"
+        fi
+
+        kubectl get pods ${ARGS} -o json > /artifacts/output.json
+        echo "Pods retrieved successfully"

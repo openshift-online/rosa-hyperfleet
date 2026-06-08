@@ -1,0 +1,15 @@
+apiVersion: v2
+name: zoa-infra
+description: ZOA infrastructure — namespace, service accounts, and base RBAC for Trusted Actions
+type: application
+version: 0.1.0
+appVersion: "1.0"
+keywords:
+  - zoa
+  - rosa
+  - trusted-actions
+  - zero-operator-access
+maintainers:
+  - name: ROSA Regional Platform Team
+sources:
+  - https://github.com/openshift-online/rosa-regional-platform
