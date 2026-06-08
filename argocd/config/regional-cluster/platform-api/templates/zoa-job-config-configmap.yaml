@@ -20,43 +20,38 @@ data:
     #!/bin/bash
     set -uo pipefail
 
-    # Capture ALL output (entrypoint + TA script) to a log file for S3 upload.
-    # This ensures troubleshooting data survives even after Pod/Job GC.
     EXEC_LOG="/artifacts/execution.log"
-    exec > >(tee -a "$EXEC_LOG") 2>&1
 
-    upload_artifacts() {
-      local upload_exit=${1:-$?}
-      echo "[zoa] exit_code=${upload_exit}"
-      echo "[zoa] completed_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-
-      if [ -z "${ARTIFACT_BUCKET:-}" ]; then
-        echo "[zoa] ERROR: ARTIFACT_BUCKET not set, skipping upload"
-        return
-      fi
-
-      echo "[zoa] Uploading artifacts to s3://${ARTIFACT_BUCKET}/${RUN_ID}/"
-
-      aws s3 cp "$EXEC_LOG" "s3://${ARTIFACT_BUCKET}/${RUN_ID}/execution.log" --quiet || \
-        echo "[zoa] ERROR: failed to upload execution.log"
-
-      if [ -f /artifacts/output.json ]; then
-        aws s3 cp /artifacts/output.json "s3://${ARTIFACT_BUCKET}/${RUN_ID}/output.json" --quiet || \
-          echo "[zoa] ERROR: failed to upload output.json"
-      fi
-
-      echo "[zoa] Upload complete"
+    run_action() {
+      echo "[zoa] execution_id=${RUN_ID} action=${ACTION_NAME} target=${CLUSTER_ID}"
+      echo "[zoa] operator=${OPERATOR} profile=${PROFILE} type=${TYPE}"
+      echo "[zoa] revision=${REVISION}"
+      echo "[zoa] started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+      echo "---"
+      /zoa/run.sh
     }
 
-    echo "[zoa] execution_id=${RUN_ID} action=${ACTION_NAME} target=${CLUSTER_ID}"
-    echo "[zoa] operator=${OPERATOR} profile=${PROFILE} type=${TYPE}"
-    echo "[zoa] revision=${REVISION}"
-    echo "[zoa] started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-    echo "---"
+    run_action 2>&1 | tee "$EXEC_LOG"
+    EXIT_CODE=${PIPESTATUS[0]}
 
-    /zoa/run.sh
-    EXIT_CODE=$?
+    echo "[zoa] exit_code=${EXIT_CODE}"
+    echo "[zoa] completed_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
-    upload_artifacts ${EXIT_CODE}
+    if [ -z "${ARTIFACT_BUCKET:-}" ]; then
+      echo "[zoa] ERROR: ARTIFACT_BUCKET not set, skipping upload"
+      exit ${EXIT_CODE}
+    fi
+
+    echo "[zoa] Uploading artifacts to s3://${ARTIFACT_BUCKET}/${RUN_ID}/"
+
+    aws s3 cp "$EXEC_LOG" "s3://${ARTIFACT_BUCKET}/${RUN_ID}/execution.log" --quiet || \
+      echo "[zoa] ERROR: failed to upload execution.log"
+
+    if [ -f /artifacts/output.json ]; then
+      aws s3 cp /artifacts/output.json "s3://${ARTIFACT_BUCKET}/${RUN_ID}/output.json" --quiet || \
+        echo "[zoa] ERROR: failed to upload output.json"
+    fi
+
+    echo "[zoa] Upload complete"
     exit ${EXIT_CODE}
 {{- end }}
