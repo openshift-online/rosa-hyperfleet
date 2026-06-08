@@ -138,6 +138,63 @@ resource "aws_iam_role_policy" "job_kms" {
   })
 }
 
+# Pod Identity association for ZOA jobs running on the RC itself.
+# The RC is in the same account as this module so we can create it directly.
+resource "aws_eks_pod_identity_association" "job_rc" {
+  cluster_name    = var.eks_cluster_name
+  namespace       = "zoa-jobs"
+  service_account = "zoa-kube-sa"
+  role_arn        = aws_iam_role.job.arn
+
+  tags = merge(local.common_tags, {
+    Name = "${var.regional_id}-zoa-job-rc-pod-identity"
+  })
+}
+
+resource "aws_eks_pod_identity_association" "job_rc_aws_read" {
+  cluster_name    = var.eks_cluster_name
+  namespace       = "zoa-jobs"
+  service_account = "zoa-aws-read-sa"
+  role_arn        = aws_iam_role.job.arn
+
+  tags = merge(local.common_tags, {
+    Name = "${var.regional_id}-zoa-aws-read-rc-pod-identity"
+  })
+}
+
+resource "aws_eks_pod_identity_association" "job_rc_aws_write" {
+  cluster_name    = var.eks_cluster_name
+  namespace       = "zoa-jobs"
+  service_account = "zoa-aws-write-sa"
+  role_arn        = aws_iam_role.job.arn
+
+  tags = merge(local.common_tags, {
+    Name = "${var.regional_id}-zoa-aws-write-rc-pod-identity"
+  })
+}
+
+resource "aws_eks_pod_identity_association" "job_rc_breakglass_read" {
+  cluster_name    = var.eks_cluster_name
+  namespace       = "zoa-jobs"
+  service_account = "zoa-breakglass-read-sa"
+  role_arn        = aws_iam_role.job.arn
+
+  tags = merge(local.common_tags, {
+    Name = "${var.regional_id}-zoa-breakglass-read-rc-pod-identity"
+  })
+}
+
+resource "aws_eks_pod_identity_association" "job_rc_breakglass_write" {
+  cluster_name    = var.eks_cluster_name
+  namespace       = "zoa-jobs"
+  service_account = "zoa-breakglass-write-sa"
+  role_arn        = aws_iam_role.job.arn
+
+  tags = merge(local.common_tags, {
+    Name = "${var.regional_id}-zoa-breakglass-write-rc-pod-identity"
+  })
+}
+
 # NOTE: Pod Identity associations for ZOA jobs on MCs are created by the
 # zoa-job-pod-identity module in the management-cluster Terraform config,
 # because associations must be in the same AWS account as the EKS cluster.
