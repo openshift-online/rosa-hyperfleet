@@ -42,6 +42,7 @@ profile: kube
 scope: kube-api
 type: read
 description: List all nodes in the target cluster
+timeout_seconds: 300
 params:
   - name: node_selector
     required: false
@@ -54,8 +55,13 @@ rbac:
       resources: ["nodes"]
       verbs: ["get", "list"]
 script: |
-  kubectl get nodes -o wide
-  kubectl get nodes -o json > /artifacts/output.json
+  set -euo pipefail
+  SELECTOR_ARGS=()
+  if [ -n "${PARAM_NODE_SELECTOR:-}" ]; then
+    SELECTOR_ARGS=(-l "${PARAM_NODE_SELECTOR}")
+  fi
+  kubectl get nodes "${SELECTOR_ARGS[@]}" -o wide
+  kubectl get nodes "${SELECTOR_ARGS[@]}" -o json > /artifacts/output.json
 ```
 
 **No Job, no ConfigMap, no volumes, no image** — Platform API generates all of that.
@@ -66,11 +72,17 @@ script: |
 - Platform API validates required params before dispatch
 - Scripts access params via env vars
 
+**Timeout:**
+
+- Each TA can specify `timeout_seconds` (optional) for a per-action timeout override
+- Global default is set via `execution_timeout_seconds` in `zoa-job-config` ConfigMap (default: 1800s / 30 min)
+- Read TAs typically use 300s (5 min); write TAs 600s (10 min)
+
 **Output convention:**
 
 - Scripts MUST write structured output to `/artifacts/output.json` (JSON format, machine-parseable)
-- Human-readable output goes to stdout (captured automatically as `stdout.log`)
-- Errors go to stderr (captured automatically as `stderr.log`)
+- All output (stdout + stderr interleaved) is captured to `execution.log` via `tee` in the entrypoint
+- The entrypoint uploads `execution.log` to S3 unconditionally on exit (success or failure) via a trap
 - Write TAs SHOULD include `affected_resources` in output.json for audit:
   ```json
   {
@@ -134,25 +146,39 @@ metadata:
   namespace: platform-api
 data:
   image: "quay.io/slopezz/zoa-tools:latest"
+  revision: "<injected from ArgoCD git_revision>"
   cpu_request: "100m"
   memory_request: "128Mi"
   cpu_limit: "500m"
   memory_limit: "512Mi"
   ttl_seconds: "3600"
+  execution_timeout_seconds: "1800"
   entrypoint.sh: |
     #!/bin/bash
     set -uo pipefail
+    EXEC_LOG="/artifacts/execution.log"
+    exec > >(tee -a "$EXEC_LOG") 2>&1
+
+    upload_artifacts() {
+      local upload_exit=${1:-$?}
+      echo "[zoa] exit_code=${upload_exit}"
+      echo "[zoa] completed_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+      if [ -n "${ARTIFACT_BUCKET:-}" ]; then
+        aws s3 cp "$EXEC_LOG" "s3://${ARTIFACT_BUCKET}/${RUN_ID}/execution.log" --quiet || true
+        [ -f /artifacts/output.json ] && \
+          aws s3 cp /artifacts/output.json "s3://${ARTIFACT_BUCKET}/${RUN_ID}/output.json" --quiet || true
+      fi
+    }
+
     echo "[zoa] execution_id=${RUN_ID} action=${ACTION_NAME} target=${CLUSTER_ID}"
+    echo "[zoa] operator=${OPERATOR} profile=${PROFILE} type=${TYPE}"
+    echo "[zoa] revision=${REVISION}"
     echo "[zoa] started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-    /zoa/run.sh > /artifacts/stdout.log 2> /artifacts/stderr.log
+    echo "---"
+    /zoa/run.sh
     EXIT_CODE=$?
-    echo "[zoa] exit_code=${EXIT_CODE}"
-    if [ -n "${ARTIFACT_BUCKET}" ]; then
-      aws s3 cp /artifacts/stdout.log "s3://${ARTIFACT_BUCKET}/${RUN_ID}/stdout.log" --quiet || true
-      aws s3 cp /artifacts/stderr.log "s3://${ARTIFACT_BUCKET}/${RUN_ID}/stderr.log" --quiet || true
-      [ -f /artifacts/output.json ] && aws s3 cp /artifacts/output.json "s3://${ARTIFACT_BUCKET}/${RUN_ID}/output.json" --quiet || true
-    fi
-    exit $EXIT_CODE
+    upload_artifacts ${EXIT_CODE}
+    exit ${EXIT_CODE}
 ```
 
 TA authors can optionally override resources for heavy tasks:
@@ -166,12 +192,14 @@ script: |
   ...heavy script...
 ```
 
-### Cleanup
+### Cleanup and Lifecycle
 
-After Job completion (TTL-based via `ttlSecondsAfterFinished`), Kubernetes garbage-collects:
-- Job + Pod (owner reference chain)
-- ConfigMap (owner reference to Job)
-- Role/ClusterRole + Binding (owner reference to Job, or separate TTL cleanup)
+Cleanup is **reconciler-driven**, not purely TTL-based:
+
+1. **On terminal status (succeeded, failed, timed_out)**: The Platform API reconciler deletes the ResourceBundle from Maestro via gRPC. Maestro Agent cascades deletion to all resources on the MC (Job, Pod, ConfigMap, RBAC).
+2. **Race-safe ordering**: ResourceBundle is deleted BEFORE DynamoDB status is updated. If RB deletion fails, status stays `pending`/`running` and the reconciler retries on the next tick.
+3. **TTL as safety net**: Jobs have `ttlSecondsAfterFinished: 3600` (1h) as backup GC in case reconciler fails to clean up.
+4. **Logs survive cleanup**: The entrypoint uploads `execution.log` to S3 before the Job exits, so troubleshooting data is available via the API even after the Pod/Job is deleted.
 
 **The ServiceAccount is NEVER deleted** — it's infrastructure managed by `zoa-infra`.
 
@@ -251,11 +279,10 @@ Uses a single `fields` parameter for selecting response content:
 | Request | Returns |
 |---------|---------|
 | `GET /runs/{id}` | metadata + output (default) |
-| `GET /runs/{id}?fields=output` | output only |
-| `GET /runs/{id}?fields=metadata` | metadata only |
-| `GET /runs/{id}?fields=logs` | logs only (stdout + stderr) |
+| `GET /runs/{id}?fields=output` | metadata + output |
+| `GET /runs/{id}?fields=logs` | metadata + execution.log content |
 | `GET /runs/{id}?fields=all` | metadata + output + logs |
-| `GET /runs/{id}?fields=metadata,logs` | any combination |
+| `GET /runs/{id}?fields=output,logs` | any combination |
 
 The API proxies S3 content directly — no presigned URLs exposed to consumers.
 
@@ -265,7 +292,7 @@ The API proxies S3 content directly — no presigned URLs exposed to consumers.
 |-----------|---------|-------------|
 | `limit` | 20 | Number of runs to return (max 100) |
 | `page` | 1 | Page number |
-| `status` | — | Filter: `pending`, `running`, `succeeded`, `failed` |
+| `status` | — | Filter: `pending`, `running`, `succeeded`, `failed`, `timed_out` |
 | `action` | — | Filter by TA name |
 | `target` | — | Filter by target cluster |
 | `operator` | — | Filter by who ran it |
@@ -293,10 +320,19 @@ The API proxies S3 content directly — no presigned URLs exposed to consumers.
     "affected_resources": [...],
     "summary": "..."
   },
-  "stdout": "...",
-  "stderr": "..."
+  "logs": "[zoa] execution_id=abc-123 action=get_nodes ...\n---\n..."
 }
 ```
+
+**Execution statuses:**
+
+| Status | Meaning |
+|--------|---------|
+| `pending` | Execution created, ManifestWork dispatched but not yet applied |
+| `running` | ManifestWork applied, Job running on target cluster |
+| `succeeded` | Job completed successfully (exit 0) |
+| `failed` | Job failed (non-zero exit) |
+| `timed_out` | Execution exceeded per-TA or global timeout — reconciler force-cleaned |
 
 #### List Response Format
 
@@ -334,16 +370,14 @@ Maps to kubectl/oc patterns for SRE muscle memory:
 | `zoa run <action> --target <cluster>` | `POST /trusted-actions/{action}/run` | Execute a TA |
 | `zoa get <id>` | `GET /runs/{id}` | Metadata + output (default) |
 | `zoa get <id> --output` | `GET /runs/{id}?fields=output` | Output only |
-| `zoa get <id> --metadata` | `GET /runs/{id}?fields=metadata` | Metadata only |
-| `zoa logs <id>` | `GET /runs/{id}?fields=logs` | stdout + stderr |
+| `zoa logs <id>` | `GET /runs/{id}?fields=logs` | Execution log (all output) |
 | `zoa list` | `GET /runs` | Last 20 executions |
 | `zoa list --limit 50 --status failed` | `GET /runs?limit=50&status=failed` | Filtered list |
 | `zoa describe <action>` | `GET /trusted-actions/{action}` | Show TA info, params |
 
 **Key principles:**
-- `get` retrieves the result; `logs` retrieves the execution trace — separate concepts, like kubectl
+- `get` retrieves the result (metadata + output.json); `logs` retrieves the execution trace — separate concepts, like kubectl
 - Output is always JSON — no format flags needed
-- `--output` and `--metadata` are the only field selectors (one mechanism, `fields=` param)
 - `describe` shows what a TA does before running it (params, description, profile)
 
 ### Dispatch Flow
@@ -354,18 +388,20 @@ Operator (zoa run) → Platform API → Maestro (gRPC CreateManifestWork) → Ma
                                                                                         Job executes
                                                                                               │
                                                                                    /zoa/entrypoint.sh
+                                                                                     (tee → execution.log)
                                                                                               │
                                                                               ┌───────────────┼───────────────┐
-                                                                              │               │               │
-                                                                        stdout.log    stderr.log    output.json
-                                                                              │               │               │
+                                                                              │                               │
+                                                                        execution.log                   output.json
+                                                                              │                               │
                                                                               └───────────────┼───────────────┘
                                                                                               │
-                                                                                        S3 upload
+                                                                                   S3 upload (on exit, always)
                                                                                               │
-Platform API ← Maestro (GetManifestWork status) ← feedbackRules (Job status only) ←──────────┘
-      │
-DynamoDB (status: succeeded/failed, revision, output_path)
+Platform API Reconciler:                                                                      │
+  ← Maestro (GetManifestWork status) ← feedbackRules (Job succeeded/failed) ←────────────────┘
+  → Delete ResourceBundle (on terminal status, race-safe)
+  → DynamoDB (status: succeeded/failed/timed_out, duration, revision)
 ```
 
 ### TA Versioning and Future Separate Repo
@@ -428,9 +464,10 @@ DynamoDB (status: succeeded/failed, revision, output_path)
 
 ### Reliability:
 
-- **Scalability**: Stable SAs and ArgoCD-managed infra support thousands of concurrent executions
-- **Observability**: DynamoDB provides queryable execution history; S3 stores all outputs; ManifestWork status provides real-time job state
-- **Resiliency**: Failed jobs are recorded with exit code and stderr; reconciler polls for status updates
+- **Scalability**: Stable SAs and ArgoCD-managed infra support thousands of concurrent executions. DynamoDB uses a `status-index` GSI for efficient reconciler queries (no full-table scans)
+- **Observability**: DynamoDB provides queryable execution history; S3 stores execution logs and output; ManifestWork status provides real-time job state
+- **Resiliency**: Reconciler uses race-safe ordering (delete RB before status update) to prevent stale resources. Per-TA and global timeouts prevent stuck executions. Logs are uploaded unconditionally to S3 before Job exits.
+- **Timeout handling**: Executions exceeding their timeout are marked `timed_out` (distinct from `failed`), RB is deleted, and the full duration is recorded
 
 ### Cost:
 
@@ -444,7 +481,7 @@ DynamoDB (status: succeeded/failed, revision, output_path)
 - Adding a new TA: create YAML file in `trusted-actions/`, push, ArgoCD syncs ConfigMap
 - Updating the image/wrapper: change `zoa-job-config` values, ArgoCD syncs, Platform API hot-reloads
 - Adding a new privilege profile: update Terraform (IAM role + Pod Identity), ArgoCD (SA), and Platform API (profile mapping)
-- Debugging: `zoa get <id> --logs` → metadata + stdout/stderr from S3
+- Debugging: `zoa logs <id>` → full execution log from S3 (available even after Job/Pod GC)
 
 ---
 
