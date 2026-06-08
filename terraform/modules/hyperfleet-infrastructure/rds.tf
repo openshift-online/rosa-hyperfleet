@@ -169,13 +169,19 @@ resource "aws_security_group_rule" "hyperfleet_db_bastion" {
   source_security_group_id = var.bastion_security_group_id
 }
 
+data "aws_rds_engine_version" "postgres" {
+  engine  = "postgres"
+  version = var.db_engine_major_version
+  latest  = true
+}
+
 # RDS PostgreSQL Instance
 resource "aws_db_instance" "hyperfleet" {
   identifier = "${var.regional_id}-hyperfleet"
 
   # Engine configuration
   engine         = "postgres"
-  engine_version = var.db_engine_version
+  engine_version = data.aws_rds_engine_version.postgres.version
 
   # Instance configuration
   instance_class    = var.db_instance_class
@@ -215,8 +221,7 @@ resource "aws_db_instance" "hyperfleet" {
   # Auto minor version upgrades
   auto_minor_version_upgrade = true
 
-  # Parameter group - force SSL/TLS connections
-  parameter_group_name = "default.postgres18"
+  parameter_group_name = "default.${data.aws_rds_engine_version.postgres.parameter_group_family}"
 
   tags = merge(
     local.common_tags,

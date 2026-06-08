@@ -71,10 +71,10 @@ variable "db_allocated_storage" {
   default     = 20
 }
 
-variable "db_engine_version" {
-  description = "PostgreSQL engine version"
+variable "db_engine_major_version" {
+  description = "PostgreSQL major engine version"
   type        = string
-  default     = "18.1"
+  default     = "18"
 }
 
 variable "db_name" {
