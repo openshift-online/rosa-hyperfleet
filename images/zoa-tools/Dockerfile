@@ -1,6 +1,6 @@
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
-ARG OC_VERSION="stable-4.17"
+ARG OC_VERSION="stable-4.21"
 ARG AWS_CLI_VERSION="awscli-exe-linux-x86_64.zip"
 ARG YQ_VERSION="v4.44.3"
 
