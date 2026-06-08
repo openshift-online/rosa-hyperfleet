@@ -71,7 +71,12 @@ variable "db_allocated_storage" {
 variable "db_engine_version" {
   description = "PostgreSQL engine version"
   type        = string
-  default     = "18.1"
+  default     = "18"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.db_engine_version))
+    error_message = "db_engine_version must be a major version only (e.g., \"18\")."
+  }
 }
 
 variable "db_name" {

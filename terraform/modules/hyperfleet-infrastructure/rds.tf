@@ -216,7 +216,7 @@ resource "aws_db_instance" "hyperfleet" {
   auto_minor_version_upgrade = true
 
   # Parameter group - force SSL/TLS connections
-  parameter_group_name = "default.postgres18"
+  parameter_group_name = "default.postgres${var.db_engine_version}"
 
   tags = merge(
     local.common_tags,
