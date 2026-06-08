@@ -19,12 +19,143 @@ Zero Operator Access (ZOA) Trusted Actions provide a mediated, auditable mechani
   - Maestro Agent runs on both RC and MC clusters
   - Platform API is the single entry point for TA execution
   - ArgoCD manages infrastructure provisioning on both cluster types
+  - TAs may move to their own repository in the future
 
 ## Design
 
+### Separation of Concerns
+
+| Concern | Owner | Where |
+|---------|-------|-------|
+| Script logic + RBAC rules | TA author | `trusted-actions/` directory (ConfigMap, future: separate repo) |
+| Job boilerplate (image, volumes, entrypoint, resources) | Platform/infra team | `zoa-job-config` ConfigMap in platform repo |
+| Job generation logic | Platform API code | Go code reads template + config, builds ManifestWork |
+| Infrastructure (namespace, SAs, Pod Identity) | Platform/infra team | `zoa-infra` ArgoCD app + Terraform |
+
+### TA Template Format (What Authors Write)
+
+Each TA is a minimal YAML file — just metadata, RBAC rules, parameters, and script:
+
+```yaml
+name: get_nodes
+profile: kube
+scope: kube-api
+type: read
+description: List all nodes in the target cluster
+params:
+  - name: node_selector
+    required: false
+    default: ""
+    description: "Label selector to filter nodes"
+rbac:
+  cluster_scoped: true
+  rules:
+    - apiGroups: [""]
+      resources: ["nodes"]
+      verbs: ["get", "list"]
+script: |
+  kubectl get nodes -o wide
+  kubectl get nodes -o json > /artifacts/output.json
+```
+
+**No Job, no ConfigMap, no volumes, no image** — Platform API generates all of that.
+
+**Parameter handling:**
+
+- Each param becomes an environment variable in the Job: `PARAM_<UPPER_NAME>` (e.g., `PARAM_NODE_SELECTOR`)
+- Platform API validates required params before dispatch
+- Scripts access params via env vars
+
+**Output convention:**
+
+- Scripts MUST write structured output to `/artifacts/output.json` (JSON format, machine-parseable)
+- Human-readable output goes to stdout (captured automatically as `stdout.log`)
+- Errors go to stderr (captured automatically as `stderr.log`)
+
+### What Platform API Generates (Per Execution)
+
+From a minimal TA template, Platform API dynamically creates a ManifestWork containing:
+
+1. **Role/ClusterRole** — from `rbac.rules` section
+2. **RoleBinding/ClusterRoleBinding** — binding the profile SA to the role
+3. **ConfigMap** — containing the entrypoint wrapper + the TA script
+4. **Job** — with all boilerplate (image, volumes, env vars, resources, labels)
+
+All generated resources carry rich labels for audit tracing:
+
+```yaml
+labels:
+  zoa.rosa.io/execution-id: "abc-123"
+  zoa.rosa.io/action: "get_nodes"
+  zoa.rosa.io/operator: "slopezma"
+  zoa.rosa.io/profile: "kube"
+  zoa.rosa.io/type: "read"
+  zoa.rosa.io/scope: "kube-api"
+  zoa.rosa.io/target-cluster: "mc-useast1-1"
+  zoa.rosa.io/revision: "a1b2c3d"
+  zoa.rosa.io/managed: "true"
+annotations:
+  zoa.rosa.io/created-at: "2026-06-08T12:00:00Z"
+```
+
+The `revision` label tracks which Git commit of the TA definition was used — stored in DynamoDB AND on every created resource.
+
+### Job Boilerplate Configuration
+
+Managed via a ConfigMap (`zoa-job-config`) in the platform repo, NOT hardcoded in API code:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zoa-job-config
+  namespace: platform-api
+data:
+  image: "quay.io/slopezz/zoa-tools:latest"
+  cpu_request: "100m"
+  memory_request: "128Mi"
+  cpu_limit: "500m"
+  memory_limit: "512Mi"
+  ttl_seconds: "3600"
+  entrypoint.sh: |
+    #!/bin/bash
+    set -uo pipefail
+    echo "[zoa] execution_id=${RUN_ID} action=${ACTION_NAME} target=${CLUSTER_ID}"
+    echo "[zoa] started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    /zoa/run.sh > /artifacts/stdout.log 2> /artifacts/stderr.log
+    EXIT_CODE=$?
+    echo "[zoa] exit_code=${EXIT_CODE}"
+    if [ -n "${ARTIFACT_BUCKET}" ]; then
+      aws s3 cp /artifacts/stdout.log "s3://${ARTIFACT_BUCKET}/${RUN_ID}/stdout.log" --quiet || true
+      aws s3 cp /artifacts/stderr.log "s3://${ARTIFACT_BUCKET}/${RUN_ID}/stderr.log" --quiet || true
+      [ -f /artifacts/output.json ] && aws s3 cp /artifacts/output.json "s3://${ARTIFACT_BUCKET}/${RUN_ID}/output.json" --quiet || true
+    fi
+    exit $EXIT_CODE
+```
+
+TA authors can optionally override resources for heavy tasks:
+
+```yaml
+name: must_gather
+resources:
+  cpu: "1"
+  memory: "2Gi"
+script: |
+  ...heavy script...
+```
+
+### Cleanup
+
+After Job completion (TTL-based via `ttlSecondsAfterFinished`), Kubernetes garbage-collects:
+- Job + Pod (owner reference chain)
+- ConfigMap (owner reference to Job)
+- Role/ClusterRole + Binding (owner reference to Job, or separate TTL cleanup)
+
+**The ServiceAccount is NEVER deleted** — it's infrastructure managed by `zoa-infra`.
+
 ### Service Account Strategy — Privilege Profiles
 
-Rather than creating a per-execution SA (which would require dynamic Pod Identity wiring) or a single shared SA (poor auditability), we use a small number of **stable ServiceAccounts** based on privilege profiles:
+A small number of **stable ServiceAccounts** based on privilege profiles:
 
 | ServiceAccount | Pod Identity Role | Purpose |
 |----------------|-------------------|---------|
@@ -34,64 +165,14 @@ Rather than creating a per-execution SA (which would require dynamic Pod Identit
 | `zoa-breakglass-read-sa` | Broad read AWS + `s3:PutObject` | Breakglass read operations |
 | `zoa-breakglass-write-sa` | Broad write AWS + `s3:PutObject` | Breakglass write operations |
 
-**Key design decisions:**
-
-- All SAs share `s3:PutObject` capability for artifact publishing (required for every TA)
-- Kubernetes RBAC is handled by per-TA Roles and RoleBindings (fine-grained per execution)
-- AWS authorization is handled by Pod Identity on the stable SA (coarse-grained per profile)
-- The TA template selects which SA to use via a `profile` field in metadata
-
 **Audit chain with stable SAs:**
 
 | Layer | What's Recorded | Identifies |
 |-------|----------------|------------|
-| Platform API (DynamoDB) | `execution_id`, `operator`, `action`, `target`, timestamp | Who requested what |
-| ManifestWork metadata | Labels: `zoa.rosa.io/execution-id`, `zoa.rosa.io/operator`, `zoa.rosa.io/action` | What was dispatched |
-| Kubernetes audit logs | SA name + pod labels | Which profile ran the pod |
+| Platform API (DynamoDB) | `execution_id`, `operator`, `action`, `target`, `revision`, timestamp | Who requested what |
+| ManifestWork + all resources | Labels: `zoa.rosa.io/execution-id`, `zoa.rosa.io/operator`, `zoa.rosa.io/action`, `zoa.rosa.io/revision` | Full traceability on every K8s resource |
+| Kubernetes audit logs | SA name + pod labels | Which profile ran the pod + execution context via labels |
 | S3 object metadata | `x-amz-meta-execution-id`, `x-amz-meta-operator` | Output ownership |
-
-### Artifact Handling — Platform-Injected Wrapper
-
-TA authors write simple scripts that output to `/artifacts/`. The platform handles all boilerplate:
-
-**What the platform injects into every Job:**
-
-1. **Volumes**: `emptyDir` mounted at `/artifacts` and `/zoa`
-2. **Init container**: Copies `/zoa/entrypoint.sh` wrapper into the shared volume
-3. **Environment variables**: `RUN_ID`, `CLUSTER_ID`, `ARTIFACT_BUCKET`, `ACTION_NAME`
-4. **Modified command**: Wraps the TA script with the entrypoint that captures stdout/stderr and uploads to S3
-
-**Entrypoint wrapper (`/zoa/entrypoint.sh`):**
-
-```bash
-#!/bin/bash
-set -euo pipefail
-
-# Run the actual TA script, capturing stdout and stderr
-/zoa/run.sh > /artifacts/stdout.log 2> /artifacts/stderr.log
-EXIT_CODE=$?
-
-# Upload artifacts to S3
-aws s3 cp /artifacts/stdout.log "s3://${ARTIFACT_BUCKET}/${RUN_ID}/stdout.log"
-aws s3 cp /artifacts/stderr.log "s3://${ARTIFACT_BUCKET}/${RUN_ID}/stderr.log"
-
-# Upload output.json if the script produced one
-if [ -f /artifacts/output.json ]; then
-  aws s3 cp /artifacts/output.json "s3://${ARTIFACT_BUCKET}/${RUN_ID}/output.json"
-fi
-
-exit $EXIT_CODE
-```
-
-**TA author experience:**
-
-```bash
-#!/bin/bash
-# get_nodes — List all nodes in the cluster
-kubectl get nodes -o json > /artifacts/output.json
-```
-
-The author does not need to think about S3, logging, or metadata.
 
 ### Namespace and Infrastructure Pre-creation
 
@@ -99,10 +180,10 @@ Infrastructure is managed via ArgoCD (not ManifestWork):
 
 | Cluster Type | Mechanism | What's Created |
 |--------------|-----------|----------------|
-| RC | ArgoCD app `zoa-infra` in `argocd/config/regional-cluster/` | Namespace `zoa-jobs`, all privilege-profile SAs, base ClusterRoles |
-| MC | ArgoCD app `zoa-infra` in `argocd/config/management-cluster/` | Namespace `zoa-jobs`, all privilege-profile SAs, base ClusterRoles |
+| RC | ArgoCD app `zoa-infra` in `argocd/config/shared/` | Namespace `zoa-jobs`, all privilege-profile SAs |
+| MC | ArgoCD app `zoa-infra` in `argocd/config/shared/` | Namespace `zoa-jobs`, all privilege-profile SAs |
 
-ManifestWork is used **only** as transport for TA executions (Job + per-execution Role/RoleBinding).
+ManifestWork is used **only** as transport for TA executions (Job + per-execution RBAC + ConfigMap).
 
 ### Job Image
 
@@ -123,117 +204,101 @@ A custom "swiss knife" image built for ZOA jobs, based on UBI9 for FIPS complian
 | `bash` | UBI package | Shell scripting |
 | `curl` | UBI package | HTTP operations |
 
-**Reference**: The `openshift/managed-scripts` Dockerfile (`quay.io/app-sre/managed-scripts`) uses a similar multi-stage build pattern with UBI8. We adopt the same approach with UBI9 for FIPS compliance on EKS.
+**Image source**: `images/zoa-tools/Dockerfile` in this repository.
 
-**Image location**: `quay.io/redhat-rosa/zoa-tools:<version>` (to be created)
+**Image location**: `quay.io/slopezz/zoa-tools:latest` (development), future: `quay.io/redhat-rosa/zoa-tools:<version>`
+
+**Reference**: The `openshift/managed-scripts` Dockerfile (`quay.io/app-sre/managed-scripts`) uses a similar pattern with UBI8.
+
+### API Design
+
+#### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v0/trusted-actions/{action}/run` | Execute a Trusted Action |
+| `GET` | `/api/v0/trusted-actions/runs/{id}` | Get execution (metadata + output by default) |
+| `GET` | `/api/v0/trusted-actions/runs` | List executions |
+| `GET` | `/api/v0/trusted-actions` | List available TAs (catalog) |
+
+#### Query Parameters for GET /runs/{id}
+
+| Parameter | Effect |
+|-----------|--------|
+| (default) | Returns metadata + output (most common use case) |
+| `?raw=true` | Returns only the raw `output.json` content (pipeable to jq) |
+| `?include=logs` | Returns metadata + output + stdout/stderr |
+
+The API proxies S3 content directly — no presigned URLs exposed to consumers.
+
+#### Response Format
+
+```json
+{
+  "id": "abc-123",
+  "action": "get_nodes",
+  "operator": "slopezma",
+  "target_cluster": "mc-useast1-1",
+  "scope": "kube-api",
+  "type": "read",
+  "profile": "kube",
+  "status": "succeeded",
+  "revision": "a1b2c3d",
+  "created_at": "2026-06-08T12:00:00Z",
+  "completed_at": "2026-06-08T12:00:12Z",
+  "duration_seconds": 12,
+
+  "output": { "nodes": [...] },
+  "stdout": "Nodes retrieved successfully\n",
+  "stderr": ""
+}
+```
+
+### CLI Design
+
+Maps to kubectl/oc patterns for SRE muscle memory:
+
+| CLI Command | API Call | Feels Like |
+|-------------|----------|-----------|
+| `zoa run <action> --target <cluster>` | `POST /trusted-actions/{action}/run` | `kubectl run` |
+| `zoa get <id>` | `GET /runs/{id}` | `kubectl get` |
+| `zoa get <id> -o json` | `GET /runs/{id}` (full JSON) | `kubectl get -o json` |
+| `zoa get <id> --raw` | `GET /runs/{id}?raw=true` | `kubectl get -o jsonpath` |
+| `zoa logs <id>` | `GET /runs/{id}?include=logs` | `kubectl logs` |
+| `zoa list` | `GET /runs` | `kubectl get pods` |
+| `zoa list --status failed` | `GET /runs?status=failed` | `kubectl get --field-selector` |
+
+**Key principle**: `get` retrieves the result; `logs` retrieves the execution trace. They are separate concepts, like in kubectl.
 
 ### Dispatch Flow
 
 ```
-Operator → Platform API → Maestro (gRPC CreateManifestWork) → Maestro Agent → Target Cluster
-                                                                                    │
-                                                                              Job executes
-                                                                                    │
-                                                                              /zoa/entrypoint.sh
-                                                                                    │
-                                                                    ┌───────────────┼───────────────┐
-                                                                    │               │               │
-                                                              stdout.log    stderr.log    output.json
-                                                                    │               │               │
-                                                                    └───────────────┼───────────────┘
-                                                                                    │
-                                                                              S3 upload
-                                                                                    │
-Platform API ← Maestro (GetManifestWork status) ← feedbackRules (Job status only) ←─┘
+Operator (zoa run) → Platform API → Maestro (gRPC CreateManifestWork) → Maestro Agent → Target Cluster
+                                                                                              │
+                                                                                        Job executes
+                                                                                              │
+                                                                                   /zoa/entrypoint.sh
+                                                                                              │
+                                                                              ┌───────────────┼───────────────┐
+                                                                              │               │               │
+                                                                        stdout.log    stderr.log    output.json
+                                                                              │               │               │
+                                                                              └───────────────┼───────────────┘
+                                                                                              │
+                                                                                        S3 upload
+                                                                                              │
+Platform API ← Maestro (GetManifestWork status) ← feedbackRules (Job status only) ←──────────┘
       │
-DynamoDB (status: succeeded/failed, output_path)
+DynamoDB (status: succeeded/failed, revision, output_path)
 ```
 
-### TA Template Format
+### TA Versioning and Future Separate Repo
 
-Each TA is defined in a YAML file with metadata and Kubernetes manifests:
-
-```yaml
-name: get_nodes
-profile: kube
-scope: kube-api
-type: read
-description: List all nodes in the target cluster
-params:
-  - name: node_selector
-    required: false
-    default: ""
-manifests:
-  - apiVersion: rbac.authorization.k8s.io/v1
-    kind: ClusterRole
-    metadata:
-      name: zoa-get-nodes-{{ .ExecID }}
-    rules:
-      - apiGroups: [""]
-        resources: ["nodes"]
-        verbs: ["get", "list"]
-  - apiVersion: rbac.authorization.k8s.io/v1
-    kind: ClusterRoleBinding
-    metadata:
-      name: zoa-get-nodes-{{ .ExecID }}
-    subjects:
-      - kind: ServiceAccount
-        name: zoa-kube-sa
-        namespace: zoa-jobs
-    roleRef:
-      kind: ClusterRole
-      name: zoa-get-nodes-{{ .ExecID }}
-      apiGroup: rbac.authorization.k8s.io
-  - apiVersion: batch/v1
-    kind: Job
-    metadata:
-      name: zoa-get-nodes-{{ .ExecID }}
-      namespace: zoa-jobs
-      labels:
-        zoa.rosa.io/execution-id: "{{ .ExecID }}"
-        zoa.rosa.io/action: "{{ .ActionName }}"
-    spec:
-      ttlSecondsAfterFinished: 3600
-      backoffLimit: 0
-      template:
-        metadata:
-          labels:
-            zoa.rosa.io/execution-id: "{{ .ExecID }}"
-            zoa.rosa.io/action: "{{ .ActionName }}"
-        spec:
-          serviceAccountName: zoa-kube-sa
-          restartPolicy: Never
-          containers:
-            - name: ta
-              image: "{{ .Image }}"
-              command: ["/zoa/entrypoint.sh"]
-              env:
-                - name: RUN_ID
-                  value: "{{ .ExecID }}"
-                - name: CLUSTER_ID
-                  value: "{{ .TargetCluster }}"
-                - name: ARTIFACT_BUCKET
-                  value: "{{ .OutputBucket }}"
-                - name: ACTION_NAME
-                  value: "{{ .ActionName }}"
-              volumeMounts:
-                - name: artifacts
-                  mountPath: /artifacts
-                - name: zoa
-                  mountPath: /zoa
-          initContainers:
-            - name: init-wrapper
-              image: "{{ .Image }}"
-              command: ["sh", "-c", "cp /opt/zoa/* /zoa/"]
-              volumeMounts:
-                - name: zoa
-                  mountPath: /zoa
-          volumes:
-            - name: artifacts
-              emptyDir: {}
-            - name: zoa
-              emptyDir: {}
-```
+- Today: TAs are stored in a directory within the platform repo, packed into a ConfigMap, mounted into Platform API
+- Future: TAs move to their own repo with independent release cycle
+- Platform API reads from a mounted directory — it doesn't care about the source
+- Every execution records the `revision` (Git SHA) of the TA used in DynamoDB and on all K8s resources
+- Platform admins control which revision is active per environment (promotion pipeline)
 
 ## Alternatives Considered
 
@@ -245,27 +310,33 @@ manifests:
 
 4. **Sidecar container for S3 upload**: A separate container watches `/artifacts` and uploads. Rejected in favor of a simpler wrapper approach — sidecars add complexity around container ordering and completion detection.
 
+5. **Full ManifestWork templates (Job + RBAC defined by TA author)**: TA authors define the entire ManifestWork content including Job spec. Rejected because it couples boilerplate (image, volumes, resources, entrypoint) to each TA, requiring all TAs to be updated when infrastructure changes (e.g., image bump).
+
 ## Design Rationale
 
-- **Justification**: The privilege-profile model (5 stable SAs) balances auditability, operational simplicity, and Pod Identity constraints. Each SA maps to a clear permission boundary, and per-TA Roles/RoleBindings provide fine-grained Kubernetes RBAC without requiring dynamic IAM changes.
+- **Justification**: The privilege-profile model (5 stable SAs) balances auditability, operational simplicity, and Pod Identity constraints. Separating TA authoring (script + RBAC) from execution boilerplate (image, wrapper, resources) enables independent evolution of each concern.
 - **Evidence**: ARO-HCP uses a similar pattern with Maestro for ManifestWork dispatch. The `openshift/managed-scripts` project validates the "swiss knife image + script" pattern at scale for OSD/ROSA operations.
-- **Comparison**: Per-execution SAs offer perfect K8s audit granularity but require infrastructure changes per execution. Stable SAs trade some K8s audit granularity (profile-level, not execution-level) for zero infrastructure overhead per execution. The DynamoDB audit trail compensates by providing full execution-level traceability.
+- **Comparison**: Per-execution SAs offer perfect K8s audit granularity but require infrastructure changes per execution. Stable SAs trade some K8s audit granularity (profile-level, not execution-level) for zero infrastructure overhead per execution. Rich labels on all resources compensate by enabling correlation via kube audit logs.
 
 ## Consequences
 
 ### Positive
 
-- TA authors write simple scripts without boilerplate (S3, logging, metadata handled by platform)
+- TA authors write ~15 lines of YAML (name + rbac + script) — no boilerplate
 - Scales to hundreds of TAs with only 5 IAM roles total
-- Namespace and SA pre-creation via ArgoCD follows established patterns
-- Full audit trail across DynamoDB + S3 + K8s audit logs
+- Image, entrypoint, and resources managed centrally — single place to update
+- Full audit trail across DynamoDB + S3 + K8s resources (labels on everything)
+- Git revision tracked on every resource and in DynamoDB
 - No infrastructure changes required when adding new TAs
+- API proxies S3 content — clean consumer experience, no presigned URL leakage
+- CLI follows kubectl/oc patterns — zero learning curve for SREs
 
 ### Negative
 
-- Kubernetes audit logs show profile-level identity (e.g., `zoa-kube-sa`), not per-execution identity — correlation requires cross-referencing with DynamoDB via pod labels
-- All TAs within a privilege profile share the same AWS permissions — a misbehaving TA could theoretically use AWS permissions intended for another TA in the same profile
+- Kubernetes audit logs show profile-level identity (e.g., `zoa-kube-sa`), not per-execution identity — correlation requires cross-referencing pod labels
+- All TAs within a privilege profile share the same AWS permissions
 - Custom image requires maintenance (updates, CVE patches, FIPS recertification)
+- Platform API has more generation logic (builds ManifestWork programmatically vs. simple template rendering)
 
 ## Cross-Cutting Concerns
 
@@ -275,8 +346,9 @@ manifests:
 - Per-TA Roles/RoleBindings enforce least-privilege at the Kubernetes API level
 - S3 bucket uses KMS encryption at rest
 - DynamoDB uses KMS encryption at rest
-- Jobs run with `runAsNonRoot: true` and `readOnlyRootFilesystem` where possible
+- Jobs run with `runAsNonRoot: true`
 - TTL-based cleanup ensures ephemeral resources don't accumulate
+- Revision tracking ensures traceability to specific TA definitions
 
 ### Reliability:
 
@@ -293,9 +365,10 @@ manifests:
 
 ### Operability:
 
-- Adding a new TA: create YAML file in `ta-templates/`, push, ArgoCD syncs ConfigMap
+- Adding a new TA: create YAML file in `trusted-actions/`, push, ArgoCD syncs ConfigMap
+- Updating the image/wrapper: change `zoa-job-config` values, ArgoCD syncs, Platform API hot-reloads
 - Adding a new privilege profile: update Terraform (IAM role + Pod Identity), ArgoCD (SA), and Platform API (profile mapping)
-- Debugging: `zoa status <id>` → DynamoDB metadata + ManifestWork status + S3 outputs
+- Debugging: `zoa get <id> --logs` → metadata + stdout/stderr from S3
 
 ---
 
