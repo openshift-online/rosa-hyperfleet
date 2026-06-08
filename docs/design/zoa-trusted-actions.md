@@ -71,6 +71,28 @@ script: |
 - Scripts MUST write structured output to `/artifacts/output.json` (JSON format, machine-parseable)
 - Human-readable output goes to stdout (captured automatically as `stdout.log`)
 - Errors go to stderr (captured automatically as `stderr.log`)
+- Write TAs SHOULD include `affected_resources` in output.json for audit:
+  ```json
+  {
+    "affected_resources": [
+      {"kind": "Pod", "namespace": "maestro", "name": "maestro-xyz", "action": "deleted"}
+    ],
+    "summary": "Pod replaced successfully, controller will recreate"
+  }
+  ```
+
+**Safety checks (required for write TAs):**
+
+Write TAs MUST validate preconditions before acting. Platform API does not have direct access to the target cluster, so validation happens within the script:
+
+```bash
+# Example: refuse to delete standalone pod (no controller to recreate it)
+OWNERS=$(kubectl get pod $PARAM_POD_NAME -n $PARAM_NAMESPACE -o jsonpath='{.metadata.ownerReferences}')
+if [ "$OWNERS" = "null" ] || [ -z "$OWNERS" ]; then
+  echo '{"error": "Pod has no owner references, refusing to delete standalone pod"}' > /artifacts/output.json
+  exit 1
+fi
+```
 
 ### What Platform API Generates (Per Execution)
 
@@ -217,19 +239,38 @@ A custom "swiss knife" image built for ZOA jobs, based on UBI9 for FIPS complian
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/api/v0/trusted-actions/{action}/run` | Execute a Trusted Action |
-| `GET` | `/api/v0/trusted-actions/runs/{id}` | Get execution (metadata + output by default) |
-| `GET` | `/api/v0/trusted-actions/runs` | List executions |
+| `GET` | `/api/v0/trusted-actions/runs/{id}` | Get execution |
+| `GET` | `/api/v0/trusted-actions/runs` | List executions (paginated) |
 | `GET` | `/api/v0/trusted-actions` | List available TAs (catalog) |
+| `GET` | `/api/v0/trusted-actions/{action}` | Describe a specific TA (params, description, profile) |
 
 #### Query Parameters for GET /runs/{id}
 
-| Parameter | Effect |
-|-----------|--------|
-| (default) | Returns metadata + output (most common use case) |
-| `?raw=true` | Returns only the raw `output.json` content (pipeable to jq) |
-| `?include=logs` | Returns metadata + output + stdout/stderr |
+Uses a single `fields` parameter for selecting response content:
+
+| Request | Returns |
+|---------|---------|
+| `GET /runs/{id}` | metadata + output (default) |
+| `GET /runs/{id}?fields=output` | output only |
+| `GET /runs/{id}?fields=metadata` | metadata only |
+| `GET /runs/{id}?fields=logs` | logs only (stdout + stderr) |
+| `GET /runs/{id}?fields=all` | metadata + output + logs |
+| `GET /runs/{id}?fields=metadata,logs` | any combination |
 
 The API proxies S3 content directly — no presigned URLs exposed to consumers.
+
+#### Query Parameters for GET /runs (List)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `limit` | 20 | Number of runs to return (max 100) |
+| `page` | 1 | Page number |
+| `status` | — | Filter: `pending`, `running`, `succeeded`, `failed` |
+| `action` | — | Filter by TA name |
+| `target` | — | Filter by target cluster |
+| `operator` | — | Filter by who ran it |
+| `since` | — | Only runs after this timestamp |
+| `sort` | `desc` | Sort by created_at |
 
 #### Response Format
 
@@ -248,9 +289,39 @@ The API proxies S3 content directly — no presigned URLs exposed to consumers.
   "completed_at": "2026-06-08T12:00:12Z",
   "duration_seconds": 12,
 
-  "output": { "nodes": [...] },
-  "stdout": "Nodes retrieved successfully\n",
-  "stderr": ""
+  "output": {
+    "affected_resources": [...],
+    "summary": "..."
+  },
+  "stdout": "...",
+  "stderr": "..."
+}
+```
+
+#### List Response Format
+
+```json
+{
+  "items": [...],
+  "total": 142,
+  "page": 1,
+  "limit": 20,
+  "has_more": true
+}
+```
+
+#### Describe Response Format (GET /trusted-actions/{action})
+
+```json
+{
+  "name": "get_nodes",
+  "profile": "kube",
+  "scope": "kube-api",
+  "type": "read",
+  "description": "List all nodes in the target cluster",
+  "params": [
+    {"name": "node_selector", "required": false, "default": "", "description": "Label selector to filter nodes"}
+  ]
 }
 ```
 
@@ -258,17 +329,22 @@ The API proxies S3 content directly — no presigned URLs exposed to consumers.
 
 Maps to kubectl/oc patterns for SRE muscle memory:
 
-| CLI Command | API Call | Feels Like |
-|-------------|----------|-----------|
-| `zoa run <action> --target <cluster>` | `POST /trusted-actions/{action}/run` | `kubectl run` |
-| `zoa get <id>` | `GET /runs/{id}` | `kubectl get` |
-| `zoa get <id> -o json` | `GET /runs/{id}` (full JSON) | `kubectl get -o json` |
-| `zoa get <id> --raw` | `GET /runs/{id}?raw=true` | `kubectl get -o jsonpath` |
-| `zoa logs <id>` | `GET /runs/{id}?include=logs` | `kubectl logs` |
-| `zoa list` | `GET /runs` | `kubectl get pods` |
-| `zoa list --status failed` | `GET /runs?status=failed` | `kubectl get --field-selector` |
+| CLI Command | API Call | Description |
+|-------------|----------|-------------|
+| `zoa run <action> --target <cluster>` | `POST /trusted-actions/{action}/run` | Execute a TA |
+| `zoa get <id>` | `GET /runs/{id}` | Metadata + output (default) |
+| `zoa get <id> --output` | `GET /runs/{id}?fields=output` | Output only |
+| `zoa get <id> --metadata` | `GET /runs/{id}?fields=metadata` | Metadata only |
+| `zoa logs <id>` | `GET /runs/{id}?fields=logs` | stdout + stderr |
+| `zoa list` | `GET /runs` | Last 20 executions |
+| `zoa list --limit 50 --status failed` | `GET /runs?limit=50&status=failed` | Filtered list |
+| `zoa describe <action>` | `GET /trusted-actions/{action}` | Show TA info, params |
 
-**Key principle**: `get` retrieves the result; `logs` retrieves the execution trace. They are separate concepts, like in kubectl.
+**Key principles:**
+- `get` retrieves the result; `logs` retrieves the execution trace — separate concepts, like kubectl
+- Output is always JSON — no format flags needed
+- `--output` and `--metadata` are the only field selectors (one mechanism, `fields=` param)
+- `describe` shows what a TA does before running it (params, description, profile)
 
 ### Dispatch Flow
 
