@@ -37,7 +37,7 @@ script: |
       name: .metadata.name,
       status: (if (.status.conditions[] | select(.type=="Ready") | .status) == "True" then "Ready" else "NotReady" end),
       roles: (.metadata.labels | with_entries(select(.key | startswith("node-role.kubernetes.io/"))) | keys | map(ltrimstr("node-role.kubernetes.io/")) | if length == 0 then "<none>" else join(",") end),
-      age: .metadata.creationTimestamp,
+      age: ((now - (.metadata.creationTimestamp | fromdateiso8601)) | if . >= 86400 then (. / 86400 | floor | tostring) + "d" elif . >= 3600 then (. / 3600 | floor | tostring) + "h" elif . >= 60 then (. / 60 | floor | tostring) + "m" else (. | floor | tostring) + "s" end),
       version: .status.nodeInfo.kubeletVersion,
       internal_ip: (.status.addresses[] | select(.type=="InternalIP") | .address),
       os_image: .status.nodeInfo.osImage,

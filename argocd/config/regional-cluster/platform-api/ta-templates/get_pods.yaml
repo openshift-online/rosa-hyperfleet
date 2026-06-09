@@ -64,7 +64,7 @@ script: |
       ready: (if .status.containerStatuses then ([.status.containerStatuses[] | select(.ready==true)] | length | tostring) + "/" + (.status.containerStatuses | length | tostring) else "0/0" end),
       status: .status.phase,
       restarts: (if .status.containerStatuses then [.status.containerStatuses[].restartCount] | add else 0 end),
-      age: .metadata.creationTimestamp,
+      age: ((now - (.metadata.creationTimestamp | fromdateiso8601)) | if . >= 86400 then (. / 86400 | floor | tostring) + "d" elif . >= 3600 then (. / 3600 | floor | tostring) + "h" elif . >= 60 then (. / 60 | floor | tostring) + "m" else (. | floor | tostring) + "s" end),
       ip: .status.podIP,
       node: .spec.nodeName
     }]' /tmp/raw.json > /artifacts/output.json

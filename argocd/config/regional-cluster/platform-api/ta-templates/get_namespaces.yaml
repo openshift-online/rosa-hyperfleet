@@ -36,7 +36,7 @@ script: |
     jq '[.items[] | {
       name: .metadata.name,
       status: .status.phase,
-      age: .metadata.creationTimestamp,
+      age: ((now - (.metadata.creationTimestamp | fromdateiso8601)) | if . >= 86400 then (. / 86400 | floor | tostring) + "d" elif . >= 3600 then (. / 3600 | floor | tostring) + "h" elif . >= 60 then (. / 60 | floor | tostring) + "m" else (. | floor | tostring) + "s" end),
       labels: .metadata.labels
     }]' /tmp/raw.json > /artifacts/output.json
   fi
