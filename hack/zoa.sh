@@ -53,17 +53,21 @@ _zoa_request() {
 
 _zoa_poll() {
   local id="$1" interval="${2:-3}" timeout="${3:-120}"
-  local elapsed=0 exec_status
+  local elapsed=0 exec_status result
 
   while (( elapsed < timeout )); do
-    local result
-    result=$(_zoa_request GET "/trusted-actions/runs/${id}")
-    exec_status=$(echo "$result" | "$_ZOA_JQ" -r '.status')
+    result=$(_zoa_request GET "/trusted-actions/runs/${id}?fields=none")
+    exec_status=$(printf '%s' "$result" | "$_ZOA_JQ" -r '.status // empty')
 
     case "$exec_status" in
-      succeeded|failed|error)
-        echo "$result"
+      succeeded|failed|error|timed_out)
+        printf '%s' "$result"
         return 0
+        ;;
+      "")
+        printf "\r\033[K⚠ invalid response (%ds)" "$elapsed" >&2
+        sleep "$interval"
+        elapsed=$((elapsed + interval))
         ;;
       *)
         printf "\r\033[K⠋ %s (%ds)" "$exec_status" "$elapsed" >&2
@@ -75,7 +79,7 @@ _zoa_poll() {
 
   printf "\r\033[K" >&2
   echo "error: timed out after ${timeout}s (status: ${exec_status})" >&2
-  echo "$result"
+  printf '%s' "$result"
   return 1
 }
 
@@ -179,22 +183,20 @@ _zoa_run() {
   printf "\r\033[K" >&2
 
   local exec_status
-  exec_status=$(echo "$result" | "$_ZOA_JQ" -r '.status')
+  exec_status=$(printf '%s' "$result" | "$_ZOA_JQ" -r '.status // empty')
   local duration
-  duration=$(echo "$result" | "$_ZOA_JQ" -r '.duration_seconds // "?"')
+  duration=$(printf '%s' "$result" | "$_ZOA_JQ" -r '.duration_seconds // "?"')
 
   if [[ "$exec_status" == "succeeded" ]]; then
     echo "✓ completed (${duration}s)" >&2
-    # Fetch output
     local output
     output=$(_zoa_request GET "/trusted-actions/runs/${id}?fields=output")
-    echo "$output" | "$_ZOA_JQ" -r '.output // empty'
+    printf '%s' "$output" | "$_ZOA_JQ" -r '.output // empty'
   else
     echo "✗ ${exec_status} (${duration}s)" >&2
-    # Show logs on failure
     local logs
     logs=$(_zoa_request GET "/trusted-actions/runs/${id}?fields=logs")
-    echo "$logs" | "$_ZOA_JQ" -r '.logs // .output // empty'
+    printf '%s' "$logs" | "$_ZOA_JQ" -r '.logs // .output // empty'
     return 1
   fi
 }
