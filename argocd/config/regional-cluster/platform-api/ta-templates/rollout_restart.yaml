@@ -17,7 +17,10 @@ rbac:
   rules:
     - apiGroups: ["apps"]
       resources: ["deployments"]
-      verbs: ["get", "patch"]
+      verbs: ["get", "list", "watch", "patch"]
+    - apiGroups: ["apps"]
+      resources: ["replicasets"]
+      verbs: ["get", "list"]
     - apiGroups: [""]
       resources: ["pods"]
       verbs: ["get", "list"]
