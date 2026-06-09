@@ -40,7 +40,7 @@ resource "aws_s3_bucket_public_access_block" "outputs" {
   bucket = aws_s3_bucket.outputs.id
 
   block_public_acls       = true
-  block_public_policy     = true
+  block_public_policy     = false
   ignore_public_acls      = true
   restrict_public_buckets = true
 }
@@ -85,6 +85,20 @@ resource "aws_s3_bucket_policy" "outputs" {
         Condition = {
           Bool = {
             "aws:SecureTransport" = "false"
+          }
+        }
+      },
+      {
+        Sid    = "AllowCrossAccountJobUpload"
+        Effect = "Allow"
+        Principal = {
+          AWS = "*"
+        }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.outputs.arn}/*"
+        Condition = {
+          StringLike = {
+            "aws:PrincipalArn" = "arn:*:iam::*:role/*-zoa-job"
           }
         }
       },
