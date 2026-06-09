@@ -22,6 +22,17 @@ data:
 
     EXEC_LOG="/artifacts/execution.log"
 
+    annotate_job() {
+      local upload_ok="$1"
+      local action_exit="$2"
+      if [ -n "${JOB_NAME:-}" ] && [ -n "${JOB_NAMESPACE:-}" ]; then
+        kubectl annotate job "${JOB_NAME}" -n "${JOB_NAMESPACE}" --overwrite \
+          "zoa.rosa.io/upload-ok=${upload_ok}" \
+          "zoa.rosa.io/action-exit-code=${action_exit}" 2>&1 || \
+          echo "[zoa] WARNING: failed to annotate job"
+      fi
+    }
+
     run_action() {
       echo "[zoa] execution_id=${RUN_ID} action=${ACTION_NAME} target=${CLUSTER_ID}"
       echo "[zoa] operator=${OPERATOR} profile=${PROFILE} type=${TYPE}"
@@ -39,6 +50,7 @@ data:
 
     if [ -z "${ARTIFACT_BUCKET:-}" ]; then
       echo "[zoa] ERROR: ARTIFACT_BUCKET not set, skipping upload"
+      annotate_job "false" "${EXIT_CODE}"
       exit ${EXIT_CODE}
     fi
 
@@ -59,8 +71,10 @@ data:
 
     if [ $UPLOAD_FAILED -eq 0 ]; then
       echo "[zoa] Upload complete"
+      annotate_job "true" "${EXIT_CODE}"
     else
       echo "[zoa] Upload FAILED — check errors above"
+      annotate_job "false" "${EXIT_CODE}"
     fi
 
     exit ${EXIT_CODE}
