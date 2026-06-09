@@ -158,7 +158,7 @@ _zoa_run() {
 
   local body
   body=$("$_ZOA_JQ" -n --arg target "$target" --argjson params "$params" \
-    '{target_cluster: $target} + $params')
+    '{target_cluster: $target, params: $params}')
 
   local submit
   submit=$(_zoa_request POST "/trusted-actions/${action}/run" "$body")
