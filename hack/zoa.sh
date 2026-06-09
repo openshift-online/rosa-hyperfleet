@@ -53,20 +53,20 @@ _zoa_request() {
 
 _zoa_poll() {
   local id="$1" interval="${2:-3}" timeout="${3:-120}"
-  local elapsed=0 status
+  local elapsed=0 exec_status
 
   while (( elapsed < timeout )); do
     local result
     result=$(_zoa_request GET "/trusted-actions/runs/${id}")
-    status=$(echo "$result" | "$_ZOA_JQ" -r '.status')
+    exec_status=$(echo "$result" | "$_ZOA_JQ" -r '.status')
 
-    case "$status" in
+    case "$exec_status" in
       succeeded|failed|error)
         echo "$result"
         return 0
         ;;
       *)
-        printf "\r\033[K⠋ %s (%ds)" "$status" "$elapsed" >&2
+        printf "\r\033[K⠋ %s (%ds)" "$exec_status" "$elapsed" >&2
         sleep "$interval"
         elapsed=$((elapsed + interval))
         ;;
@@ -74,7 +74,7 @@ _zoa_poll() {
   done
 
   printf "\r\033[K" >&2
-  echo "error: timed out after ${timeout}s (status: ${status})" >&2
+  echo "error: timed out after ${timeout}s (status: ${exec_status})" >&2
   echo "$result"
   return 1
 }
@@ -178,19 +178,19 @@ _zoa_run() {
   local rc=$?
   printf "\r\033[K" >&2
 
-  local status
-  status=$(echo "$result" | "$_ZOA_JQ" -r '.status')
+  local exec_status
+  exec_status=$(echo "$result" | "$_ZOA_JQ" -r '.status')
   local duration
   duration=$(echo "$result" | "$_ZOA_JQ" -r '.duration_seconds // "?"')
 
-  if [[ "$status" == "succeeded" ]]; then
+  if [[ "$exec_status" == "succeeded" ]]; then
     echo "✓ completed (${duration}s)" >&2
     # Fetch output
     local output
     output=$(_zoa_request GET "/trusted-actions/runs/${id}?fields=output")
     echo "$output" | "$_ZOA_JQ" -r '.output // empty'
   else
-    echo "✗ ${status} (${duration}s)" >&2
+    echo "✗ ${exec_status} (${duration}s)" >&2
     # Show logs on failure
     local logs
     logs=$(_zoa_request GET "/trusted-actions/runs/${id}?fields=logs")
