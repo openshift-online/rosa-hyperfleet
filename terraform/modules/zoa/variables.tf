@@ -39,6 +39,11 @@ variable "enable_deletion_protection" {
   default     = false
 }
 
+variable "mc_ou_path" {
+  description = "AWS Organizations OU path for Management Cluster accounts (used in cross-account S3/KMS policies)"
+  type        = string
+}
+
 variable "output_retention_days" {
   description = "Days to retain TA outputs in S3"
   type        = number

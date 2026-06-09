@@ -1,0 +1,28 @@
+name: get_namespaces
+profile: kube
+scope: kube-api
+type: read
+description: List all namespaces in the target cluster
+timeout_seconds: 300
+params:
+  - name: label_selector
+    required: false
+    default: ""
+    description: "Label selector to filter namespaces (e.g. kubernetes.io/metadata.name=openshift-monitoring)"
+rbac:
+  cluster_scoped: true
+  rules:
+    - apiGroups: [""]
+      resources: ["namespaces"]
+      verbs: ["get", "list"]
+script: |
+  set -euo pipefail
+
+  SELECTOR_ARGS=()
+  if [ -n "${PARAM_LABEL_SELECTOR:-}" ]; then
+    SELECTOR_ARGS=(-l "${PARAM_LABEL_SELECTOR}")
+  fi
+
+  echo "Retrieving namespaces..."
+  kubectl get namespaces "${SELECTOR_ARGS[@]}" -o json > /artifacts/output.json
+  echo "Namespaces retrieved successfully"

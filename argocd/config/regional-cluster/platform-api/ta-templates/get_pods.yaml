@@ -31,7 +31,5 @@ script: |
   fi
 
   echo "Retrieving pods in namespace: ${PARAM_NAMESPACE}"
-  kubectl get pods -n "${PARAM_NAMESPACE}" "${SELECTOR_ARGS[@]}" -o wide
-
   kubectl get pods -n "${PARAM_NAMESPACE}" "${SELECTOR_ARGS[@]}" -o json > /artifacts/output.json
   echo "Pods retrieved successfully"

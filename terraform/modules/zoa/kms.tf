@@ -71,8 +71,11 @@ resource "aws_kms_key_policy" "zoa" {
         ]
         Resource = "*"
         Condition = {
+          "ForAnyValue:StringLike" = {
+            "aws:PrincipalOrgPaths" = "${var.mc_ou_path}*"
+          }
           StringLike = {
-            "aws:PrincipalArn" = "arn:aws:iam::*:role/*-zoa-job"
+            "aws:PrincipalArn" = "arn:*:iam::*:role/*-zoa-job"
           }
         }
       },

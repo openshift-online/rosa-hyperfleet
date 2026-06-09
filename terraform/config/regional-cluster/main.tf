@@ -411,6 +411,7 @@ module "zoa" {
 
   regional_id      = var.regional_id
   eks_cluster_name = module.regional_cluster.cluster_name
+  mc_ou_path       = var.mc_ou_path
 
   platform_api_role_id  = module.authz.frontend_api_role_name
   platform_api_role_arn = module.authz.frontend_api_role_arn

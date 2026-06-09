@@ -24,7 +24,5 @@ script: |
   fi
 
   echo "Retrieving nodes..."
-  kubectl get nodes "${SELECTOR_ARGS[@]}" -o wide
-
   kubectl get nodes "${SELECTOR_ARGS[@]}" -o json > /artifacts/output.json
   echo "Nodes retrieved successfully"
