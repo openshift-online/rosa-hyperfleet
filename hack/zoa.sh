@@ -142,18 +142,18 @@ _zoa_run() {
   fi
 
   local params="{}"
-  [[ -n "$namespace" ]]  && params=$(echo "$params" | "$_ZOA_JQ" --arg v "$namespace" '. + {namespace: $v}')
-  [[ "$all_ns" == "true" ]] && params=$(echo "$params" | "$_ZOA_JQ" '. + {all_namespaces: "true"}')
-  [[ -n "$selector" ]]   && params=$(echo "$params" | "$_ZOA_JQ" --arg v "$selector" '. + {label_selector: $v}')
-  [[ "$verbose" == "true" ]] && params=$(echo "$params" | "$_ZOA_JQ" '. + {verbose: "true"}')
-  [[ -n "$resource" ]]   && params=$(echo "$params" | "$_ZOA_JQ" --arg v "$resource" '. + {resource: $v}')
-  [[ -n "$name" ]]       && params=$(echo "$params" | "$_ZOA_JQ" --arg v "$name" '. + {name: $v}')
-  [[ -n "$deployment" ]] && params=$(echo "$params" | "$_ZOA_JQ" --arg v "$deployment" '. + {deployment_name: $v}')
-  [[ -n "$pod" ]]        && params=$(echo "$params" | "$_ZOA_JQ" --arg v "$pod" '. + {pod_name: $v}')
+  [[ -n "$namespace" ]]  && params=$(printf '%s' "$params" | "$_ZOA_JQ" --arg v "$namespace" '. + {namespace: $v}')
+  [[ "$all_ns" == "true" ]] && params=$(printf '%s' "$params" | "$_ZOA_JQ" '. + {all_namespaces: "true"}')
+  [[ -n "$selector" ]]   && params=$(printf '%s' "$params" | "$_ZOA_JQ" --arg v "$selector" '. + {label_selector: $v}')
+  [[ "$verbose" == "true" ]] && params=$(printf '%s' "$params" | "$_ZOA_JQ" '. + {verbose: "true"}')
+  [[ -n "$resource" ]]   && params=$(printf '%s' "$params" | "$_ZOA_JQ" --arg v "$resource" '. + {resource: $v}')
+  [[ -n "$name" ]]       && params=$(printf '%s' "$params" | "$_ZOA_JQ" --arg v "$name" '. + {name: $v}')
+  [[ -n "$deployment" ]] && params=$(printf '%s' "$params" | "$_ZOA_JQ" --arg v "$deployment" '. + {deployment_name: $v}')
+  [[ -n "$pod" ]]        && params=$(printf '%s' "$params" | "$_ZOA_JQ" --arg v "$pod" '. + {pod_name: $v}')
 
   for p in "${extra_params[@]+"${extra_params[@]}"}"; do
     local key="${p%%=*}" val="${p#*=}"
-    params=$(echo "$params" | "$_ZOA_JQ" --arg k "$key" --arg v "$val" '. + {($k): $v}')
+    params=$(printf '%s' "$params" | "$_ZOA_JQ" --arg k "$key" --arg v "$val" '. + {($k): $v}')
   done
 
   local body
@@ -164,16 +164,16 @@ _zoa_run() {
   submit=$(_zoa_request POST "/trusted-actions/${action}/run" "$body")
 
   local id
-  id=$(echo "$submit" | "$_ZOA_JQ" -r '.id // empty')
+  id=$(printf '%s' "$submit" | "$_ZOA_JQ" -r '.id // empty')
   if [[ -z "$id" ]]; then
-    echo "$submit" | "$_ZOA_JQ" .
+    printf '%s' "$submit" | "$_ZOA_JQ" .
     return 1
   fi
 
   echo "✓ ${id}" >&2
 
   if $no_wait; then
-    echo "$submit" | "$_ZOA_JQ" .
+    printf '%s' "$submit" | "$_ZOA_JQ" .
     return 0
   fi
 
