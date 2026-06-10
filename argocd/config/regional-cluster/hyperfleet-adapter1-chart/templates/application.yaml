@@ -27,7 +27,7 @@ spec:
           type: rabbitmq
           create: true
           rabbitmq:
-            enabled: false
+            # enabled: false
             url: "amqps://placeholder@localhost:5671/"
             queue: "clusters"
             exchange: "hyperfleet"
