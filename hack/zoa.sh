@@ -321,7 +321,14 @@ _zoa_runs() {
 }
 
 _zoa_actions() {
-  local action="${1:-}"
+  local action="" raw=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) raw=true; shift ;;
+      *)      action="$1"; shift ;;
+    esac
+  done
+
   if [[ -n "$action" ]]; then
     _zoa_request GET "/trusted-actions/${action}" | "$_ZOA_JQ" .
     return
@@ -329,6 +336,11 @@ _zoa_actions() {
 
   local resp
   resp=$(_zoa_request GET "/trusted-actions")
+
+  if [[ "$raw" == "true" ]]; then
+    printf '%s' "$resp" | "$_ZOA_JQ" .
+    return
+  fi
 
   printf "%-25s %-10s %-10s %s\n" "NAME" "SCOPE" "TYPE" "DESCRIPTION"
   printf '%s' "$resp" | "$_ZOA_JQ" -r '(.items // [])[] | [.name, .scope, .type, .description] | @tsv' | \
