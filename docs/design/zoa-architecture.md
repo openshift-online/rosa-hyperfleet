@@ -1,6 +1,6 @@
 # Zero Operator Access (ZOA) — Architecture
 
-**Last Updated Date**: 2026-06-10
+**Last Updated Date**: 2026-06-11
 
 ## Summary
 
@@ -94,6 +94,78 @@ ZOA eliminates all of these by making every operational action:
 | **S3** | AWS (regional) | Artifact storage (output.json, execution.log) |
 | **KMS** | AWS (regional) | Encryption at rest for DynamoDB and S3 |
 | **zoa-jobs namespace** | MC | Execution environment (Jobs, RBAC, ConfigMaps) |
+
+## Request Flow — Sequence Diagram
+
+The following diagram shows what happens for every API call, covering all component interactions:
+
+```mermaid
+sequenceDiagram
+    participant Op as Operator (zoa CLI)
+    participant GW as API Gateway
+    participant API as Platform API
+    participant DB as DynamoDB
+    participant MS as Maestro Server
+    participant MQTT as MQTT Broker
+    participant MA as Maestro Agent
+    participant MC as MC Kubernetes API
+    participant Runner as Runner Job
+    participant CM as ConfigMap
+    participant Uploader as Uploader Job
+    participant S3 as S3 Bucket
+
+    Note over Op,S3: 1. Submission (POST /{action}/run)
+    Op->>GW: POST /trusted-actions/get_pods/run (SigV4)
+    GW->>GW: Validate SigV4, extract caller identity
+    GW->>API: Forward request + X-Amz headers
+    API->>API: Validate params, build ManifestWork
+    API->>DB: Create execution record (status=pending)
+    API->>MS: gRPC CreateManifestWork
+    API-->>Op: 202 {id, status: "pending"}
+
+    Note over Op,S3: 2. Dispatch (MQTT, no direct network)
+    MS->>MQTT: Publish ManifestWork to MC topic
+    MQTT->>MA: Deliver ManifestWork
+    MA->>MC: Apply manifests (SA, RBAC, CMs, Jobs)
+    MA->>MQTT: Report "Applied" status
+    MQTT->>MS: Status feedback
+
+    Note over Op,S3: 3. Execution (Two-Job model on MC)
+    MC->>Runner: Start runner Job (per-exec SA)
+    MC->>Uploader: Start uploader Job (static SA)
+    Runner->>Runner: Execute /zoa/run.sh
+    Runner->>CM: Patch output ConfigMap (base64 log + output)
+    Runner->>Runner: Exit
+    Uploader->>Uploader: kubectl wait for runner
+    Uploader->>CM: Read output ConfigMap
+    Uploader->>Uploader: Decode base64 → files
+    Uploader->>S3: aws s3 cp (execution.log + output.json)
+    Uploader->>Uploader: Exit
+
+    Note over Op,S3: 4. Reconciliation (5s loop)
+    API->>MS: gRPC GetManifestWork (poll feedback)
+    MS-->>API: feedbackRules: succeeded/failed + Job timestamps
+    API->>MS: gRPC DeleteManifestWork (cleanup)
+    MA->>MC: Delete all ZOA resources from MC
+    API->>DB: Update: status, runner_seconds, upload_seconds, duration_seconds, output_status
+
+    Note over Op,S3: 5. Retrieval
+    Op->>GW: GET /runs/{id}?fields=output (SigV4)
+    GW->>API: Forward
+    API->>DB: Get execution metadata
+    API->>S3: GetObject (output.json + execution.log)
+    API-->>Op: {metadata + output + logs}
+```
+
+### Per-Endpoint Data Flow Summary
+
+| Endpoint | Components Touched |
+|----------|-------------------|
+| `POST /{action}/run` | API Gateway → Platform API → DynamoDB → Maestro → MQTT → Agent → MC |
+| `GET /runs/{id}` | API Gateway → Platform API → DynamoDB + S3 |
+| `GET /runs` | API Gateway → Platform API → DynamoDB |
+| `GET /` (catalog) | API Gateway → Platform API (in-memory registry) |
+| `GET /{action}` (describe) | API Gateway → Platform API (in-memory registry) |
 
 ## Network Architecture
 
@@ -263,24 +335,25 @@ Platform API Reconciler (5-second loop on RC)
   │     ├── Calls Maestro gRPC GetManifestWork
   │     │
   │     ├── Parses feedbackRules from BOTH Jobs:
-  │     │     Runner:   .status.succeeded (taSucceeded), .status.failed (taFailed)
-  │     │     Uploader: .status.succeeded (uploadSucceeded), .status.failed (uploadFailed)
+  │     │     Runner:   .status.succeeded, .status.failed, .status.startTime, .status.completionTime
+  │     │     Uploader: .status.succeeded, .status.failed, .status.completionTime
   │     │
   │     ├── On Applied condition (pending → running):
   │     │     └── UpdateStatus in DynamoDB
   │     │
-  │     ├── On TA completion (runner done, uploader still running):
-  │     │     └── UpdateTACompletion: ta_completed_at, ta_duration_seconds
-  │     │
   │     ├── On full completion (both Jobs done):
+  │     │     ├── Compute durations from Job timestamps:
+  │     │     │     runner_seconds  = runner.completionTime - runner.startTime
+  │     │     │     upload_seconds  = uploader.completionTime - runner.completionTime
+  │     │     │     duration_seconds = now - created_at (total wall-clock)
   │     │     ├── Delete ResourceBundle from Maestro (gRPC)
   │     │     │     └── Cascades: Agent removes ManifestWork → all resources on MC
-  │     │     └── Update DynamoDB: status, completed_at, duration_seconds,
-  │     │                          output_status (uploaded|failed), ta_duration_seconds
+  │     │     └── Update DynamoDB: status, completed_at, runner_seconds, upload_seconds,
+  │     │                          duration_seconds, output_status (uploaded|failed)
   │     │
   │     └── On timeout (exceeded per-TA or global timeout):
   │           ├── Delete ResourceBundle from Maestro (cleanup first)
-  │           └── Update DynamoDB: status=timed_out, duration
+  │           └── Update DynamoDB: status=timed_out, duration_seconds
   │
   └── Sleep 5s → repeat
 ```

@@ -1,6 +1,6 @@
 # Zero Operator Access (ZOA) — Security Model
 
-**Last Updated Date**: 2026-06-10
+**Last Updated Date**: 2026-06-11
 
 ## Summary
 
@@ -100,7 +100,7 @@ metadata:
   namespace: maestro
 subjects:
   - kind: ServiceAccount
-    name: zoa-kube-sa
+    name: zoa-runner-<execution-id>
     namespace: zoa-jobs
 roleRef:
   kind: Role

@@ -1,6 +1,6 @@
 # Zero Operator Access — Trusted Actions Implementation
 
-**Last Updated Date**: 2026-06-08
+**Last Updated Date**: 2026-06-11
 
 ## Summary
 
@@ -156,28 +156,32 @@ data:
   entrypoint.sh: |
     #!/bin/bash
     set -uo pipefail
+    ts() { date -u '+%H:%M:%S'; }
     EXEC_LOG="/artifacts/execution.log"
-    exec > >(tee -a "$EXEC_LOG") 2>&1
 
-    upload_artifacts() {
-      local upload_exit=${1:-$?}
-      echo "[zoa] exit_code=${upload_exit}"
-      echo "[zoa] completed_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-      if [ -n "${ARTIFACT_BUCKET:-}" ]; then
-        aws s3 cp "$EXEC_LOG" "s3://${ARTIFACT_BUCKET}/${RUN_ID}/execution.log" --quiet || true
-        [ -f /artifacts/output.json ] && \
-          aws s3 cp /artifacts/output.json "s3://${ARTIFACT_BUCKET}/${RUN_ID}/output.json" --quiet || true
-      fi
-    }
+    {
+      echo "[$(ts)] runner starting"
+      echo "[zoa] execution_id=${RUN_ID} action=${ACTION_NAME} target=${CLUSTER_ID}"
+      echo "[zoa] operator=${OPERATOR} scope=${SCOPE} type=${TYPE}"
+      echo "[zoa] revision=${REVISION}"
+      echo "[zoa] started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+      echo "---"
+      /zoa/run.sh
+    } 2>&1 | tee "$EXEC_LOG"
+    EXIT_CODE=${PIPESTATUS[0]}
 
-    echo "[zoa] execution_id=${RUN_ID} action=${ACTION_NAME} target=${CLUSTER_ID}"
-    echo "[zoa] operator=${OPERATOR} profile=${PROFILE} type=${TYPE}"
-    echo "[zoa] revision=${REVISION}"
-    echo "[zoa] started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-    echo "---"
-    /zoa/run.sh
-    EXIT_CODE=$?
-    upload_artifacts ${EXIT_CODE}
+    {
+      echo "---"
+      echo "[$(ts)] exit_code=${EXIT_CODE}"
+      echo "[$(ts)] patching configmap"
+    } | tee -a "$EXEC_LOG"
+
+    # Patch output ConfigMap with base64-encoded log + output for uploader
+    LOG_B64=$(base64 -w0 "$EXEC_LOG")
+    PATCH="{\"binaryData\":{\"execution.log\":\"${LOG_B64}\""
+    [ -f /artifacts/output.json ] && PATCH="${PATCH},\"output.json\":\"$(base64 -w0 /artifacts/output.json)\""
+    PATCH="${PATCH}},\"data\":{\"exit-code\":\"${EXIT_CODE}\"}}"
+    kubectl patch configmap "${OUTPUT_CONFIGMAP}" -n "${JOB_NAMESPACE}" --type=merge -p "${PATCH}"
     exit ${EXIT_CODE}
 ```
 
@@ -203,25 +207,31 @@ Cleanup is **reconciler-driven**, not purely TTL-based:
 
 **The ServiceAccount is NEVER deleted** — it's infrastructure managed by `zoa-infra`.
 
-### Service Account Strategy — Privilege Profiles
+### Service Account Strategy — Two-Job Split
 
-A small number of **stable ServiceAccounts** based on privilege profiles:
+ZOA uses a split SA model separating operational permissions from output transport:
 
-| ServiceAccount | Pod Identity Role | Purpose |
-|----------------|-------------------|---------|
-| `zoa-kube-sa` | `s3:PutObject` only | Kube-API read/write TAs (kubectl commands) |
-| `zoa-aws-read-sa` | Read-only AWS + `s3:PutObject` | AWS read TAs (describe, list, get) |
-| `zoa-aws-write-sa` | Read-write AWS + `s3:PutObject` | AWS write TAs (modify, restart, scale) |
-| `zoa-breakglass-read-sa` | Broad read AWS + `s3:PutObject` | Breakglass read operations |
-| `zoa-breakglass-write-sa` | Broad write AWS + `s3:PutObject` | Breakglass write operations |
+| ServiceAccount | Lifecycle | Kubernetes Access | AWS Access (Pod Identity) |
+|----------------|-----------|-------------------|--------------------------|
+| `zoa-runner-<exec-id>` | Per-execution (dynamic) | Per-execution Role only | **None** |
+| `zoa-uploader` | Static (infra) | ConfigMap read in `zoa-jobs` | `s3:PutObject` + `kms:Encrypt` |
+| `zoa-aws-read` | Static (infra) | Per-execution Role | AWS read-only APIs (no S3 on ZOA bucket) |
+| `zoa-aws-write` | Static (infra) | Per-execution Role | AWS read-write APIs (no S3 on ZOA bucket) |
 
-**Audit chain with stable SAs:**
+**Key design decisions:**
+
+1. **Per-execution SA for kube TAs**: `zoa-runner-<exec-id>` is created dynamically in the ManifestWork. No Pod Identity — perfect K8s audit attribution.
+2. **Static SAs for AWS TAs**: `zoa-aws-read` and `zoa-aws-write` require pre-provisioned Pod Identity. They have **no access to the ZOA S3 bucket**.
+3. **Dedicated uploader SA**: Only `zoa-uploader` can write to S3. Completely separates operational permissions from output transport.
+4. **No SA has both**: No single SA has both operational permissions AND S3 write access.
+
+**Audit chain:**
 
 | Layer | What's Recorded | Identifies |
 |-------|----------------|------------|
-| Platform API (DynamoDB) | `execution_id`, `operator`, `action`, `target`, `revision`, timestamp | Who requested what |
+| Platform API (DynamoDB) | `execution_id`, `operator`, `action`, `target`, `params`, `revision`, timestamps | Who requested what with which params |
 | ManifestWork + all resources | Labels: `zoa.rosa.io/execution-id`, `zoa.rosa.io/operator`, `zoa.rosa.io/action`, `zoa.rosa.io/revision` | Full traceability on every K8s resource |
-| Kubernetes audit logs | SA name + pod labels | Which profile ran the pod + execution context via labels |
+| Kubernetes audit logs | Per-execution SA name (`zoa-runner-<exec-id>`) + pod labels | Perfect execution-level attribution |
 | S3 object metadata | `x-amz-meta-execution-id`, `x-amz-meta-operator` | Output ownership |
 
 ### Namespace and Infrastructure Pre-creation
@@ -437,7 +447,7 @@ $ zoa describe get_pods
 # 2. Run and see result immediately (synchronous — polls until done)
 $ zoa run get_nodes -t eph-bc5fee45-mc01
 ✓ fa65418c-f4eb-4f5c-8314-baaeb695ba7d        # full UUID (stderr)
-✓ completed (12s)                             # status (stderr)
+✓ completed (runner=5s upload=12s total=22s dispatch=5s)  # timing breakdown (stderr)
 [                                             # output (stdout)
   {"name": "ip-10-0-1-15.ec2.internal", "status": "Ready", "roles": "worker", "age": "45d", ...},
   {"name": "ip-10-0-2-88.ec2.internal", "status": "Ready", "roles": "worker", "age": "45d", ...}
@@ -459,7 +469,7 @@ $ zoa run delete_pod -t eph-bc5fee45-mc01 -n maestro --pod maestro-xyz
 # 6. On failure, logs are shown automatically (stderr)
 $ zoa run get_pods -t eph-bc5fee45-mc01 -n invalid
 ✓ 3b7f9e21-a4c8-4d12-b567-89abcdef0123
-✗ failed (3s)
+✗ failed (runner=3s upload=8s total=15s dispatch=4s)
 ERROR: Specify namespace or set all_namespaces=true
 
 # 7. Discover available actions and their params
@@ -500,28 +510,34 @@ $ zoa runs --action rollout_restart --target eph-bc5fee45-mc01
 - **Bare verbs for TAs, prefixed for breakglass**: TAs are the hot path; `breakglass` is the escalation
   path and deliberately requires more typing (see breakglass section).
 
-### Dispatch Flow
+### Dispatch Flow (Two-Job Architecture)
 
 ```
 Operator (zoa run) → Platform API → Maestro (gRPC CreateManifestWork) → Maestro Agent → Target Cluster
                                                                                               │
-                                                                                        Job executes
+                                                                                  Applies ManifestWork:
+                                                                                  SA, RBAC, ConfigMaps, Jobs
                                                                                               │
-                                                                                   /zoa/entrypoint.sh
-                                                                                     (tee → execution.log)
-                                                                                              │
-                                                                              ┌───────────────┼───────────────┐
-                                                                              │                               │
-                                                                        execution.log                   output.json
-                                                                              │                               │
-                                                                              └───────────────┼───────────────┘
-                                                                                              │
-                                                                                   S3 upload (on exit, always)
-                                                                                              │
-Platform API Reconciler:                                                                      │
-  ← Maestro (GetManifestWork status) ← feedbackRules (Job succeeded/failed) ←────────────────┘
-  → Delete ResourceBundle (on terminal status, race-safe)
-  → DynamoDB (status: succeeded/failed/timed_out, duration, revision)
+                                                                            ┌─────────────────┴────────────────────┐
+                                                                            │                                      │
+                                                                     Runner Job                             Uploader Job
+                                                                     (per-exec SA)                          (static SA: zoa-uploader)
+                                                                            │                                      │
+                                                                   /zoa/entrypoint.sh                     kubectl wait (runner)
+                                                                     (tee → execution.log)                         │
+                                                                            │                              Read output ConfigMap
+                                                                  Patch output ConfigMap                    Decode base64 → files
+                                                                   (base64: log + output)                          │
+                                                                            │                              aws s3 cp → S3 bucket
+                                                                          Exit                                   Exit
+                                                                            │                                      │
+                                                                            └──────────────────┬───────────────────┘
+                                                                                               │
+Platform API Reconciler (5s loop):                                                             │
+  ← Maestro (GetManifestWork) ← feedbackRules (succeeded/failed + Job timestamps) ←───────────┘
+  → Compute: runner_seconds, upload_seconds, duration_seconds
+  → Delete ResourceBundle (on terminal status, race-safe → cascades cleanup on MC)
+  → DynamoDB (status, durations, output_status, revision)
 ```
 
 ### TA Versioning and Future Separate Repo
