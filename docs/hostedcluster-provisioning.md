@@ -23,18 +23,21 @@ command -v jq >/dev/null || echo "Need jq installed"
 
 ### Account Allowlisting
 
-Your AWS account must be registered with the platform before you can create clusters. If you haven't been whitelisted yet, request @rrp-team-ic in the #team-rosa-regional-platform channel to add your AWS account ID using the following query:
+Your AWS account must be registered with the platform before you can create clusters. Ask `@rrp-team-ic` in `#team-rosa-regional-platform` to allowlist your account — provide your **AWS account ID** and the target **environment** (e.g. integration). This is a one-time step per account per environment.
+
+<details>
+<summary>IC reference: allowlisting command</summary>
+
+Run from a platform API shell (`make int-shell` or `make ephemeral-shell`):
 
 ```bash
-make int-shell
-
-awscurl --service execute-api --region us-east-1 \
-  -X POST "https://api.us-east-1.int0.rosa.devshift.net/api/v0/accounts" \
+awscurl --service execute-api --region "$REGION" \
+  -X POST "$API_URL/api/v0/accounts" \
   -H "Content-Type: application/json" \
-  -d '{"accountId": "<your-account-id>", "privileged": true}'
+  -d '{"accountId": "<account-id>", "privileged": true}'
 ```
 
-This only needs to be done once per account per environment.
+</details>
 
 ## Set Up
 
@@ -74,6 +77,7 @@ rosactl cluster-oidc create $CLUSTER_NAME --region $REGION --oidc-issuer-url $CL
 ```
 
 You can then view the status of your cluster as follows:
+
 ```bash
 watch -n 1 rosactl cluster list $CLUSTER_NAME
 ```
@@ -104,3 +108,4 @@ The generated kubeconfig uses `rosactl` as a credential plugin, which signs requ
 - If you create more than 5 hosted clusters, ensure your AWS account has sufficient NAT gateway quota (default limit is 5).
 - For ephemeral (dev) environments, see [Development Environment](development-environment.md). The cluster creation flow is the same — only the `API_URL` differs.
 - For admin teardown procedures, see [Hosted Cluster Teardown](hostedcluster-teardown.md).
+- For assistance, reach out to @rrp-team-ic in #team-rosa-regional-platform.

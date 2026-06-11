@@ -123,19 +123,16 @@ case "$OPTION" in
     1)
         read -rp "Enter the cluster name to delete: " CLUSTER_NAME
         CLUSTER_ID=$(psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -tAc \
-            "SELECT id FROM clusters WHERE name = '$CLUSTER_NAME' AND deleted_at IS NULL;")
+            -v cluster="$CLUSTER_NAME" \
+            "SELECT id FROM clusters WHERE name = :'cluster' AND deleted_at IS NULL;")
         if [ -z "$CLUSTER_ID" ]; then
             print_error "No active cluster found with name '$CLUSTER_NAME'"
             unset PGPASSWORD
             exit 1
         fi
-        CLUSTERS_WHERE="WHERE name = '$CLUSTER_NAME'"
-        ADAPTER_WHERE="WHERE resource_id = '$CLUSTER_ID'"
         DELETE_DESC="cluster '$CLUSTER_NAME'"
         ;;
     2)
-        CLUSTERS_WHERE=""
-        ADAPTER_WHERE=""
         DELETE_DESC="ALL clusters"
         ;;
     *)
@@ -162,12 +159,22 @@ if [ "$CONFIRM" != "yes" ]; then
 fi
 
 print_header "Step 1: Deleting $DELETE_DESC from clusters table"
-psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "DELETE FROM clusters $CLUSTERS_WHERE;"
+if [ "$OPTION" = "1" ]; then
+    psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \
+        -v cluster="$CLUSTER_NAME" -c "DELETE FROM clusters WHERE name = :'cluster';"
+else
+    psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "DELETE FROM clusters;"
+fi
 print_success "Deleted $DELETE_DESC from clusters table"
 
 if [ "$ADAPTER_TABLE_EXISTS" = "t" ]; then
     print_header "Step 2: Deleting matching records from adapter_statuses table"
-    psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "DELETE FROM adapter_statuses $ADAPTER_WHERE;"
+    if [ "$OPTION" = "1" ]; then
+        psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \
+            -v cluster_id="$CLUSTER_ID" -c "DELETE FROM adapter_statuses WHERE resource_id = :'cluster_id';"
+    else
+        psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "DELETE FROM adapter_statuses;"
+    fi
     print_success "Deleted matching records from adapter_statuses table"
 fi
 
@@ -205,9 +212,13 @@ It handles pagination automatically:
 ```bash
 read -rp "Enter cluster ID: " CLUSTER_ID
 echo "Searching for bundles matching '$CLUSTER_ID'..."
-for page in $(seq 1 10); do
+page=1
+while true; do
   RESP=$(awscurl --service execute-api "$API_URL/api/v0/resource_bundles?page=$page&size=100")
-  echo "$RESP" | jq -r ".items[] | select(.metadata.name | contains(\"$CLUSTER_ID\")) | .id"
+  ITEMS=$(echo "$RESP" | jq -r ".items[] | select(.metadata.name | contains(\"$CLUSTER_ID\")) | .id")
+  [ -z "$(echo "$RESP" | jq -r '.items[0] // empty')" ] && break
+  [ -n "$ITEMS" ] && echo "$ITEMS"
+  page=$((page + 1))
 done | sort -u | while read -r BUNDLE_ID; do
   echo "Deleting bundle: $BUNDLE_ID"
   awscurl -X DELETE --service execute-api "$API_URL/api/v0/resource_bundles/$BUNDLE_ID"
@@ -272,7 +283,8 @@ oc -n hyperfleet-system get cronjob cluster-cleanup -o json \
       apiVersion: "batch/v1",
       kind: "Job",
       metadata: {name: "cluster-cleanup-\(now | floor)", namespace: "hyperfleet-system"},
-      spec: (.spec.jobTemplate.spec | .template.spec.containers[0].env[0].value = "0")
+      spec: (.spec.jobTemplate.spec | .template.spec.containers[0].env |= map(
+        if .name == "MAX_AGE_HOURS" then .value = "0" else . end))
     }' \
   | oc apply -f -
 ```
