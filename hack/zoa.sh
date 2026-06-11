@@ -397,9 +397,9 @@ _zoa_audit() {
   printf "%-20s %-8s %-35s %-20s %-15s %s\n" "TIMESTAMP" "METHOD" "PATH" "OPERATOR" "TARGET" "STATUS"
   {
     printf '%s' "$resp" | "$_ZOA_JQ" -r '(.items // [])[] | [.timestamp, .method, .path, .operator, (.target_cluster // "-"), (.status_code | tostring)] | @tsv' | \
-    while IFS=$'\t' read -r ts method path op target status; do
+    while IFS=$'\t' read -r ts method path op target scode; do
       local short_ts="${ts:11:8}"
-      printf "%-20s %-8s %-35s %-20s %-15s %s\n" "$short_ts" "$method" "$path" "$op" "$target" "$status"
+      printf "%-20s %-8s %-35s %-20s %-15s %s\n" "$short_ts" "$method" "$path" "$op" "$target" "$scode"
     done
   } || echo "No audit entries found"
 }
