@@ -22,32 +22,30 @@ data:
     set -uo pipefail
 
     ts() { date -u '+%H:%M:%S'; }
-
     EXEC_LOG="/artifacts/execution.log"
 
-    run_action() {
+    {
+      echo "[$(ts)] runner starting"
       echo "[zoa] execution_id=${RUN_ID} action=${ACTION_NAME} target=${CLUSTER_ID}"
       echo "[zoa] operator=${OPERATOR} scope=${SCOPE} type=${TYPE}"
       echo "[zoa] revision=${REVISION}"
       echo "[zoa] started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
       echo "---"
       /zoa/run.sh
-    }
-
-    echo "[$(ts)] runner starting"
-    run_action 2>&1 | tee "$EXEC_LOG"
+    } 2>&1 | tee "$EXEC_LOG"
     EXIT_CODE=${PIPESTATUS[0]}
 
-    echo "[zoa] exit_code=${EXIT_CODE}"
-    echo "[zoa] completed_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    {
+      echo "---"
+      echo "[$(ts)] exit_code=${EXIT_CODE}"
+      echo "[$(ts)] patching configmap"
+    } | tee -a "$EXEC_LOG"
 
     OUTPUT_CM="${OUTPUT_CONFIGMAP:-}"
     if [ -z "${OUTPUT_CM}" ]; then
-      echo "[$(ts)] ERROR: OUTPUT_CONFIGMAP not set, cannot store output"
+      echo "[$(ts)] ERROR: OUTPUT_CONFIGMAP not set" | tee -a "$EXEC_LOG"
       exit ${EXIT_CODE}
     fi
-
-    echo "[$(ts)] patching configmap ${OUTPUT_CM}"
 
     LOG_B64=$(base64 -w0 "$EXEC_LOG")
     PATCH="{\"binaryData\":{\"execution.log\":\"${LOG_B64}\""
@@ -79,19 +77,24 @@ data:
     NS="${JOB_NAMESPACE}"
 
     echo "[$(ts)] waiting for runner ${RUNNER_JOB}"
+    T0=$(date +%s)
 
     if ! kubectl wait --for=condition=complete --timeout="${TIMEOUT}s" "job/${RUNNER_JOB}" -n "${NS}" 2>/dev/null; then
       kubectl wait --for=condition=failed --timeout=10s "job/${RUNNER_JOB}" -n "${NS}" 2>/dev/null || true
     fi
 
-    echo "[$(ts)] runner done, reading configmap"
+    T1=$(date +%s)
+    WAIT_S=$((T1 - T0))
+    echo "[$(ts)] runner done (wait=${WAIT_S}s), reading configmap"
 
     CM_JSON=$(kubectl get configmap "${OUTPUT_CM}" -n "${NS}" -o json 2>/dev/null)
     LOG_B64=$(printf '%s' "$CM_JSON" | jq -r '.binaryData["execution.log"] // empty')
     OUTPUT_B64=$(printf '%s' "$CM_JSON" | jq -r '.binaryData["output.json"] // empty')
     EXIT_CODE=$(printf '%s' "$CM_JSON" | jq -r '.data["exit-code"] // "1"')
 
-    echo "[$(ts)] configmap read done"
+    T2=$(date +%s)
+    CM_S=$((T2 - T1))
+    echo "[$(ts)] configmap read done (${CM_S}s)"
 
     if [ -z "${LOG_B64}" ] && [ -z "${OUTPUT_B64}" ]; then
       echo "[$(ts)] ERROR: ConfigMap has no data — runner crashed before writing"
@@ -102,14 +105,16 @@ data:
     [ -n "${LOG_B64}" ] && printf '%s' "${LOG_B64}" | base64 -d > /tmp/upload/execution.log
     [ -n "${OUTPUT_B64}" ] && printf '%s' "${OUTPUT_B64}" | base64 -d > /tmp/upload/output.json
 
-    echo "--- upload ---" >> /tmp/upload/execution.log
-    echo "[$(ts)] uploading to s3://${BUCKET}/${RUN_ID}/" | tee -a /tmp/upload/execution.log
+    UL=/tmp/upload/execution.log
+    echo "--- upload ---" >> "$UL"
+    echo "[$(ts)] wait=${WAIT_S}s configmap=${CM_S}s" >> "$UL"
+    echo "[$(ts)] uploading to s3://${BUCKET}/${RUN_ID}/" | tee -a "$UL"
 
     if aws s3 cp /tmp/upload/ "s3://${BUCKET}/${RUN_ID}/" --recursive 2>&1; then
-      echo "[$(ts)] done (exit_code=${EXIT_CODE})"
+      echo "[$(ts)] done (exit_code=${EXIT_CODE})" | tee -a "$UL"
       exit 0
     else
-      echo "[$(ts)] ERROR: s3 upload failed"
+      echo "[$(ts)] ERROR: s3 upload failed" | tee -a "$UL"
       exit 1
     fi
 {{- end }}
