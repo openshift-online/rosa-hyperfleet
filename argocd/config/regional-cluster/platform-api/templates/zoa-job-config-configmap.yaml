@@ -115,5 +115,6 @@ data:
     fi
 
     echo "[$(ts)] done (exit_code=${EXIT_CODE}, failed=${UPLOAD_FAILED})"
-    [ $UPLOAD_FAILED -ne 0 ] && exit 1
+    if [ $UPLOAD_FAILED -ne 0 ]; then exit 1; fi
+    exit 0
 {{- end }}
