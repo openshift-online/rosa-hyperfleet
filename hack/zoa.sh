@@ -220,7 +220,7 @@ _zoa_run() {
 
 _zoa_get() {
   local id="${1:-}"
-  [[ -z "$id" ]] && { echo "error: usage: zoa get <id> [--logs|--all|--info|--raw]" >&2; return 1; }
+  [[ -z "$id" ]] && { echo "error: usage: zoa get <id> [-o|--logs|--all|--info]" >&2; return 1; }
   shift
 
   local fields="output" raw=false
@@ -229,7 +229,7 @@ _zoa_get() {
       --logs)  fields="logs"; shift ;;
       --all)   fields="output,logs"; shift ;;
       --info)  fields=""; shift ;;
-      --raw)   raw=true; shift ;;
+      -o|--output) raw=true; shift ;;
       *) echo "error: unknown flag '$1'" >&2; return 1 ;;
     esac
   done
@@ -406,7 +406,7 @@ Get flags:
   --logs                   Show logs instead of output
   --all                    Show output + logs + metadata
   --info                   Show metadata only (status, timing)
-  --raw                    Output only (no metadata envelope, pipeable)
+  -o, --output             Output only (no metadata envelope, pipeable)
 
 Environment:
   ZOA_API                  API Gateway URL (required)
