@@ -67,26 +67,30 @@ data:
     #!/bin/bash
     set -uo pipefail
 
+    ts() { date -u '+%H:%M:%S'; }
+
     TIMEOUT="${UPLOAD_TIMEOUT:-120}"
     RUNNER_JOB="${RUNNER_JOB_NAME}"
     OUTPUT_CM="${OUTPUT_CONFIGMAP}"
     BUCKET="${ARTIFACT_BUCKET}"
     NS="${JOB_NAMESPACE}"
 
-    echo "[zoa-upload] Waiting for runner job ${RUNNER_JOB} to complete (timeout=${TIMEOUT}s)"
+    echo "[$(ts)] waiting for runner ${RUNNER_JOB}"
 
     if ! kubectl wait --for=condition=complete --timeout="${TIMEOUT}s" "job/${RUNNER_JOB}" -n "${NS}" 2>/dev/null; then
       kubectl wait --for=condition=failed --timeout=10s "job/${RUNNER_JOB}" -n "${NS}" 2>/dev/null || true
     fi
 
-    echo "[zoa-upload] Runner job finished, reading output from ConfigMap ${OUTPUT_CM}"
+    echo "[$(ts)] runner done, reading configmap"
 
     LOG_B64=$(kubectl get configmap "${OUTPUT_CM}" -n "${NS}" -o jsonpath='{.binaryData.execution\.log}' 2>/dev/null)
     OUTPUT_B64=$(kubectl get configmap "${OUTPUT_CM}" -n "${NS}" -o jsonpath='{.binaryData.output\.json}' 2>/dev/null)
     EXIT_CODE=$(kubectl get configmap "${OUTPUT_CM}" -n "${NS}" -o jsonpath='{.data.exit-code}' 2>/dev/null)
 
+    echo "[$(ts)] configmap read done"
+
     if [ -z "${LOG_B64}" ] && [ -z "${OUTPUT_B64}" ]; then
-      echo "[zoa-upload] ERROR: ConfigMap has no data — runner likely crashed before writing output"
+      echo "[$(ts)] ERROR: ConfigMap has no data — runner crashed before writing"
       exit 1
     fi
 
@@ -94,24 +98,22 @@ data:
 
     if [ -n "${LOG_B64}" ]; then
       printf '%s' "${LOG_B64}" | base64 -d > /tmp/execution.log
+      echo "[$(ts)] uploading execution.log"
       if ! aws s3 cp /tmp/execution.log "s3://${BUCKET}/${RUN_ID}/execution.log" 2>&1; then
-        echo "[zoa-upload] ERROR: failed to upload execution.log"
+        echo "[$(ts)] ERROR: failed to upload execution.log"
         UPLOAD_FAILED=1
       fi
     fi
 
     if [ -n "${OUTPUT_B64}" ]; then
       printf '%s' "${OUTPUT_B64}" | base64 -d > /tmp/output.json
+      echo "[$(ts)] uploading output.json"
       if ! aws s3 cp /tmp/output.json "s3://${BUCKET}/${RUN_ID}/output.json" 2>&1; then
-        echo "[zoa-upload] ERROR: failed to upload output.json"
+        echo "[$(ts)] ERROR: failed to upload output.json"
         UPLOAD_FAILED=1
       fi
     fi
 
-    if [ $UPLOAD_FAILED -eq 0 ]; then
-      echo "[zoa-upload] Upload complete (exit_code=${EXIT_CODE})"
-    else
-      echo "[zoa-upload] Upload FAILED"
-      exit 1
-    fi
+    echo "[$(ts)] done (exit_code=${EXIT_CODE}, failed=${UPLOAD_FAILED})"
+    [ $UPLOAD_FAILED -ne 0 ] && exit 1
 {{- end }}
