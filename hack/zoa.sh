@@ -380,6 +380,7 @@ Runs filters (all combinable):
   --type <type>            Filter by type (read|write)
   --since <duration>       Filter by time (e.g. 1h, 24h, 7d)
   --limit <n>              Max results (default 20, max 100)
+  --json                   Raw JSON output (pipeable to jq)
 
 Get flags:
   --logs                   Show logs instead of output
@@ -419,11 +420,12 @@ Examples:
   zoa runs --action get_pods --operator slopezma --since 7d
   zoa runs --type write --since 12h
   zoa runs --scope kube-api --status succeeded --limit 50
+  zoa runs --json | jq '.items[] | select(.runner_seconds > 10)'
 
   # Discover available actions
   zoa actions
+  zoa actions get_pods              # alias for describe
   zoa describe get_pods
-  zoa describe get_deployments
   zoa describe rollout_restart
 EOF
 }
