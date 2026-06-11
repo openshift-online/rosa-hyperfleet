@@ -69,6 +69,7 @@ data:
     set -uo pipefail
 
     ts() { date -u '+%H:%M:%S'; }
+    ts_at() { date -u -d "@$1" '+%H:%M:%S'; }
 
     TIMEOUT="${UPLOAD_TIMEOUT:-120}"
     RUNNER_JOB="${RUNNER_JOB_NAME}"
@@ -76,8 +77,8 @@ data:
     BUCKET="${ARTIFACT_BUCKET}"
     NS="${JOB_NAMESPACE}"
 
-    echo "[$(ts)] upload starting, waiting for runner ${RUNNER_JOB}"
     T0=$(date +%s)
+    echo "[$(ts_at $T0)] upload starting, waiting for runner"
 
     if ! kubectl wait --for=condition=complete --timeout="${TIMEOUT}s" "job/${RUNNER_JOB}" -n "${NS}" 2>/dev/null; then
       kubectl wait --for=condition=failed --timeout=10s "job/${RUNNER_JOB}" -n "${NS}" 2>/dev/null || true
@@ -85,7 +86,7 @@ data:
 
     T1=$(date +%s)
     WAIT_S=$((T1 - T0))
-    echo "[$(ts)] runner done (wait=${WAIT_S}s), reading configmap"
+    echo "[$(ts_at $T1)] runner done (${WAIT_S}s), reading configmap"
 
     CM_JSON=$(kubectl get configmap "${OUTPUT_CM}" -n "${NS}" -o json 2>/dev/null)
     LOG_B64=$(printf '%s' "$CM_JSON" | jq -r '.binaryData["execution.log"] // empty')
@@ -94,7 +95,7 @@ data:
 
     T2=$(date +%s)
     CM_S=$((T2 - T1))
-    echo "[$(ts)] configmap read (${CM_S}s), decoding"
+    echo "[$(ts_at $T2)] configmap read (${CM_S}s), decoding"
 
     if [ -z "${LOG_B64}" ] && [ -z "${OUTPUT_B64}" ]; then
       echo "[$(ts)] ERROR: ConfigMap has no data — runner crashed before writing"
@@ -105,14 +106,21 @@ data:
     [ -n "${LOG_B64}" ] && printf '%s' "${LOG_B64}" | base64 -d > /tmp/upload/execution.log
     [ -n "${OUTPUT_B64}" ] && printf '%s' "${OUTPUT_B64}" | base64 -d > /tmp/upload/output.json
 
+    T3=$(date +%s)
+    DECODE_S=$((T3 - T2))
+
     UL=/tmp/upload/execution.log
-    echo "--- upload ---" >> "$UL"
-    echo "[$(ts)] upload starting" >> "$UL"
-    echo "[$(ts)] wait=${WAIT_S}s configmap=${CM_S}s exit_code=${EXIT_CODE}" >> "$UL"
+    {
+      echo "--- upload ---"
+      echo "[$(ts_at $T0)] upload starting"
+      echo "[$(ts_at $T1)] runner waited (${WAIT_S}s)"
+      echo "[$(ts_at $T2)] configmap read (${CM_S}s)"
+      echo "[$(ts_at $T3)] decoded (${DECODE_S}s), uploading to s3"
+    } >> "$UL"
 
     echo "[$(ts)] uploading to s3://${BUCKET}/${RUN_ID}/"
     if aws s3 cp /tmp/upload/ "s3://${BUCKET}/${RUN_ID}/" --recursive 2>&1; then
-      echo "[$(ts)] upload done"
+      echo "[$(ts)] upload done (exit_code=${EXIT_CODE})"
       exit 0
     else
       echo "[$(ts)] ERROR: s3 upload failed"
