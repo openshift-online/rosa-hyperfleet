@@ -1,6 +1,6 @@
 # Zero Operator Access (ZOA) — Security Model
 
-**Last Updated Date**: 2026-06-11
+**Last Updated Date**: 2026-06-12
 
 ## Summary
 
@@ -16,8 +16,8 @@ This document details the security architecture for ZOA Trusted Actions: how pri
 | Operator accesses secrets/data beyond their need | Per-execution RBAC limits access to exactly what the TA declares |
 | Operator acts without attribution | Every execution records caller identity (ARN, account, operator name) and required Jira ticket |
 | Compromised TA escalates privileges | TA script runs with scoped Role, cannot self-modify SA or create privileged resources |
-| Rapid repeated write actions | Write cooldown (global 300s default, per-TA override) with `force` bypass |
-| Target cluster overload | Max concurrent per target (default 10 running + pending; dry-run excluded) |
+| Rapid repeated write actions | Write cooldown (global 300s default, per-TA override) with `force` bypass; `force` flag recorded in execution record for audit |
+| Target cluster overload | Max concurrent per target (default 10 running + pending; dry-run and force excluded); `force` flag recorded for audit |
 | Stale credentials persist | No long-lived kubeconfigs — all access is ephemeral (Job exits → resources deleted) |
 | S3 output exfiltrated | Bucket is encrypted (SSE-KMS), no presigned URLs exposed, API proxies content |
 | Log tampering | S3 versioning enabled, lifecycle prevents deletion before 365 days |
@@ -383,7 +383,7 @@ spec:
 | AC-3 (Access Enforcement) | Per-execution RBAC, per-execution SA, SigV4 auth |
 | AC-6 (Least Privilege) | RBAC scoped to declared resources only |
 | AU-2 (Audit Events) | DynamoDB records all executions with full identity |
-| AU-3 (Content of Audit Records) | operator, jira, action, target, timestamp, updated_at, duration, status |
+| AU-3 (Content of Audit Records) | operator, jira, action, target, timestamp, updated_at, duration, status, dry_run, force |
 | AU-9 (Protection of Audit Info) | S3 versioning, no-delete lifecycle, KMS encryption, DynamoDB TTL (365d) |
 | AU-12 (Audit Generation) | Automatic — Platform API records before/after every execution |
 | CM-7 (Least Functionality) | No shell access, no arbitrary commands — only pre-approved TAs |

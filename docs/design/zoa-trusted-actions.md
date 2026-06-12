@@ -1,6 +1,6 @@
 # Zero Operator Access — Trusted Actions Implementation
 
-**Last Updated Date**: 2026-06-11
+**Last Updated Date**: 2026-06-12
 
 ## Summary
 
@@ -263,7 +263,7 @@ ZOA uses a split SA model separating operational permissions from output transpo
 
 | Layer | What's Recorded | Identifies |
 |-------|----------------|------------|
-| Platform API (DynamoDB) | `execution_id`, `operator`, `jira`, `action`, `target`, `params`, `revision`, `updated_at`, timestamps | Who requested what, when, and why (Jira ticket) |
+| Platform API (DynamoDB) | `execution_id`, `operator`, `jira`, `action`, `target`, `params`, `revision`, `updated_at`, `dry_run`, `force`, timestamps | Who requested what, when, why (Jira), and how (dry-run/forced) |
 | ManifestWork + all resources | Labels: `zoa.rosa.io/execution-id`, `zoa.rosa.io/operator`, `zoa.rosa.io/action`, `zoa.rosa.io/revision` | Full traceability on every K8s resource |
 | Kubernetes audit logs | Per-execution SA name (`zoa-runner-<exec-id>`) + pod labels | Perfect execution-level attribution |
 | S3 object metadata | `x-amz-meta-execution-id`, `x-amz-meta-operator` | Output ownership |
@@ -362,6 +362,11 @@ The API proxies S3 content directly — no presigned URLs exposed to consumers.
 | `action` | — | Filter by TA name |
 | `target` | — | Filter by target cluster |
 | `operator` | — | Filter by who ran it |
+| `scope` | — | Filter by scope: `kube-api`, `aws-api` |
+| `type` | — | Filter by type: `read`, `write` |
+| `output_status` | — | Filter by output status: `pending`, `uploaded`, `failed` |
+| `dry_run` | — | Filter: `true` or `false` |
+| `force` | — | Filter: `true` or `false` |
 | `since` | — | Only runs after this timestamp |
 | `sort` | `desc` | Sort by created_at |
 
@@ -488,6 +493,8 @@ zoa <verb> [resource] [flags]
 | `zoa runs -t <cluster>` | `GET /runs?target=<cluster>` | Filter by target |
 | `zoa runs --status failed` | `GET /runs?status=failed` | Filter by status |
 | `zoa runs --action get_pods` | `GET /runs?action=get_pods` | Filter by action |
+| `zoa runs --dry-run` | `GET /runs?dry_run=true` | Filter dry-run executions only |
+| `zoa runs --force` | `GET /runs?force=true` | Filter forced executions only |
 | `zoa runs --since 1h` | `GET /runs?since=1h` | Filter by time |
 | `zoa actions` | `GET /trusted-actions` | List available TAs (formatted table) |
 | `zoa describe <action>` | `GET /trusted-actions/{action}` | Formatted TA metadata + params table |
@@ -591,6 +598,8 @@ $ zoa runs --status failed --since 24h
 $ zoa runs --action get_pods --operator slopezma --since 7d
 $ zoa runs --type write --since 12h
 $ zoa runs --scope kube-api --status succeeded --limit 50
+$ zoa runs --dry-run --since 24h
+$ zoa runs --force --since 7d
 $ zoa runs --action rollout_restart --target eph-bc5fee45-mc01 --json
 ```
 
@@ -604,7 +613,7 @@ $ zoa runs --action rollout_restart --target eph-bc5fee45-mc01 --json
 - **`-t` is always required**: No hidden defaults — explicit target prevents wrong-cluster mistakes.
 - **Flags match kubectl**: `-n`, `-A`, `-l`, `--name` behave identically to muscle-memory expectations.
 - **stdout/stderr contract**: JSON on stdout for `zoa run` (pipeable), status/progress on stderr (human-only).
-- **Write safety**: `--dry-run` previews via `dry_run_action`; `--force` bypasses write cooldown.
+- **Write safety**: `--dry-run` previews via `dry_run_action`; `--force` bypasses write cooldown and max concurrent.
 - **UUID v4**: IDs are standard UUID v4 (`google/uuid`). Full IDs required for lookups —
   copy-paste from `zoa runs` output.
 - **Compact by default**: Read TAs return kubectl-wide-equivalent fields; pass `-v` for full objects.
@@ -628,6 +637,7 @@ $ zoa runs --action rollout_restart --target eph-bc5fee45-mc01 --json
 - Global default: 10 (via `max_concurrent_per_target` in `zoa-job-config` ConfigMap)
 - Counts running + pending executions for the target cluster (per account)
 - Dry-run executions are excluded from the check
+- Bypass: `force: true` in API request, `--force` in CLI (same as write cooldown)
 - Returns HTTP 429 with `max-concurrent` error when limit reached
 
 #### Dry-Run Preview
@@ -639,7 +649,22 @@ name: rollout_restart
 dry_run_action: get_deployments
 ```
 
-When `dry_run: true` is set, Platform API executes the referenced read TA instead. The execution record stores the substituted read action. Useful for previewing affected resources before a write.
+When `dry_run: true` is set, Platform API executes the referenced read TA instead. The execution record stores:
+- `action`: the originally requested action (e.g. `rollout_restart`)
+- `executed_action`: the substituted read action (e.g. `get_deployments`)
+- `dry_run: true`
+
+CLI displays: `✓ <id> (DRY-RUN: rollout_restart → get_deployments)`
+
+#### Force Bypass
+
+The `force: true` flag bypasses both write cooldown and max concurrent checks:
+
+- CLI: `--force` flag
+- API: `"force": true` in request body
+- The `force` flag is recorded in the execution record for audit
+- Queryable: `zoa runs --force` or `GET /runs?force=true`
+- CLI displays: `✓ <id> [FORCED]`
 
 ### Dispatch Flow (Two-Job Architecture)
 

@@ -1,6 +1,6 @@
 # Zero Operator Access (ZOA) — Architecture
 
-**Last Updated Date**: 2026-06-11
+**Last Updated Date**: 2026-06-12
 
 ## Summary
 
@@ -261,7 +261,7 @@ Platform API receives POST /api/v0/trusted-actions/get_pods/run
   - Validates required `jira` field (e.g. ROSAENG-1234)
   - Loads TA template from registry (ConfigMap)
   - Validates params (namespace required for get_pods)
-  - Enforces write cooldown and max-concurrent limits (write TAs; skipped for dry-run)
+  - Enforces write cooldown and max-concurrent limits (write TAs; skipped for dry-run and force)
   - Derives runner SA from scope + type (kube-api → per-exec SA)
   - Generates execution UUID
   - Creates DynamoDB record (status: pending, output_status: pending, jira, ttl=365d)
@@ -538,7 +538,7 @@ Every execution produces audit data at multiple layers:
 
 | Layer | What's Recorded | Query Method |
 |-------|----------------|--------------|
-| Platform API (DynamoDB) | execution_id, operator, caller_arn, jira, action, target, status, duration, revision, updated_at | `zoa runs` CLI or direct API |
+| Platform API (DynamoDB) | execution_id, operator, caller_arn, jira, action, target, status, duration, revision, updated_at, dry_run, force | `zoa runs` CLI or direct API |
 | S3 (artifacts) | Full execution log, structured output | `zoa logs <id>` or `zoa get <id>` |
 | Kubernetes (labels on all resources) | execution-id, operator, action, scope, type, revision, target | `kubectl get jobs -l zoa.rosa.io/operator=slopezma` |
 | AWS CloudTrail | SigV4 caller identity on API Gateway invocation | CloudTrail console |
