@@ -150,7 +150,7 @@ sequenceDiagram
     API->>DB: Update: status, runner_seconds, upload_seconds, duration_seconds, output_status
 
     Note over Op,S3: 5. Retrieval
-    Op->>GW: GET /runs/{id}?fields=output (SigV4)
+    Op->>GW: GET /runs/{id}?include=output (SigV4)
     GW->>API: Forward
     API->>DB: Get execution metadata
     API->>S3: GetObject (output.json + execution.log)
@@ -246,7 +246,7 @@ Platform API (on RC)
   │ Proxies content to consumers (no presigned URLs exposed)
   │
   ▼
-Operator (via GET /runs/{id}?fields=output)
+Operator (via GET /runs/{id}?include=output)
 ```
 
 ## Execution Flow (End-to-End)
@@ -368,7 +368,7 @@ Platform API Reconciler (5-second loop on RC)
 Operator: zoa get <exec-id>
          │
          ▼
-Platform API receives GET /api/v0/trusted-actions/runs/<exec-id>?fields=output
+Platform API receives GET /api/v0/trusted-actions/runs/<exec-id>?include=output
   - Reads DynamoDB for execution metadata
   - Reads output_path (full S3 URI from DynamoDB)
   - Fetches s3://<bucket>/<exec-id>/output.json

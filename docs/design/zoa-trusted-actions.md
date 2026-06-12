@@ -345,11 +345,10 @@ Uses a single `fields` parameter for selecting response content:
 
 | Request | Returns |
 |---------|---------|
-| `GET /runs/{id}` | metadata + output (default) |
-| `GET /runs/{id}?fields=output` | metadata + output |
-| `GET /runs/{id}?fields=logs` | metadata + execution.log content |
-| `GET /runs/{id}?fields=all` | metadata + output + logs |
-| `GET /runs/{id}?fields=output,logs` | any combination |
+| `GET /runs/{id}` | metadata only (default) |
+| `GET /runs/{id}?include=output` | metadata + output |
+| `GET /runs/{id}?include=logs` | metadata + execution.log content |
+| `GET /runs/{id}?include=output,logs` | metadata + output + logs |
 
 The API proxies S3 content directly — no presigned URLs exposed to consumers.
 
@@ -483,14 +482,15 @@ zoa <verb> [resource] [flags]
 |---------|----------|----------|
 | `zoa run <action> -t <cluster> --jira <ticket>` | POST + poll + GET output | **Synchronous** — waits, prints result |
 | `zoa run <action> --no-wait` | POST only | Async — prints ID immediately |
-| `zoa get <id>` | `GET /runs/{id}?fields=output` | Brief header + output content (default) |
-| `zoa get <id> --logs` | `GET /runs/{id}?fields=logs` | Logs from a past run |
-| `zoa get <id> --all` | `GET /runs/{id}?fields=output,logs` | Full result (output + logs) |
-| `zoa get <id> --info` | `GET /runs/{id}?fields=none` | Formatted metadata summary (not raw JSON) |
-| `zoa get <id> --json` | `GET /runs/{id}` | Raw JSON response |
-| `zoa logs <id>` | `GET /runs/{id}?fields=logs` | Shortcut for `get --logs` |
+| `zoa get <id>` | `GET /runs/{id}` | Formatted metadata summary (default) |
+| `zoa get <id> --output` | `GET /runs/{id}?include=output` | Metadata header + output content |
+| `zoa get <id> --logs` | `GET /runs/{id}?include=logs` | Metadata header + logs |
+| `zoa get <id> --all` | `GET /runs/{id}?include=output,logs` | Metadata header + output + logs |
+| `zoa get <id> -o json` | `GET /runs/{id}` | Raw JSON metadata |
+| `zoa get <id> --output -o json` | `GET /runs/{id}?include=output` | Raw JSON with output |
+| `zoa logs <id>` | `GET /runs/{id}?include=logs` | Raw logs (shortcut) |
 | `zoa runs` | `GET /runs` | List recent executions (formatted table) |
-| `zoa runs --json` | `GET /runs` | Raw JSON list response |
+| `zoa runs -o json` | `GET /runs` | Raw JSON list response |
 | `zoa runs -t <cluster>` | `GET /runs?target=<cluster>` | Filter by target |
 | `zoa runs --status failed` | `GET /runs?status=failed` | Filter by status |
 | `zoa runs --action get_pods` | `GET /runs?action=get_pods` | Filter by action |
@@ -499,9 +499,9 @@ zoa <verb> [resource] [flags]
 | `zoa runs --since 1h` | `GET /runs?since=1h` | Filter by time |
 | `zoa actions` | `GET /trusted-actions` | List available TAs (formatted table) |
 | `zoa describe <action>` | `GET /trusted-actions/{action}` | Formatted TA metadata + params table |
-| `zoa describe <action> --json` | `GET /trusted-actions/{action}` | Raw JSON describe response |
+| `zoa describe <action> -o json` | `GET /trusted-actions/{action}` | Raw JSON describe response |
 | `zoa audit` | `GET /audit` | List API call audit log (formatted table) |
-| `zoa audit --json` | `GET /audit` | Raw JSON audit log |
+| `zoa audit -o json` | `GET /audit` | Raw JSON audit log |
 | `zoa audit --operator slopezma` | `GET /audit?operator=slopezma` | Filter audit by operator |
 | `zoa audit --action rollout_restart` | `GET /audit?action=rollout_restart` | Filter audit by action |
 | `zoa audit --method POST` | `GET /audit?method=POST` | Filter audit by HTTP method |
@@ -532,7 +532,7 @@ confirmation on stderr shows the full UUID — copy-paste from `zoa runs` output
 
 - **stderr**: Progress/status messages (`✓`, `✗`, timing breakdown) — human feedback
 - **stdout**: Pure JSON for `zoa run` output — pipeable to `jq`, scripts, or files
-- **Human-readable modes**: `zoa get <id> --info`, `zoa describe <action>`, `zoa get <id>` (default), and `zoa runs` show formatted summaries; use `--json` for raw JSON
+- **Human-readable modes**: `zoa get <id>` (metadata), `zoa get <id> --output` (metadata + output), `zoa describe <action>`, and `zoa runs` show formatted summaries; use `-o json` for raw JSON
 
 Timing display format on completion:
 
@@ -590,12 +590,12 @@ ERROR: Specify namespace or set all_namespaces=true
 $ zoa actions
 $ zoa describe get_pods
 $ zoa describe rollout_restart
-$ zoa describe rollout_restart --json   # raw JSON
+$ zoa describe rollout_restart -o json   # raw JSON
 
 # 11. Go back and check a past run
-$ zoa get fa65418c-f4eb-4f5c-8314-baaeb695ba7d            # header + output
-$ zoa get fa65418c-f4eb-4f5c-8314-baaeb695ba7d --info    # formatted metadata summary
-$ zoa get fa65418c-f4eb-4f5c-8314-baaeb695ba7d --info --json  # raw JSON metadata
+$ zoa get fa65418c-f4eb-4f5c-8314-baaeb695ba7d            # metadata summary
+$ zoa get fa65418c-f4eb-4f5c-8314-baaeb695ba7d --output   # metadata header + output
+$ zoa get fa65418c-f4eb-4f5c-8314-baaeb695ba7d -o json    # raw JSON metadata
 $ zoa logs fa65418c-f4eb-4f5c-8314-baaeb695ba7d           # execution trace
 $ zoa get fa65418c-f4eb-4f5c-8314-baaeb695ba7d --all      # output + logs + metadata
 
@@ -607,14 +607,14 @@ $ zoa runs --type write --since 12h
 $ zoa runs --scope kube-api --status succeeded --limit 50
 $ zoa runs --dry-run --since 24h
 $ zoa runs --force --since 7d
-$ zoa runs --action rollout_restart --target eph-bc5fee45-mc01 --json
+$ zoa runs --action rollout_restart --target eph-bc5fee45-mc01 -o json
 
 # 13. Audit log — compliance trail of all API calls
 $ zoa audit --since 24h
 $ zoa audit --operator slopezma --since 7d
 $ zoa audit --action rollout_restart -t mc-useast1-1
 $ zoa audit --method POST --since 1h
-$ zoa audit --json | jq '.items[] | select(.status_code != 202)'
+$ zoa audit -o json | jq '.items[] | select(.status_code != 202)'
 ```
 
 #### Design Principles
@@ -623,7 +623,7 @@ $ zoa audit --json | jq '.items[] | select(.status_code != 202)'
   On failure, logs are printed automatically — no second command needed to see the error.
 - **`--jira` is always required**: Every execution must be linked to a Jira ticket for audit.
 - **`--no-wait` for background**: Long tasks (must-gather) can run async; check later with `zoa get`.
-- **`get` = header + output, `get --info` = metadata, `logs` = trace**: Human-readable by default; `--json` for raw JSON.
+- **`get` = metadata, `get --output` = metadata + output, `logs` = trace**: Human-readable by default; `-o json` for raw JSON.
 - **`-t` is always required**: No hidden defaults — explicit target prevents wrong-cluster mistakes.
 - **Flags match kubectl**: `-n`, `-A`, `-l`, `--name` behave identically to muscle-memory expectations.
 - **stdout/stderr contract**: JSON on stdout for `zoa run` (pipeable), status/progress on stderr (human-only).

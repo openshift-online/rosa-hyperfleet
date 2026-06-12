@@ -56,7 +56,7 @@ _zoa_poll() {
   local elapsed=0 exec_status result
 
   while (( elapsed < timeout )); do
-    result=$(_zoa_request GET "/trusted-actions/runs/${id}?fields=none")
+    result=$(_zoa_request GET "/trusted-actions/runs/${id}")
     exec_status=$(printf '%s' "$result" | "$_ZOA_JQ" -r '.status // empty')
 
     case "$exec_status" in
@@ -210,7 +210,7 @@ _zoa_run() {
     if [[ "$output_status" == "uploaded" ]]; then
       echo "✓ completed (${timing})" >&2
       local output
-      output=$(_zoa_request GET "/trusted-actions/runs/${id}?fields=output")
+      output=$(_zoa_request GET "/trusted-actions/runs/${id}?include=output")
       printf '%s' "$output" | "$_ZOA_JQ" -r '.output // empty'
     elif [[ "$output_status" == "failed" ]]; then
       echo "✓ completed (${timing}) ⚠ output upload failed" >&2
@@ -223,7 +223,7 @@ _zoa_run() {
     if [[ "$output_status" == "uploaded" ]]; then
       echo "✗ ${exec_status} (${timing})" >&2
       local logs
-      logs=$(_zoa_request GET "/trusted-actions/runs/${id}?fields=logs")
+      logs=$(_zoa_request GET "/trusted-actions/runs/${id}?include=logs")
       printf '%s' "$logs" | "$_ZOA_JQ" -r '.logs // .output // empty'
     else
       echo "✗ ${exec_status} (${total_s}s) ⚠ output upload failed" >&2
@@ -234,78 +234,71 @@ _zoa_run() {
 
 _zoa_get() {
   local id="${1:-}"
-  [[ -z "$id" ]] && { echo "error: usage: zoa get <id> [-o|--logs|--all|--info|--json]" >&2; return 1; }
+  [[ -z "$id" ]] && { echo "error: usage: zoa get <id> [--output|--logs|--all] [-o json]" >&2; return 1; }
   shift
 
-  local fields="output" mode="human"
+  local include="" format="human"
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --logs)  fields="logs"; shift ;;
-      --all)   fields="output,logs"; shift ;;
-      --info)  fields=""; shift ;;
-      -o|--output) mode="output-only"; shift ;;
-      --json)  mode="json"; shift ;;
+      --output)  include="output"; shift ;;
+      --logs)    include="logs"; shift ;;
+      --all)     include="output,logs"; shift ;;
+      -o)        format="$2"; shift 2 ;;
       *) echo "error: unknown flag '$1'" >&2; return 1 ;;
     esac
   done
 
-  if [[ "$fields" == "" ]]; then
-    local info
-    info=$(_zoa_request GET "/trusted-actions/runs/${id}?fields=none")
-    if [[ "$mode" == "json" ]]; then
-      printf '%s' "$info" | "$_ZOA_JQ" .
-    else
-      printf '%s' "$info" | "$_ZOA_JQ" -r '
-        "ID:        \(.id)",
-        "ACTION:    \(.action)\(if .dry_run then " (dry-run → \(.executed_action))" else "" end)",
-        "TARGET:    \(.target_cluster)",
-        "STATUS:    \(.status)",
-        "OUTPUT:    \(.output_status // "pending")",
-        "DRY-RUN:   \(if .dry_run then "yes" else "no" end)",
-        "FORCE:     \(if .force then "yes" else "no" end)",
-        "JIRA:      \(.jira // "-")",
-        "OPERATOR:  \(.operator // "-")",
-        "PARAMS:    \(.params // {} | to_entries | map(.key + "=" + .value) | join(" ") | if . == "" then "-" else . end)",
-        "CREATED:   \(.created_at)",
-        "UPDATED:   \(.updated_at // "-")",
-        "COMPLETED: \(.completed_at // "-")",
-        "DURATION:  \(if .duration_seconds then "\(.duration_seconds)s (runner=\(.runner_seconds // 0)s upload=\(.upload_seconds // 0)s)" else "-" end)"
-      '
-    fi
-    return
-  fi
+  local path="/trusted-actions/runs/${id}"
+  [[ -n "$include" ]] && path="${path}?include=${include}"
 
-  local info
-  info=$(_zoa_request GET "/trusted-actions/runs/${id}?fields=none")
-  local output_status
-  output_status=$(printf '%s' "$info" | "$_ZOA_JQ" -r '.output_status // "pending"')
-
-  if [[ "$output_status" == "failed" ]]; then
-    echo "⚠ output upload failed — no artifacts available" >&2
-    if [[ "$mode" == "json" ]]; then
-      printf '%s' "$info" | "$_ZOA_JQ" .
-    else
-      printf '%s' "$info" | "$_ZOA_JQ" -r '"STATUS: \(.status)  OUTPUT: \(.output_status)"'
-    fi
-    return 0
-  fi
-
-  local path="/trusted-actions/runs/${id}?fields=${fields}"
   local resp
   resp=$(_zoa_request GET "$path")
 
-  if [[ "$mode" == "output-only" ]]; then
-    printf '%s' "$resp" | "$_ZOA_JQ" '.output // empty'
-  elif [[ "$mode" == "json" ]]; then
+  if [[ "$format" == "json" ]]; then
     printf '%s' "$resp" | "$_ZOA_JQ" .
-  else
-    printf '%s' "$info" | "$_ZOA_JQ" -r '
+    return
+  fi
+
+  if [[ -z "$include" ]]; then
+    printf '%s' "$resp" | "$_ZOA_JQ" -r '
       "ID:        \(.id)",
-      "ACTION:    \(.action)\(if .dry_run then " [DRY-RUN → \(.executed_action)]" else "" end)\(if .force then " [FORCED]" else "" end)  TARGET: \(.target_cluster)  STATUS: \(.status)",
-      "DURATION:  \(if .duration_seconds then "\(.duration_seconds)s" else "-" end)  OPERATOR: \(.operator // "-")  JIRA: \(.jira // "-")",
-      "---"
+      "ACTION:    \(.action)\(if .dry_run then " (dry-run → \(.executed_action))" else "" end)",
+      "TARGET:    \(.target_cluster)",
+      "STATUS:    \(.status)",
+      "OUTPUT:    \(.output_status // "pending")",
+      "DRY-RUN:   \(if .dry_run then "yes" else "no" end)",
+      "FORCE:     \(if .force then "yes" else "no" end)",
+      "JIRA:      \(.jira // "-")",
+      "OPERATOR:  \(.operator // "-")",
+      "PARAMS:    \(.params // {} | to_entries | map(.key + "=" + .value) | join(" ") | if . == "" then "-" else . end)",
+      "CREATED:   \(.created_at)",
+      "UPDATED:   \(.updated_at // "-")",
+      "COMPLETED: \(.completed_at // "-")",
+      "DURATION:  \(if .duration_seconds then "\(.duration_seconds)s (runner=\(.runner_seconds // 0)s upload=\(.upload_seconds // 0)s)" else "-" end)"
     '
-    printf '%s' "$resp" | "$_ZOA_JQ" '.output // empty'
+    return
+  fi
+
+  local output_status
+  output_status=$(printf '%s' "$resp" | "$_ZOA_JQ" -r '.output_status // "pending"')
+
+  if [[ "$output_status" == "failed" ]]; then
+    echo "⚠ output upload failed — no artifacts available" >&2
+    printf '%s' "$resp" | "$_ZOA_JQ" -r '"STATUS: \(.status)  OUTPUT: \(.output_status)"'
+    return 0
+  fi
+
+  printf '%s' "$resp" | "$_ZOA_JQ" -r '
+    "ID:        \(.id)",
+    "ACTION:    \(.action)\(if .dry_run then " [DRY-RUN → \(.executed_action)]" else "" end)\(if .force then " [FORCED]" else "" end)  TARGET: \(.target_cluster)  STATUS: \(.status)",
+    "DURATION:  \(if .duration_seconds then "\(.duration_seconds)s" else "-" end)  OPERATOR: \(.operator // "-")  JIRA: \(.jira // "-")",
+    "---"
+  '
+  if [[ "$include" == *output* ]]; then
+    printf '%s' "$resp" | "$_ZOA_JQ" -r '.output // empty'
+  fi
+  if [[ "$include" == *logs* ]]; then
+    printf '%s' "$resp" | "$_ZOA_JQ" -r '.logs // empty'
   fi
 }
 
@@ -313,11 +306,11 @@ _zoa_logs() {
   local id="${1:-}"
   [[ -z "$id" ]] && { echo "error: usage: zoa logs <id>" >&2; return 1; }
 
-  _zoa_request GET "/trusted-actions/runs/${id}?fields=logs" | "$_ZOA_JQ" -r '.logs // empty'
+  _zoa_request GET "/trusted-actions/runs/${id}?include=logs" | "$_ZOA_JQ" -r '.logs // empty'
 }
 
 _zoa_runs() {
-  local query="" raw=false
+  local query="" format="human"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -332,7 +325,7 @@ _zoa_runs() {
       --force)       query="${query:+${query}&}force=true"; shift ;;
       --since)       query="${query:+${query}&}since=$2"; shift 2 ;;
       --limit)       query="${query:+${query}&}limit=$2"; shift 2 ;;
-      --json)        raw=true; shift ;;
+      -o)            format="$2"; shift 2 ;;
       *) echo "error: unknown flag '$1'" >&2; return 1 ;;
     esac
   done
@@ -343,7 +336,7 @@ _zoa_runs() {
   local result
   result=$(_zoa_request GET "$path")
 
-  if $raw; then
+  if [[ "$format" == "json" ]]; then
     printf '%s' "$result" | "$_ZOA_JQ" .
     return
   fi
@@ -381,7 +374,7 @@ _zoa_runs() {
 }
 
 _zoa_audit() {
-  local query="" mode="human"
+  local query="" format="human"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -391,7 +384,7 @@ _zoa_audit() {
       --method)      query="${query:+${query}&}method=$2"; shift 2 ;;
       --since)       query="${query:+${query}&}since=$2"; shift 2 ;;
       --limit)       query="${query:+${query}&}limit=$2"; shift 2 ;;
-      --json)        mode="json"; shift ;;
+      -o)            format="$2"; shift 2 ;;
       *) echo "error: unknown flag '$1'" >&2; return 1 ;;
     esac
   done
@@ -409,7 +402,7 @@ _zoa_audit() {
     return 1
   fi
 
-  if [[ "$mode" == "json" ]]; then
+  if [[ "$format" == "json" ]]; then
     printf '%s' "$resp" | "$_ZOA_JQ" .
     return
   fi
@@ -421,21 +414,27 @@ _zoa_audit() {
     return
   fi
 
-  printf "%-10s %-6s %-35s %-12s %-18s %-14s %-8s %s\n" "TIMESTAMP" "METHOD" "PATH" "OPERATOR" "TARGET" "JIRA" "STATUS" "EXEC_ID"
-  printf '%s' "$resp" | "$_ZOA_JQ" -r '(.items // [])[] | [.timestamp, .method, .path, .operator, (.target_cluster // "-"), (.jira // "-"), (.status_code | tostring), (.execution_id // "-")] | @tsv' | \
-  while IFS=$'\t' read -r ts method apath op target jira scode execid; do
+  printf "%-9s %-5s %-5s %-12s %-20s %-14s %-10s %s\n" \
+    "TIME" "METH" "CODE" "OPERATOR" "TARGET" "JIRA" "EXEC_ID" "PATH"
+  printf '%s' "$resp" | "$_ZOA_JQ" -r '
+    def dash(v): if v == "" or v == null then "-" else v end;
+    (.items // [])[] | [.timestamp, .method, (.status_code | tostring), .operator, dash(.target_cluster), dash(.jira), dash(.execution_id), .path] | @tsv
+  ' | \
+  while IFS=$'\t' read -r ts method scode op target jira execid apath; do
     local short_ts="${ts:11:8}"
     local short_exec="${execid:0:8}"
-    [[ "$short_exec" == "-" ]] && short_exec="-"
-    printf "%-10s %-6s %-35s %-12s %-18s %-14s %-8s %s\n" "$short_ts" "$method" "$apath" "$op" "$target" "$jira" "$scode" "$short_exec"
+    [[ "$short_exec" == "-" ]] && short_exec=""
+    local short_path="${apath#/api/v0/trusted-actions/}"
+    printf "%-9s %-5s %-5s %-12s %-20s %-14s %-10s %s\n" \
+      "$short_ts" "$method" "$scode" "$op" "$target" "$jira" "$short_exec" "$short_path"
   done
 }
 
 _zoa_actions() {
-  local action="" raw=false
+  local action="" format="human"
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --json) raw=true; shift ;;
+      -o)     format="$2"; shift 2 ;;
       *)      action="$1"; shift ;;
     esac
   done
@@ -448,7 +447,7 @@ _zoa_actions() {
   local resp
   resp=$(_zoa_request GET "/trusted-actions")
 
-  if [[ "$raw" == "true" ]]; then
+  if [[ "$format" == "json" ]]; then
     printf '%s' "$resp" | "$_ZOA_JQ" .
     return
   fi
@@ -461,13 +460,13 @@ _zoa_actions() {
 }
 
 _zoa_describe() {
-  local action="${1:-}" mode="human"
-  [[ -z "$action" ]] && { echo "error: usage: zoa describe <action> [--json]" >&2; return 1; }
+  local action="${1:-}" format="human"
+  [[ -z "$action" ]] && { echo "error: usage: zoa describe <action> [-o json]" >&2; return 1; }
   shift 2>/dev/null || true
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --json) mode="json"; shift ;;
+      -o) format="$2"; shift 2 ;;
       *) echo "error: unknown flag '$1'" >&2; return 1 ;;
     esac
   done
@@ -475,7 +474,7 @@ _zoa_describe() {
   local resp
   resp=$(_zoa_request GET "/trusted-actions/${action}")
 
-  if [[ "$mode" == "json" ]]; then
+  if [[ "$format" == "json" ]]; then
     printf '%s' "$resp" | "$_ZOA_JQ" .
   else
     printf '%s' "$resp" | "$_ZOA_JQ" -r '
@@ -504,12 +503,15 @@ Usage: zoa <command> [args]
 
 Commands:
   run <action> -t <cluster> [flags]   Execute a trusted action (waits for result)
-  get <id> [--logs|--all|--info]      Retrieve execution output
-  logs <id>                           Show execution log
+  get <id> [--output|--logs|--all]    Retrieve execution details
+  logs <id>                           Show execution log (raw)
   runs [filters]                      List recent executions
   audit [filters]                     View audit log of API calls
   actions [<action>]                  List TAs, or describe one (alias for describe)
   describe <action>                   Show TA parameters and metadata
+
+Global flags:
+  -o json                             Output raw JSON instead of human format
 
 Run flags:
   -t, --target <cluster>   Target cluster (required)
