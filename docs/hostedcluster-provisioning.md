@@ -42,8 +42,9 @@ awscurl --service execute-api --region "$REGION" \
 ## Set Up
 
 ```bash
-# Use the AWS profile you want to use to host your data plane
-export AWS_PROFILE=<my_personal_profile>
+# Verify you are using the correct AWS account — this is where worker nodes
+# will be created. You can use a profile, environment variables, etc.
+aws sts get-caller-identity
 
 # Platform API URL (integration environment)
 API_URL=https://api.us-east-1.int0.rosa.devshift.net
@@ -70,7 +71,7 @@ rosactl cluster-vpc create $CLUSTER_NAME --region $REGION --availability-zones $
 rosactl cluster create $CLUSTER_NAME --region $REGION
 
 # 4. Get the cluster ID and cloud URL
-CLOUDURL=$(rosactl cluster list -o json | jq -r --arg name "$CLUSTER_NAME" '.items[] | select(.name == $name) | "\(.spec.cloudUrl)/\(.id)"')
+CLOUDURL=$(rosactl cluster list --region $REGION -o json | jq -r --arg name "$CLUSTER_NAME" '.items[] | select(.name == $name) | "\(.spec.cloudUrl)/\(.id)"')
 
 # 5. Create the OIDC provider (CloudFormation stack)
 rosactl cluster-oidc create $CLUSTER_NAME --region $REGION --oidc-issuer-url $CLOUDURL
@@ -87,7 +88,7 @@ watch -n 1 rosactl cluster list $CLUSTER_NAME
 Once the cluster is ready, generate a kubeconfig:
 
 ```bash
-rosactl cluster kubeconfig $CLUSTER_NAME > ~/.kube/$CLUSTER_NAME
+rosactl cluster kubeconfig $CLUSTER_NAME --region $REGION > ~/.kube/$CLUSTER_NAME
 export KUBECONFIG=~/.kube/$CLUSTER_NAME
 
 # DNS propagation and certificate issuance may take a few minutes after
@@ -95,7 +96,7 @@ export KUBECONFIG=~/.kube/$CLUSTER_NAME
 kubectl get nodes
 ```
 
-The generated kubeconfig uses `rosactl` as a credential plugin, which signs requests with your active AWS profile. Make sure `AWS_PROFILE` is set to the same profile you used during cluster creation.
+The generated kubeconfig uses `rosactl` as a credential plugin, which signs requests with your active AWS credentials. Make sure the same credentials you used during cluster creation are active.
 
 ## Cluster Lifecycle
 
