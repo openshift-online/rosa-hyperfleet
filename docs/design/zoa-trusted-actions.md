@@ -263,7 +263,8 @@ ZOA uses a split SA model separating operational permissions from output transpo
 
 | Layer | What's Recorded | Identifies |
 |-------|----------------|------------|
-| Platform API (DynamoDB) | `execution_id`, `operator`, `jira`, `action`, `target`, `params`, `revision`, `updated_at`, `dry_run`, `force`, timestamps | Who requested what, when, why (Jira), and how (dry-run/forced) |
+| Platform API (DynamoDB executions) | `execution_id`, `operator`, `jira`, `action`, `target`, `params`, `revision`, `updated_at`, `dry_run`, `force`, timestamps | Who requested what, when, why (Jira), and how (dry-run/forced) |
+| Platform API (DynamoDB audit table) | `method`, `path` (full URI), `action`, `target_cluster`, `execution_id`, `jira`, `operator`, `status_code`, `timestamp` | Every API call (including reads and rejections) |
 | ManifestWork + all resources | Labels: `zoa.rosa.io/execution-id`, `zoa.rosa.io/operator`, `zoa.rosa.io/action`, `zoa.rosa.io/revision` | Full traceability on every K8s resource |
 | Kubernetes audit logs | Per-execution SA name (`zoa-runner-<exec-id>`) + pod labels | Perfect execution-level attribution |
 | S3 object metadata | `x-amz-meta-execution-id`, `x-amz-meta-operator` | Output ownership |

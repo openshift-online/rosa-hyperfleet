@@ -229,13 +229,16 @@ x-amz-meta-target: mc-useast1-1
 
 | Event | Storage | Retention | Query |
 |-------|---------|-----------|-------|
-| TA execution requested | DynamoDB | 365 days (TTL) | `zoa runs` |
+| TA execution requested | DynamoDB (executions) | 365 days (TTL) | `zoa runs` |
 | Full execution log | S3 | 365 days | `zoa logs <id>` |
 | Structured output | S3 | 365 days | `zoa get <id>` |
 | Jira ticket correlation | DynamoDB (`jira` field) | 365 days (TTL) | `zoa get <id> --info` |
+| All API calls (POST + GET) | DynamoDB (audit table) | 365 days (TTL) | `zoa audit` |
 | API Gateway access | CloudTrail | 90 days (configurable) | AWS Console |
 | Kubernetes API calls from Job | MC audit log | Cluster-dependent | kubectl audit |
 | ResourceBundle lifecycle | Maestro server logs | Log retention | kubectl logs |
+
+**Audit table design**: Every audited call (POST /run, GET /runs, GET /runs/{id}, GET /audit) is recorded with consistent fields: id, account_id, caller_arn, operator, method, path (full URI), action, target_cluster, execution_id, jira, status_code, timestamp. Fields not applicable to a call type are empty strings. Catalog/describe endpoints are not audited (public metadata, high frequency).
 
 ### Correlation Keys
 
@@ -382,10 +385,10 @@ spec:
 | AC-2 (Account Management) | STS temporary credentials, no shared accounts |
 | AC-3 (Access Enforcement) | Per-execution RBAC, per-execution SA, SigV4 auth |
 | AC-6 (Least Privilege) | RBAC scoped to declared resources only |
-| AU-2 (Audit Events) | DynamoDB records all executions with full identity |
-| AU-3 (Content of Audit Records) | operator, jira, action, target, timestamp, updated_at, duration, status, dry_run, force |
+| AU-2 (Audit Events) | DynamoDB records all executions + separate audit table records all API calls |
+| AU-3 (Content of Audit Records) | Executions: operator, jira, action, target, timestamp, duration, status, dry_run, force. Audit: method, path (full URI), action, target, execution_id, jira, status_code |
 | AU-9 (Protection of Audit Info) | S3 versioning, no-delete lifecycle, KMS encryption, DynamoDB TTL (365d) |
-| AU-12 (Audit Generation) | Automatic — Platform API records before/after every execution |
+| AU-12 (Audit Generation) | Automatic — all audited API calls recorded; rejections (400/429) also captured |
 | CM-7 (Least Functionality) | No shell access, no arbitrary commands — only pre-approved TAs |
 | IA-2 (Identification and Authentication) | SigV4 + STS, caller ARN extracted per request |
 | SC-8 (Transmission Confidentiality) | TLS 1.2+ on all channels (API, MQTT, S3) |

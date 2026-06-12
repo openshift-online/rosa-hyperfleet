@@ -406,10 +406,22 @@ Table: <env>-regional-zoa-audit-log
   PK: accountId (String)
   SK: timestamp (String, RFC3339)
 
+Fields (all present on every entry, empty string when N/A):
+  id, callerArn, operator, method, path, action, targetCluster,
+  executionId, jira, statusCode
+
 TTL: ttl attribute (epoch seconds) — entries auto-expire after 365 days
 ```
 
-Records every API call (POST executions, GET queries) with caller identity, HTTP method, path, action, target, and response status code. Enables compliance queries via `zoa audit` CLI command.
+Records every audited API call with consistent fields. Audited endpoints:
+- `POST /{action}/run` — populates action, targetCluster, executionId, jira
+- `GET /runs/{id}` — populates executionId (accessed ID)
+- `GET /runs` — identity + path only
+- `GET /audit` — identity + path only (self-referential for compliance)
+
+Not audited: `GET /` (catalog) and `GET /{action}` (describe) — public metadata, high frequency noise.
+
+Rejected POST requests (400/429) are also recorded with available context at point of failure. The `path` field stores the full request URI including query parameters for GET requests.
 
 ### S3 Bucket
 
@@ -555,7 +567,7 @@ Every execution produces audit data at multiple layers:
 | Platform API (DynamoDB) | execution_id, operator, caller_arn, jira, action, target, status, duration, revision, updated_at, dry_run, force | `zoa runs` CLI or direct API |
 | S3 (artifacts) | Full execution log, structured output | `zoa logs <id>` or `zoa get <id>` |
 | Kubernetes (labels on all resources) | execution-id, operator, action, scope, type, revision, target | `kubectl get jobs -l zoa.rosa.io/operator=slopezma` |
-| Platform API (DynamoDB audit table) | Every API call: method, path, action, target, operator, status_code, timestamp | `zoa audit` CLI |
+| Platform API (DynamoDB audit table) | Every audited API call: method, path (full URI), action, target, execution_id, jira, operator, status_code, timestamp | `zoa audit` CLI |
 | AWS CloudTrail | SigV4 caller identity on API Gateway invocation | CloudTrail console |
 | Maestro (MQTT events) | ManifestWork create/delete events with metadata | Maestro server logs |
 
