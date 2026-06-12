@@ -228,6 +228,10 @@ resource "aws_ecs_task_definition" "bootstrap" {
               }
           SECRET_EOF
 
+          echo "Restarting ApplicationSet controller to pick up updated annotations..."
+          kubectl rollout restart deployment argocd-applicationset-controller -n argocd
+          kubectl rollout status deployment argocd-applicationset-controller -n argocd --timeout=60s
+
           echo "Creating/updating ArgoCD Root Application..."
           echo "  Repository URL: $REPOSITORY_URL"
           echo "  Target Revision: $REPOSITORY_BRANCH"
