@@ -177,11 +177,14 @@ _zoa_run() {
   fi
 
   executed_action=$(printf '%s' "$submit" | "$_ZOA_JQ" -r '.executed_action // empty')
+  local suffix=""
   if [[ -n "$executed_action" ]]; then
-    echo "✓ ${id} (DRY-RUN: ${action} → ${executed_action})" >&2
-  else
-    echo "✓ ${id}" >&2
+    suffix=" (DRY-RUN: ${action} → ${executed_action})"
   fi
+  if [[ "$force" == "true" ]]; then
+    suffix="${suffix} [FORCED]"
+  fi
+  echo "✓ ${id}${suffix}" >&2
 
   if $no_wait; then
     printf '%s' "$submit" | "$_ZOA_JQ" .
@@ -259,6 +262,7 @@ _zoa_get() {
         "STATUS:    \(.status)",
         "OUTPUT:    \(.output_status // "pending")",
         "DRY-RUN:   \(if .dry_run then "yes" else "no" end)",
+        "FORCE:     \(if .force then "yes" else "no" end)",
         "JIRA:      \(.jira // "-")",
         "OPERATOR:  \(.operator // "-")",
         "PARAMS:    \(.params // {} | to_entries | map(.key + "=" + .value) | join(" ") | if . == "" then "-" else . end)",
@@ -297,7 +301,7 @@ _zoa_get() {
   else
     printf '%s' "$info" | "$_ZOA_JQ" -r '
       "ID:        \(.id)",
-      "ACTION:    \(.action)\(if .dry_run then " [DRY-RUN → \(.executed_action)]" else "" end)  TARGET: \(.target_cluster)  STATUS: \(.status)",
+      "ACTION:    \(.action)\(if .dry_run then " [DRY-RUN → \(.executed_action)]" else "" end)\(if .force then " [FORCED]" else "" end)  TARGET: \(.target_cluster)  STATUS: \(.status)",
       "DURATION:  \(if .duration_seconds then "\(.duration_seconds)s" else "-" end)  OPERATOR: \(.operator // "-")  JIRA: \(.jira // "-")",
       "---"
     '
@@ -324,6 +328,8 @@ _zoa_runs() {
       --scope)       query="${query:+${query}&}scope=$2"; shift 2 ;;
       --type)        query="${query:+${query}&}type=$2"; shift 2 ;;
       --output-status) query="${query:+${query}&}output_status=$2"; shift 2 ;;
+      --dry-run)     query="${query:+${query}&}dry_run=true"; shift ;;
+      --force)       query="${query:+${query}&}force=true"; shift ;;
       --since)       query="${query:+${query}&}since=$2"; shift 2 ;;
       --limit)       query="${query:+${query}&}limit=$2"; shift 2 ;;
       --json)        raw=true; shift ;;
@@ -346,7 +352,7 @@ _zoa_runs() {
     def fmt_dur(s): if s == null or s == 0 then "-" elif s < 60 then "\(s)s" elif s < 3600 then "\(s/60|floor)m\(s%60)s" else "\(s/3600|floor)h\(s%3600/60|floor)m" end;
     def fmt_ts(iso): if iso == null or iso == "" then "-" else (iso | split("T") | .[0] + " " + .[1][:8]) end;
     def fmt_params(p): if p == null or p == {} then "-" else [p | to_entries[] | "\(.key)=\(.value)"] | join(",") | if length > 30 then .[:29] + "…" else . end end;
-    def fmt_action: if .dry_run then "\(.action) [DRY]" else .action end;
+    def fmt_action: "\(.action)\(if .dry_run then " [DRY]" else "" end)\(if .force then " [FRC]" else "" end)";
     (.items // []) | if length == 0 then empty else
       .[] | [
         .id,
@@ -511,7 +517,7 @@ Run flags:
   -l <selector>            Label selector
   -v, --verbose            Full JSON output (no compact)
   --name <name>            Resource name
-  --force                  Bypass write cooldown
+  --force                  Bypass write cooldown and max concurrent
   --dry-run                Execute dry_run_action instead (preview)
   --no-wait                Don't wait for completion (print ID only)
   --param key=value        Pass arbitrary param
@@ -524,6 +530,8 @@ Runs filters (all combinable):
   --operator <name>        Filter by operator
   --scope <scope>          Filter by scope (kube-api|aws)
   --type <type>            Filter by type (read|write)
+  --dry-run                Show only dry-run executions
+  --force                  Show only forced executions
   --since <duration>       Filter by time (e.g. 1h, 24h, 7d)
   --limit <n>              Max results (default 20, max 100)
   --json                   Raw JSON output (pipeable to jq)
@@ -561,6 +569,7 @@ Examples:
   zoa run rollout_restart -t mc-useast1-1 -n maestro --name maestro --jira ROSAENG-1234
   zoa run delete_pod -t mc-useast1-1 -n maestro --name maestro-agent-xyz --jira ROSAENG-1234
   zoa run delete_pod -t mc-useast1-1 -n maestro --name maestro-agent-xyz --jira ROSAENG-1234 --dry-run
+  zoa run rollout_restart -t mc-useast1-1 -n maestro --name maestro --jira ROSAENG-1234 --force
 
   # Retrieve results
   zoa get fa65418c-f4eb-4f5c-8314-baaeb695ba7d
@@ -579,6 +588,8 @@ Examples:
   zoa runs --action get_pods --operator slopezma --since 7d
   zoa runs --type write --since 12h
   zoa runs --scope kube-api --status succeeded --limit 50
+  zoa runs --dry-run --since 24h
+  zoa runs --force --since 7d
   zoa runs --json | jq '.items[] | select(.runner_seconds > 10)'
 
   # Audit log
