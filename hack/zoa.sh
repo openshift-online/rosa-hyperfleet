@@ -482,7 +482,7 @@ _zoa_describe() {
       "SCOPE:       \(.scope)",
       "TYPE:        \(.type)",
       "DESCRIPTION: \(.description)",
-      (if .approval_required then "APPROVAL:    required" else empty end),
+      "APPROVAL:    \(if .authorization.approval == "none" then "none" elif .authorization.approval then "required" else "none" end)",
       (if .write_cooldown_seconds > 0 then "COOLDOWN:    \(.write_cooldown_seconds)s" else empty end),
       (if .dry_run_action then "DRY-RUN:     \(.dry_run_action)" else empty end),
       "",

@@ -2,6 +2,8 @@ name: get_nodes
 scope: kube-api
 type: read
 description: List or get nodes in the target cluster with status and resource information
+authorization:
+  approval: none
 timeout_seconds: 300
 params:
   - name: name

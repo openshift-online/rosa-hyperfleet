@@ -2,6 +2,8 @@ name: get_services
 scope: kube-api
 type: read
 description: List or get services with type, cluster IP, ports, and selector
+authorization:
+  approval: none
 timeout_seconds: 300
 params:
   - name: namespace

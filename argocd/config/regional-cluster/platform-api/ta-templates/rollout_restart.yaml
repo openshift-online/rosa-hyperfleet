@@ -2,6 +2,8 @@ name: rollout_restart
 scope: kube-api
 type: write
 description: Perform a rolling restart of a deployment and wait for completion
+authorization:
+  approval: none
 timeout_seconds: 600
 write_cooldown_seconds: 300
 dry_run_action: get_deployments

@@ -2,6 +2,8 @@ name: get_events
 scope: kube-api
 type: read
 description: List or get recent events sorted by time, with optional filtering by involved object
+authorization:
+  approval: none
 timeout_seconds: 300
 params:
   - name: namespace

@@ -2,6 +2,8 @@ name: get_deployments
 scope: kube-api
 type: read
 description: List or get deployments with replica status, strategy, and container images
+authorization:
+  approval: none
 timeout_seconds: 300
 params:
   - name: namespace

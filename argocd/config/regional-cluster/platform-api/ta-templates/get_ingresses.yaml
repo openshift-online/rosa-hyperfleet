@@ -2,6 +2,8 @@ name: get_ingresses
 scope: kube-api
 type: read
 description: List or get ingresses with hosts, paths, backends, and TLS status
+authorization:
+  approval: none
 timeout_seconds: 300
 params:
   - name: namespace

@@ -2,6 +2,8 @@ name: get_daemonsets
 scope: kube-api
 type: read
 description: List or get daemonsets with scheduling status and node selector
+authorization:
+  approval: none
 timeout_seconds: 300
 params:
   - name: namespace

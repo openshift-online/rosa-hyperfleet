@@ -2,6 +2,8 @@ name: get_resource
 scope: kube-api
 type: read
 description: Generic kubectl get for any resource type, with namespace support and secrets protection for HCP namespaces
+authorization:
+  approval: none
 timeout_seconds: 300
 params:
   - name: resource

@@ -2,6 +2,8 @@ name: get_pvcs
 scope: kube-api
 type: read
 description: List or get persistent volume claims with status, capacity, storage class, and bound volume
+authorization:
+  approval: none
 timeout_seconds: 300
 params:
   - name: namespace

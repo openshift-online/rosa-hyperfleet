@@ -2,6 +2,8 @@ name: delete_pod
 scope: kube-api
 type: write
 description: Delete a specific pod and wait until it is fully terminated
+authorization:
+  approval: none
 timeout_seconds: 300
 write_cooldown_seconds: 60
 dry_run_action: get_pods

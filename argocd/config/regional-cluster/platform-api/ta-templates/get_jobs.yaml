@@ -2,6 +2,8 @@ name: get_jobs
 scope: kube-api
 type: read
 description: List or get jobs with completion status, duration, and pod status
+authorization:
+  approval: none
 timeout_seconds: 300
 params:
   - name: namespace

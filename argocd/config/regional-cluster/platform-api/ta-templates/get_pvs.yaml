@@ -2,6 +2,8 @@ name: get_pvs
 scope: kube-api
 type: read
 description: List or get persistent volumes with status, capacity, reclaim policy, and claim binding
+authorization:
+  approval: none
 timeout_seconds: 300
 params:
   - name: name

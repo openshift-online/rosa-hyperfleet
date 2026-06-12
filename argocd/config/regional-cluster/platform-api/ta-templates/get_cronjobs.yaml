@@ -2,6 +2,8 @@ name: get_cronjobs
 scope: kube-api
 type: read
 description: List or get cronjobs with schedule, last run, and suspend status
+authorization:
+  approval: none
 timeout_seconds: 300
 params:
   - name: namespace

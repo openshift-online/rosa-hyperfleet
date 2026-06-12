@@ -2,6 +2,8 @@ name: get_namespaces
 scope: kube-api
 type: read
 description: List or get namespaces in the target cluster
+authorization:
+  approval: none
 timeout_seconds: 300
 params:
   - name: name

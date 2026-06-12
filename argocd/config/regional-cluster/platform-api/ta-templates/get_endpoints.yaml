@@ -2,6 +2,8 @@ name: get_endpoints
 scope: kube-api
 type: read
 description: List or get endpoints with addresses and ports (useful for debugging service connectivity)
+authorization:
+  approval: none
 timeout_seconds: 300
 params:
   - name: namespace

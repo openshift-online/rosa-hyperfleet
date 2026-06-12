@@ -2,6 +2,8 @@ name: get_configmaps
 scope: kube-api
 type: read
 description: List or get configmaps with data key count and size (content not shown unless verbose)
+authorization:
+  approval: none
 timeout_seconds: 300
 params:
   - name: namespace
