@@ -57,10 +57,8 @@ spec:
               value: {{ .Values.platformApi.zoa.bucketName | quote }}
             - name: ZOA_JOB_ROLE_ARN
               value: {{ .Values.platformApi.zoa.jobRoleArn | quote }}
-            {{- if .Values.platformApi.zoa.auditTableName }}
             - name: ZOA_AUDIT_TABLE_NAME
               value: {{ .Values.platformApi.zoa.auditTableName | quote }}
-            {{- end }}
             - name: ZOA_TEMPLATES_DIR
               value: /etc/zoa/templates
             - name: ZOA_JOB_CONFIG_DIR
