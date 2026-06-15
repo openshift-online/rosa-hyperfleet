@@ -1,0 +1,14 @@
+{{- if and (index .Values "oauth2-proxy" "enabled") .Values.grafana.targetGroup.arn }}
+---
+apiVersion: eks.amazonaws.com/v1
+kind: TargetGroupBinding
+metadata:
+  name: grafana-oauth2-proxy
+  namespace: {{ .Release.Namespace }}
+spec:
+  serviceRef:
+    name: grafana-oauth2-proxy
+    port: 4180
+  targetGroupARN: {{ .Values.grafana.targetGroup.arn }}
+  targetType: ip
+{{- end }}

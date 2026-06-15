@@ -2,6 +2,7 @@
 global:
   aws_region: ""
   management_clusters: ""
+  cluster_name: ""
 
 grafana:
   image:
@@ -179,3 +180,33 @@ grafana:
       provider:
         foldersFromFilesStructure: true
         allowUiUpdates: false
+
+# oauth2-proxy subchart — disabled by default.
+# When enabled, deploys a reverse proxy in front of Grafana with GitHub OAuth.
+# TLS is terminated at the Terraform-managed ALB; oauth2-proxy runs plain HTTP.
+# A TargetGroupBinding registers pod IPs with the ALB target group.
+oauth2-proxy:
+  enabled: false
+
+  config:
+    existingSecret: grafana-oauth-proxy
+
+  extraArgs:
+    provider: github
+    upstream: "http://grafana:80"
+    cookie-secure: "true"
+    cookie-name: "_grafana_oauth2"
+    email-domain: "*"
+    github-org: "openshift-online"
+    reverse-proxy: "true"
+    scope: "user:email read:org"
+
+  service:
+    type: ClusterIP
+    portNumber: 4180
+
+# Target group ARN injected at runtime by ApplicationSet from cluster annotations.
+# Empty default for helm lint.
+grafana:
+  targetGroup:
+    arn: ""

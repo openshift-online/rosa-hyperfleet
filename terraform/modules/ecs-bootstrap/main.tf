@@ -214,6 +214,7 @@ resource "aws_ecs_task_definition" "bootstrap" {
               management_clusters: "$MANAGEMENT_CLUSTERS"
               rhobs_api_url: "$RHOBS_API_URL"
               dns_zone_operator_role_arn: "$DNS_ZONE_OPERATOR_ROLE_ARN"
+              grafana_target_group_arn: "$GRAFANA_TARGET_GROUP_ARN"
           type: Opaque
           stringData:
             name: in-cluster

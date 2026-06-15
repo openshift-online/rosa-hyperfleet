@@ -97,6 +97,11 @@ observability:
     # @used-by observability.pagerduty.escalation_policy_id pipeline-regional-cluster-inputs/terraform.json.j2
     escalation_policy_id: "P5KE444"
 
+  grafana_ingress:
+    # @doc observability.grafana_ingress.enabled Enable Grafana OAuth proxy (internet-facing NLB + GitHub OAuth). Requires Secrets Manager secrets for GitHub OAuth credentials and TLS cert.
+    # @used-by observability.grafana_ingress.enabled _context
+    enabled: false
+
   sns_alerting:
     # @doc observability.sns_alerting.enabled Enable SNS alerting for regional cluster alert consumption by automated/external services.
     # @used-by observability.sns_alerting.enabled _context
@@ -141,6 +146,10 @@ applications:
       # @doc applications.regional-cluster.pagerduty.enabled Enable PagerDuty alerting in the monitoring stack.
       # @used-by applications.regional-cluster.pagerduty.enabled _context
       enabled: "{{ observability.pagerduty.enabled | default(false) }}"
+    oauth2-proxy:
+      # @doc applications.regional-cluster.oauth2-proxy.enabled Enable oauth2-proxy in front of Grafana.
+      # @used-by applications.regional-cluster.oauth2-proxy.enabled _context
+      enabled: "{{ observability.grafana_ingress.enabled | default(false) }}"
 
 # provision_mcs: MC topology, defined per-region. Keys are MC IDs.
 # Fields below are injected into templates as mc.* by render.py.
