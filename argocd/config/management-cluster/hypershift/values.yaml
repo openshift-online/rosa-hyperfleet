@@ -17,9 +17,4 @@ hypershift:
 
   # Hypershift configuration
   hypershift:
-    # Self-built image on top of hypershift main adding:
-    # - aws-iam-authenticator KAS sidecar injection and webhook redirect (CPO)
-    # - aws-iam-auth-config ConfigMap sync from HC to HCP namespace (HC controller)
-    # - hypershift.openshift.io/aws-iam-authenticator annotation propagation
-    # Branch: https://github.com/typeid/hypershift/tree/aws-iam-authenticator-poc
-    image: quay.io/cbusse_openshift/hypershift-operator:aws-iam-auth
+    image: quay.io/acm-d/rhtap-hypershift-operator@sha256:428c9ec9e24dfcedc608931fa4467bfc7af2b9c0c746fe2d14c1409047ef509c
