@@ -150,6 +150,11 @@ grafana:
   # Sidecar watches ConfigMaps labeled grafana_dashboard="1" and places them
   # in subdirectories based on the k8s-sidecar-target-directory annotation.
   # foldersFromFilesStructure creates Grafana folders from the subdirectory names.
+  # Target group ARN injected at runtime by ApplicationSet from cluster annotations.
+  # Empty default for helm lint.
+  targetGroup:
+    arn: ""
+
   sidecar:
     resources:
       limits:
@@ -204,9 +209,3 @@ oauth2-proxy:
   service:
     type: ClusterIP
     portNumber: 4180
-
-# Target group ARN injected at runtime by ApplicationSet from cluster annotations.
-# Empty default for helm lint.
-grafana:
-  targetGroup:
-    arn: ""

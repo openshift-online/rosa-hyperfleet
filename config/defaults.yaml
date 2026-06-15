@@ -95,7 +95,7 @@ observability:
     escalation_policy_id: "P5KE444"
 
   grafana_ingress:
-    # @doc observability.grafana_ingress.enabled Enable Grafana OAuth proxy (internet-facing NLB + GitHub OAuth). Requires Secrets Manager secrets for GitHub OAuth credentials and TLS cert.
+    # @doc observability.grafana_ingress.enabled Enable Grafana OAuth proxy (internet-facing ALB + GitHub OAuth). Requires Secrets Manager secret for GitHub OAuth credentials.
     # @used-by observability.grafana_ingress.enabled _context
     # @used-by observability.grafana_ingress.enabled pipeline-regional-cluster-inputs/terraform.json.j2
     enabled: false

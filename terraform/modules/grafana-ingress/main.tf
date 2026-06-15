@@ -21,6 +21,8 @@ resource "aws_lb" "grafana" {
   security_groups    = [aws_security_group.alb.id]
   subnets            = var.public_subnet_ids
 
+  drop_invalid_header_fields = true
+
   tags = {
     Name = "${var.regional_id}-grafana"
   }

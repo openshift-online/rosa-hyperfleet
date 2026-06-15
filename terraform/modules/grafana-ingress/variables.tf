@@ -33,8 +33,8 @@ variable "domain_name" {
   type        = string
 
   validation {
-    condition     = can(regex("^[a-z0-9][a-z0-9.-]+[a-z0-9]$", var.domain_name))
-    error_message = "domain_name must be a valid domain name."
+    condition     = can(regex("^[a-z0-9][a-z0-9-]*\\.[a-z0-9.-]+[a-z0-9]$", var.domain_name))
+    error_message = "domain_name must be a fully qualified domain name (e.g. grafana.example.com)."
   }
 }
 
