@@ -70,6 +70,29 @@ spec:
           cluster_id: "{{ .clusterId }}"
           cluster_name: "{{ .clusterName }}"
 
+      - apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "aws-iam-auth-config"
+          namespace: "clusters-{{ .clusterId }}"
+          labels:
+            hyperfleet.io/cluster-id: "{{ .clusterId }}"
+          annotations:
+            hyperfleet.io/generation: "{{ .generation }}"
+        data:
+          config.yaml: |
+            clusterID: {{ .clusterId }}
+            server:
+{{ if .creatorARN }}
+              mapUsers:
+                - userARN: {{ .creatorARN }}
+                  username: cluster-creator
+                  groups:
+                    - system:masters
+{{ else }}
+              mapUsers: []
+{{ end }}
+
       - apiVersion: external-secrets.io/v1
         kind: ExternalSecret
         metadata:
@@ -110,7 +133,7 @@ spec:
             name: letsencrypt-dns01
             kind: ClusterIssuer
           dnsNames:
-            - "api.{{ .clusterName }}.{{ $hash4 }}.{{ .baseDomain }}"
+            - "*.{{ .clusterName }}.{{ $hash4 }}.{{ .baseDomain }}"
 
       - apiVersion: hypershift.openshift.io/v1beta1
         kind: HostedCluster
@@ -122,23 +145,27 @@ spec:
           annotations:
             hyperfleet.io/generation: "{{ .generation }}"
             hypershift.openshift.io/pod-security-admission-label-override: privileged
-            # Self-built image using 4.22 branch and cherrypicking the following PRs on top off main (5.0.0 target):
-            # - https://github.com/openshift/hypershift/pull/8343 / OCPBUGS-84508 
-            # - https://github.com/openshift/hypershift/pull/8344 / OCPBUGS-84509
-            # - https://github.com/openshift/hypershift/pull/8357 / OCPBUGS-84572
-            # - https://github.com/openshift/hypershift/pull/8458 / OCPBUGS-85243
-            # We cannot use 5.0.0 because it just branched and is in a broken state.
-            # Once we backport the above fixes to 4.22, we can use a somewhat stable 4.22 build.
-            hypershift.openshift.io/control-plane-operator-image: quay.io/cbusse_openshift/control-plane-operator:eks-compat-4.22-cfe86d4436
+            # Self-built CPO from 5.0.0-ec.2 + aws-iam-authenticator sidecar injection and webhook redirect.
+            # Branch: https://github.com/typeid/hypershift/tree/aws-iam-authenticator-poc
+            hypershift.openshift.io/control-plane-operator-image: quay.io/cbusse_openshift/control-plane-operator:4.23-iam-auth
+            hypershift.openshift.io/aws-iam-authenticator: "true"
         spec:
           infraID: "{{ .clusterId }}"
           dns:
             # TODO(ROSAENG-1089): hash4 is currently a naive truncation of clusterId.
             # CLM must guarantee uniqueness within a zone shard before production.
             baseDomain: "{{ $hash4 }}.{{ .baseDomain }}"
+          etcd:
+            managed:
+              storage:
+                persistentVolume:
+                  size: 8Gi
+                  storageClassName: gp3
+                type: PersistentVolume
+            managementType: Managed
           fips: true
           release:
-            image: quay.io/openshift-release-dev/ocp-release:4.22.0-rc.1-multi
+            image: quay.io/openshift-release-dev/ocp-release:5.0.0-ec.2-multi
           pullSecret:
             name: pull-secret
           sshKey:
@@ -178,13 +205,16 @@ spec:
                   value: owned
                 - key: red-hat-managed
                   value: "true"
+          # On EKS MCs (unlike OpenShift MCs) there is no default ingress cert
+          # whose Let's Encrypt chain would be bundled into the admin kubeconfig CA.
+          # This field triggers a custom-admin-kubeconfig that includes the named
+          # certificate's CA chain so TLS validation works for external access.
+          kubeAPIServerDNSName: "api.{{ .clusterName }}.{{ $hash4 }}.{{ .baseDomain }}"
           configuration:
             apiServer:
               servingCerts:
                 namedCertificates:
-                  - names:
-                      - "api.{{ .clusterName }}.{{ $hash4 }}.{{ .baseDomain }}"
-                    servingCertificate:
+                  - servingCertificate:
                       name: api-serving-cert
           issuerURL: "{{ .cloudUrl }}/{{ .clusterId }}"
           # On EKS (non-OpenShift), using Route with explicit hostnames for KAS
@@ -207,8 +237,8 @@ spec:
             - service: Ignition
               servicePublishingStrategy:
                 type: Route
-          infrastructureAvailabilityPolicy: SingleReplica
-          controllerAvailabilityPolicy: SingleReplica
+          infrastructureAvailabilityPolicy: HighlyAvailable
+          controllerAvailabilityPolicy: HighlyAvailable
       - apiVersion: hypershift.openshift.io/v1beta1
         kind: NodePool
         metadata:
@@ -293,3 +323,24 @@ spec:
               path: ".status.controlPlaneEndpoint.host"
             - name: "version"
               path: ".status.version.history[0].version"
+
+    - resourceIdentifier:
+        group: ""
+        resource: "configmaps"
+        namespace: "clusters-{{ .clusterId }}"
+        name: "aws-iam-auth-config"
+      updateStrategy:
+        type: "ServerSideApply"
+
+    - resourceIdentifier:
+        group: "hypershift.openshift.io"
+        resource: "nodepools"
+        namespace: "clusters-{{ .clusterId }}"
+        name: "{{ .clusterName }}-workers"
+      updateStrategy:
+        type: "ServerSideApply"
+      feedbackRules:
+        - type: "JSONPaths"
+          jsonPaths:
+            - name: "readyCondition"
+              path: ".status.conditions[?(@.type==\"Ready\")].status"
