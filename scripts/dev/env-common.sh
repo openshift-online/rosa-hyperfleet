@@ -75,7 +75,13 @@ ensure_image() {
     if ! $CONTAINER_ENGINE image inspect "$CI_IMAGE" >/dev/null 2>&1; then
         echo "Building CI image..."
         local -a build_args=()
-        [[ -n "${PROXY_CA_CERT:-}" ]] && build_args=("--build-arg" "PROXY_CA_CERT=${PROXY_CA_CERT}")
+        # Auto-detect proxy CA cert from system trust store when PROXY_CA_CERT is not set.
+        # This ensures the container can reach HTTPS endpoints through a TLS-intercepting proxy.
+        local proxy_ca_cert="${PROXY_CA_CERT:-}"
+        if [[ -z "$proxy_ca_cert" && -f /etc/pki/ca-trust/source/anchors/proxy-ca.crt ]]; then
+            proxy_ca_cert="$(cat /etc/pki/ca-trust/source/anchors/proxy-ca.crt)"
+        fi
+        [[ -n "$proxy_ca_cert" ]] && build_args=("--build-arg" "PROXY_CA_CERT=${proxy_ca_cert}")
         local build_output
         if ! build_output=$($CONTAINER_ENGINE build -t "$CI_IMAGE" -f ci/Containerfile "${build_args[@]}" ci 2>&1); then
             echo "$build_output"
