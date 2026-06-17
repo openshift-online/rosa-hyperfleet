@@ -16,3 +16,5 @@ maestro:
   iotLogLevel: WARN
 pagerduty:
   enabled: true
+oauth2-proxy:
+  enabled: true

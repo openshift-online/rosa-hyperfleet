@@ -442,3 +442,12 @@ output "loki_query_frontend_target_group_arn" {
   description = "Target group ARN for Loki Query Frontend TargetGroupBinding (dedicated RHOBS ALB)"
   value       = module.rhobs_api_gateway.loki_query_frontend_target_group_arn
 }
+
+# =============================================================================
+# Grafana Ingress Outputs
+# =============================================================================
+
+output "grafana_target_group_arn" {
+  description = "Target group ARN for Grafana oauth2-proxy TargetGroupBinding"
+  value       = var.enable_grafana_ingress && var.environment_domain != null ? module.grafana_ingress[0].target_group_arn : null
+}

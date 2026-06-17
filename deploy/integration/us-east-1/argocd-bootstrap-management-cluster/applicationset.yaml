@@ -74,6 +74,9 @@ spec:
                 args:
                   dynamodbRegion: '{{ .metadata.annotations.dynamodb_region }}'
                   dynamodbPrefix: '{{ .metadata.annotations.dynamodb_prefix }}'
+            grafana:
+              targetGroup:
+                arn: '{{ .metadata.annotations.grafana_target_group_arn }}'
             # Thanos Operator values (keys must match chart's values.yaml structure)
             thanos:
               kmsKeyArn: '{{ .metadata.annotations.thanos_kms_key_arn }}'

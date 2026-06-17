@@ -8,3 +8,7 @@ dependencies:
   - name: grafana
     version: 8.8.2
     repository: https://grafana.github.io/helm-charts
+  - name: oauth2-proxy
+    version: 10.7.0
+    repository: https://oauth2-proxy.github.io/manifests
+    condition: oauth2-proxy.enabled
