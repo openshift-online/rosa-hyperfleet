@@ -205,6 +205,9 @@ spec:
                 nodePoolManagementARN: "{{ .nodePoolManagementARN }}"
                 networkARN: "{{ .networkARN }}"
                 storageARN: "{{ .storageARN }}"
+{{ if .karpenterControllerRoleARN }}
+              karpenterControllerRoleARN: "{{ .karpenterControllerRoleARN }}"
+{{ end }}
               resourceTags:
                 - key: kubernetes.io/cluster/{{ .clusterId }}
                   value: owned

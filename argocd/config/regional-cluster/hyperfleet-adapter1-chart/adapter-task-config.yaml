@@ -128,6 +128,11 @@ preconditions:
           has(spec.creatorARN) && spec.creatorARN != ""
             ? spec.creatorARN
             : ""
+      - name: "karpenterControllerRoleARN"
+        expression: |
+          has(spec.karpenterControllerRoleArn) && spec.karpenterControllerRoleArn != ""
+            ? spec.karpenterControllerRoleArn
+            : ""
       - name: "cloudUrl"
         expression: "spec.cloudUrl"
 
