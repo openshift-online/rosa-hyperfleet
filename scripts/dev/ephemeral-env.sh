@@ -265,6 +265,12 @@ write_eph_container_config() {
         for _var in AWS_CA_BUNDLE REQUESTS_CA_BUNDLE SSL_CERT_FILE UV_NATIVE_TLS; do
             [[ -n "${!_var:-}" ]] && _CONTAINER_AWS_FLAGS="${_CONTAINER_AWS_FLAGS} -e ${_var}=${!_var}"
         done
+        # Auto-inject UV_NATIVE_TLS=1 when running behind a TLS-intercepting proxy.
+        # uv's embedded rustls bundle does not trust custom CA certs; native TLS
+        # uses the container's system trust store which inherits the proxy CA.
+        if [[ -z "${UV_NATIVE_TLS:-}" && -n "${HTTPS_PROXY:-}${HTTP_PROXY:-}" ]]; then
+            _CONTAINER_AWS_FLAGS="${_CONTAINER_AWS_FLAGS} -e UV_NATIVE_TLS=1"
+        fi
         return 0
     fi
 
