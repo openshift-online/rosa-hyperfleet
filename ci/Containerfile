@@ -175,3 +175,14 @@ RUN if [ -n "${PROXY_CA_CERT}" ]; then \
     else \
         uv pip install --system awscurl pyyaml; \
     fi
+
+# Pre-install Python 3.13 for the ephemeral-provider (requires-python = ">=3.13").
+# Without this, `uv run` downloads cpython at container runtime — which fails in
+# proxy environments because uv's embedded rustls bundle does not trust the proxy CA.
+# Installing here (during image build) uses the system trust store set above.
+RUN if [ -n "${PROXY_CA_CERT}" ]; then \
+        UV_NATIVE_TLS=1 uv python install 3.13; \
+    else \
+        uv python install 3.13; \
+    fi && \
+    chmod -R 777 /tmp/.uv-python

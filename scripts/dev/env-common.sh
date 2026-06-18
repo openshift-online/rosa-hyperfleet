@@ -67,12 +67,34 @@ resolve_creds() {
     _CRED_ST=$(echo "$creds" | jq -r '.Credentials.SessionToken')
 }
 
-# Build the CI container image if not already present.
+# Build the CI container image if not already present or if ci/Containerfile has changed.
+# A SHA-256 hash of ci/Containerfile is stored as an image label (containerfile.sha256).
+# If the local Containerfile hash differs from the label, the image is rebuilt so that
+# changes to the Containerfile (e.g. new tool versions, proxy CA handling) take effect
+# without requiring manual `podman rmi`.
 ensure_image() {
     [[ -n "$CONTAINER_ENGINE" ]] \
         || die "No container engine found. Install podman or docker."
 
+    local containerfile_hash=""
+    if [[ -f ci/Containerfile ]]; then
+        containerfile_hash=$(sha256sum ci/Containerfile | awk '{print $1}')
+    fi
+
+    local needs_build=false
     if ! $CONTAINER_ENGINE image inspect "$CI_IMAGE" >/dev/null 2>&1; then
+        needs_build=true
+    elif [[ -n "$containerfile_hash" ]]; then
+        local image_hash
+        image_hash=$($CONTAINER_ENGINE image inspect "$CI_IMAGE" \
+            --format '{{index .Labels "containerfile.sha256"}}' 2>/dev/null || true)
+        if [[ "$image_hash" != "$containerfile_hash" ]]; then
+            echo "Containerfile has changed (was: ${image_hash:-(none)}, now: ${containerfile_hash}). Rebuilding CI image..."
+            needs_build=true
+        fi
+    fi
+
+    if [[ "$needs_build" == "true" ]]; then
         echo "Building CI image..."
         local -a build_args=()
         # Auto-detect proxy CA cert from system trust store when PROXY_CA_CERT is not set.
@@ -83,7 +105,9 @@ ensure_image() {
         fi
         [[ -n "$proxy_ca_cert" ]] && build_args=("--build-arg" "PROXY_CA_CERT=${proxy_ca_cert}")
         local build_output
-        if ! build_output=$($CONTAINER_ENGINE build -t "$CI_IMAGE" -f ci/Containerfile "${build_args[@]}" ci 2>&1); then
+        if ! build_output=$($CONTAINER_ENGINE build \
+            --label "containerfile.sha256=${containerfile_hash}" \
+            -t "$CI_IMAGE" -f ci/Containerfile "${build_args[@]}" ci 2>&1); then
             echo "$build_output"
             die "Failed to build CI image."
         fi
