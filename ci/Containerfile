@@ -76,12 +76,24 @@ RUN arch=$(uname -m) && \
     rm -f "${TF_PACKAGE}" "terraform_${TERRAFORM_VERSION}_SHA256SUMS" \
         "terraform_${TERRAFORM_VERSION}_SHA256SUMS.sig"
 
-# Helm 3 (pinned release tag; get-helm-3 verifies checksums by default)
+# Helm 3 (direct download with retry + sha256 checksum; avoids get-helm-3 inner curl having no retry/timeout)
 ARG CURL_RETRY
 ARG CURL_RETRY_DELAY
 ARG CURL_MAX_TIME
-RUN curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -fsSL "https://raw.githubusercontent.com/helm/helm/${HELM_VERSION}/scripts/get-helm-3" \
-    | DESIRED_VERSION="${HELM_VERSION}" VERIFY_CHECKSUM=true bash
+RUN arch=$(uname -m) && \
+    case "${arch}" in \
+        x86_64)  HELM_ARCH="amd64" ;; \
+        aarch64) HELM_ARCH="arm64" ;; \
+    esac && \
+    HELM_TAR="helm-${HELM_VERSION}-linux-${HELM_ARCH}.tar.gz" && \
+    HELM_BASE="https://get.helm.sh" && \
+    curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -fsSLO "${HELM_BASE}/${HELM_TAR}" && \
+    curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -fsSL "${HELM_BASE}/${HELM_TAR}.sha256" -o "${HELM_TAR}.sha256" && \
+    echo "$(cat ${HELM_TAR}.sha256)  ${HELM_TAR}" | sha256sum -c - && \
+    tar -xzf "${HELM_TAR}" --strip-components=1 -C /usr/local/bin "linux-${HELM_ARCH}/helm" && \
+    chmod +x /usr/local/bin/helm && \
+    rm -f "${HELM_TAR}" "${HELM_TAR}.sha256" && \
+    helm version
 
 # uv (Python package manager - pinned version, installer verifies binary checksum)
 ARG CURL_RETRY
