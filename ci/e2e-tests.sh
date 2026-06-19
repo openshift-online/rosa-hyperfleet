@@ -155,6 +155,10 @@ if [[ "$_have_customer_creds" == "true" ]]; then
     fi
 
     export GINKGO_NO_COLOR=TRUE
+    if [[ -n "${E2E_SKIP_CLEANUP:-}" ]]; then
+      echo "E2E_SKIP_CLEANUP is set — cleanup specs will be skipped"
+      export E2E_LABEL_FILTER='!cleanup'
+    fi
     make test-e2e-cli || return $?
 
     echo "HCP creation test completed for: ${HCP_CLUSTER_NAME}"

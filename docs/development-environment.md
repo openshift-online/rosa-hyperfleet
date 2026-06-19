@@ -268,6 +268,14 @@ make ephemeral-e2e ID=6bd2d3d7 E2E_REF=my-feature-branch
 make ephemeral-e2e ID=6bd2d3d7 E2E_REPO=https://github.com/my-fork/rosa-regional-platform-api.git E2E_REF=my-feature-branch
 ```
 
+To keep the cluster and infrastructure alive after a test run (useful for debugging failures), set `E2E_SKIP_CLEANUP`:
+
+```bash
+make ephemeral-e2e ID=6bd2d3d7 E2E_SKIP_CLEANUP=1
+```
+
+This skips both the cleanup-labeled ginkgo specs and the `DeferCleanup` safety net, so the HCP cluster, VPC, IAM, and OIDC resources survive for investigation. Remember to tear them down manually afterwards with `make ephemeral-teardown` or by re-running without the flag.
+
 ## Collect Cluster Logs
 
 Collect kubernetes diagnostic logs (`oc adm inspect`) from the RC and/or MC clusters in an ephemeral environment. Logs are gathered by a dedicated log-collector ECS task, uploaded to S3, and downloaded locally.
