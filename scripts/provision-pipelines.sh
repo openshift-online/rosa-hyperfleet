@@ -264,7 +264,8 @@ if [ -n "$ENVIRONMENT_DOMAIN" ] && [ "$CREATE_ENVIRONMENT_ZONE" = "true" ]; then
         -backend-config="bucket=$TF_STATE_BUCKET" \
         -backend-config="key=dns/environment-zone-${ENVIRONMENT}.tfstate" \
         -backend-config="region=$TF_STATE_REGION" \
-        -backend-config="use_lockfile=true"
+        -backend-config="use_lockfile=true" \
+        -backend-config="use_fips_endpoint=false"
 
     if retry_terraform_apply \
         -var="environment_domain=${ENVIRONMENT_DOMAIN}" \
@@ -335,7 +336,8 @@ for region_dir in deploy/${ENVIRONMENT}/*/; do
             -backend-config="bucket=$TF_STATE_BUCKET" \
             -backend-config="key=pipelines/regional-${ENVIRONMENT}-${REGION_DEPLOYMENT}-${REGIONAL_ID}.tfstate" \
             -backend-config="region=$TF_STATE_REGION" \
-            -backend-config="use_lockfile=true"
+            -backend-config="use_lockfile=true" \
+            -backend-config="use_fips_endpoint=false"
 
         # Build terraform apply command with variables (array for safe expansion)
         TF_ARGS=(
@@ -437,7 +439,8 @@ for region_dir in deploy/${ENVIRONMENT}/*/; do
                 -backend-config="bucket=$TF_STATE_BUCKET" \
                 -backend-config="key=pipelines/management-${ENVIRONMENT}-${REGION_DEPLOYMENT}-${CLUSTER_NAME}.tfstate" \
                 -backend-config="region=$TF_STATE_REGION" \
-                -backend-config="use_lockfile=true"
+                -backend-config="use_lockfile=true" \
+                -backend-config="use_fips_endpoint=false"
 
             # Build terraform apply command with variables (array for safe expansion)
             TF_ARGS=(

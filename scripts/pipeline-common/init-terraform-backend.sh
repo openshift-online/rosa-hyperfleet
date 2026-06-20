@@ -55,7 +55,8 @@ echo "Initializing Terraform..."
         -backend-config="bucket=${TF_STATE_BUCKET}" \
         -backend-config="key=${TF_STATE_KEY}" \
         -backend-config="region=${REGION}" \
-        -backend-config="use_lockfile=true"
+        -backend-config="use_lockfile=true" \
+        -backend-config="use_fips_endpoint=false"
 )
 
 echo "Terraform backend initialized successfully"

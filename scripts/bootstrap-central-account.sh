@@ -290,7 +290,8 @@ terraform init -reconfigure \
     -backend-config="bucket=${STATE_BUCKET}" \
     -backend-config="key=${NAME_PREFIX:+${NAME_PREFIX}-}central-account-bootstrap/terraform.tfstate" \
     -backend-config="region=${REGION}" \
-    -backend-config="use_lockfile=true"
+    -backend-config="use_lockfile=true" \
+    -backend-config="use_fips_endpoint=false"
 
 # Import the existing CodeStar connection into terraform state so it can
 # reference the ARN directly (instead of passing it as a variable).
