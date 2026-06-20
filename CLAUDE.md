@@ -20,7 +20,7 @@ The **ROSA Regional Platform** is a strategic redesign of Red Hat OpenShift Serv
    - CLM (Cluster Lifecycle Manager) - single source of truth
    - Maestro - MQTT-based configuration distribution
    - ArgoCD - GitOps deployment
-   - Tekton - infrastructure provisioning pipelines
+   - ZOA (Zero Operator Access) - mediated operational access via Trusted Actions
 
 2. **Management Clusters (MC)** - EKS clusters hosting customer control planes:
    - Run HyperShift operators hosting multiple customer control planes
@@ -29,6 +29,10 @@ The **ROSA Regional Platform** is a strategic redesign of Red Hat OpenShift Serv
 
 3. **Customer Hosted Clusters** - ROSA HCP clusters with control planes in MC
 
+### Zero Operator Access (ZOA)
+
+ZOA is the FedRAMP-compliant operational access framework. Operators execute pre-approved Trusted Actions via a mediated API instead of using kubectl, SSH, or IAM role assumption. Every action is auditable (DynamoDB), artifact-producing (S3, KMS-encrypted), time-bounded, and least-privileged (per-execution RBAC). Trusted Action templates are defined as YAML in the platform repo and dispatched to target clusters via Maestro ManifestWorks. See `docs/design/zoa-architecture.md`, `docs/design/zoa-trusted-actions.md`, and `docs/design/zoa-security-model.md`.
+
 ## Key Technologies
 
 - **Compute**: Amazon EKS (Regional + Management Clusters)
@@ -36,7 +40,8 @@ The **ROSA Regional Platform** is a strategic redesign of Red Hat OpenShift Serv
 - **Storage**: Amazon RDS (CLM state), EBS volumes
 - **Identity**: AWS IAM for authentication and authorization
 - **Infrastructure**: Terraform modules with GitOps patterns
-- **CI/CD**: ArgoCD (apps), Tekton (infrastructure pipelines)
+- **CI/CD**: ArgoCD (apps), AWS CodePipeline (infrastructure pipelines)
+- **Operational Access**: ZOA Trusted Actions (DynamoDB, S3, KMS, EKS Pod Identity)
 - **Messaging**: Maestro (MQTT-based resource distribution)
 - **Languages**: Go (primary backend), Shell scripting
 - **Container Orchestration**: Kubernetes via EKS
@@ -86,16 +91,21 @@ The portfolio view JQL combines both: the ROSAENG component filter plus the ROSA
 
 ```
 terraform/
-├── modules/eks-cluster/        # EKS with private bootstrap
-├── modules/ecs-bootstrap/      # Fargate bootstrap tasks
-└── config/                    # Cluster configuration templates
+├── modules/eks-cluster/              # EKS with private bootstrap
+├── modules/ecs-bootstrap/            # Fargate bootstrap tasks
+├── modules/zoa/                      # ZOA infrastructure (DynamoDB, S3, KMS, IAM)
+├── modules/zoa-job-pod-identity/     # Per-cluster EKS Pod Identity for ZOA jobs
+└── config/                           # Cluster configuration templates
 
 argocd/
 ├── config/                   # Live Helm chart configurations
 │   ├── management-cluster/   # MC application templates
 │   ├── regional-cluster/     # RC application templates
-│   └── shared/              # Shared configurations
+│   └── shared/              # Shared configurations (incl. zoa-jobs chart)
 └── README.md
+
+images/
+└── zoa-tools/                # ZOA tools container image (aws-cli, kubectl, jq)
 
 .ambient/
 ├── ci-analyser-agent/        # Nightly CI failure diagnosis & fix PRs (rrp-bot)

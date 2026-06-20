@@ -17,15 +17,19 @@ rosa-regional-platform/
 │       ├── applicationset/           # ApplicationSet templates
 │       ├── management-cluster/       # Management cluster application templates
 │       ├── regional-cluster/         # Regional cluster application templates
-│       └── shared/                   # Shared configurations (ArgoCD, etc.)
+│       └── shared/                   # Shared configurations (ArgoCD, ZOA jobs, etc.)
 ├── ci/                               # CI automation (e2e tests)
 ├── deploy/                           # Per-environment deployment configs
 ├── docs/                             # Design documents and presentations
 ├── hack/                             # Developer utility scripts
+├── images/
+│   └── zoa-tools/                    # ZOA tools container image
 ├── scripts/                          # Dev and pipeline scripts
 └── terraform/
     ├── config/                       # Terraform root configurations
     └── modules/                      # Reusable Terraform modules
+        ├── zoa/                      # ZOA infrastructure (DynamoDB, S3, KMS, IAM)
+        └── zoa-job-pod-identity/     # Per-cluster EKS Pod Identity for ZOA jobs
 ```
 
 ## Getting Started

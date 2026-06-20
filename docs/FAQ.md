@@ -4,7 +4,7 @@ The regional architecture is designed exclusively for **ROSA HCP** (Hosted Contr
 
 ### What is the Regional Cluster and what services run on it?
 
-The Regional Cluster (RC) is an EKS-based cluster running core regional services (Platform API, CLM, Maestro, ArgoCD, Tekton). For the complete three-layer architecture and component details, see [Architecture at a Glance](README.md#architecture-at-a-glance).
+The Regional Cluster (RC) is an EKS-based cluster running core regional services (Platform API, CLM, Maestro, ArgoCD, ZOA). For the complete three-layer architecture and component details, see [Architecture at a Glance](README.md#architecture-at-a-glance).
 
 ### What is the difference between the Regional Cluster and the Regional-Access Cluster?
 

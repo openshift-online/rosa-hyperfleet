@@ -10,7 +10,7 @@ The goal is to improve reliability, reduce dependencies on global services, and 
 
 The architecture consists of three layers within each region:
 
-1. **Regional Cluster (RC)** - EKS-based cluster running core services (Platform API, CLM, Maestro, ArgoCD, Tekton)
+1. **Regional Cluster (RC)** - EKS-based cluster running core services (Platform API, CLM, Maestro, ArgoCD, ZOA)
 2. **Management Clusters (MC)** - EKS clusters hosting customer Hosted Control Planes via HyperShift
 3. **Customer Hosted Clusters** - ROSA HCP clusters with control planes in MCs and workers in customer accounts
 
@@ -22,6 +22,8 @@ Detailed architecture and rationale for key technical decisions:
 
 | Document                                                                           | Topic                                                              |
 | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| [Alerting Architecture](design/alerting-architecture.md)                           | Fan-out alert routing via AlertManager and SNS                     |
+| [AWS IAM Hosted Cluster Auth](design/aws-iam-hosted-cluster-authentication.md)     | aws-iam-authenticator KAS sidecar for customer cluster access      |
 | [DNS Architecture](design/dns-architecture.md)                                     | Hierarchical DNS with zone shards, `deployment_name`, DNSSEC chain |
 | [ECS Fargate Bootstrap](design/fully-private-eks-bootstrap.md)                     | How fully private EKS clusters are bootstrapped via ECS            |
 | [FIPS-Only EKS Compute](design/fips-eks-compute.md)                                | FIPS NodeClass/NodePool strategy for FedRAMP workload nodes        |
@@ -33,7 +35,9 @@ Detailed architecture and rationale for key technical decisions:
 | [Monitoring Platform](design/monitoring-platform.md)                               | Metrics pipeline (Prometheus + Thanos)                             |
 | [Pipeline-Based Lifecycle](design/pipeline-based-lifecycle.md)                     | CodePipeline hierarchy for cluster provisioning                    |
 | [Regional Account Minting](design/regional-account-minting.md)                     | AWS account structure and minting pipelines                        |
+| [Regional OIDC Ownership](design/regional-oidc-ownership.md)                       | Shared OIDC S3 bucket and CloudFront per region                    |
 | [Terraform Resource Adoption](design/terraform-resource-adoption.md)               | Idempotent import of auto-created AWS resources into Terraform     |
+| [Spec-to-PR Agent](design/spec-to-pr-agent.md)                                     | Automated implementation workflow from specs                       |
 | [Testing Strategy](design/testing-strategy.md)                                     | Ephemeral and long-lived test environments                         |
 | [Thanos Metrics Infrastructure](design/thanos-metrics-infrastructure.md)           | Thanos S3 storage, operator, and Pod Identity setup                |
 | [ZOA Architecture](design/zoa-architecture.md)                                     | Zero Operator Access — system components, flows, infrastructure    |
@@ -72,6 +76,10 @@ Each module has its own README with usage, inputs, outputs, and architecture:
 - [`maestro-agent`](../terraform/modules/maestro-agent/README.md) - IAM and Pod Identity for Maestro Agent
 - [`grafana-cloudwatch-logs`](../terraform/modules/grafana-cloudwatch-logs/) - IAM + Pod Identity for Grafana CloudWatch Logs datasources (RC primary + MC reader)
 - [`hyperfleet-infrastructure`](../terraform/modules/hyperfleet-infrastructure/README.md) - RDS, Amazon MQ, IAM for HyperFleet (CLM)
+- [`pipeline-notifications`](../terraform/modules/pipeline-notifications/README.md) - SNS topics and subscriptions for pipeline alerts
+- [`rhobs-api-gateway`](../terraform/modules/rhobs-api-gateway/README.md) - RHOBS API Gateway for cross-account metrics ingestion
+- `zoa` - ZOA infrastructure (DynamoDB, S3, KMS, IAM)
+- `zoa-job-pod-identity` - Per-cluster EKS Pod Identity for ZOA jobs
 
 ### ArgoCD Helm Chart Documentation
 
