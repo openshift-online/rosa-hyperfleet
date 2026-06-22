@@ -99,10 +99,6 @@ flowchart TB
    - Injects the `aws-iam-authenticator` sidecar into the KAS pod (EKS Distro image, listening on port 21362)
    - Redirects the KAS webhook token config to `https://localhost:21362/authenticate`
 
-### ManifestWork Resource Ordering
-
-The `aws-iam-auth-config` ConfigMap must precede the `HostedCluster` in the ManifestWork resource list. The HC controller only syncs the ConfigMap to the HCP namespace when it reconciles the HostedCluster — if the HostedCluster is applied first, the ConfigMap may not exist yet, and the sidecar starts without a valid config. The ConfigMap also requires the `hypershift.openshift.io/cluster` annotation so the HC controller can associate it with the correct HostedCluster during reconciliation.
-
 ### Empty ConfigMap Handling
 
 If `creatorARN` is not set (e.g. API change not deployed), the ConfigMap is still emitted with an empty `mapUsers: []`. The sidecar starts and serves normally but rejects all tokens — KAS falls through to other auth methods (client certs). This avoids deployment ordering issues.
