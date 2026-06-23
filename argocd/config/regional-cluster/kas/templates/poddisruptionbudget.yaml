@@ -1,0 +1,15 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "kas.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kas.labels" . | nindent 4 }}
+spec:
+  # Always keep at least one replica available during voluntary disruptions
+  # (node drain, rolling updates). With 2 replicas this allows one to be
+  # disrupted at a time.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "kas.selectorLabels" . | nindent 6 }}

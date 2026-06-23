@@ -1,0 +1,87 @@
+# KAS Helm Chart Values
+#
+# Deploys a standalone Kubernetes API Server (kube-apiserver) backed by the
+# Kine etcd shim pointing at AWS RDS PostgreSQL. Intended for use as the
+# CLM (Cluster Lifecycle Manager) state store, replacing HyperFleet API.
+#
+# Runtime values (role ARN, secret name) are injected by the ArgoCD
+# ApplicationSet from Terraform outputs via cluster annotations.
+
+kas:
+  # Kubernetes namespace for all KAS resources
+  namespace: kas-system
+
+  serviceAccount:
+    name: kas-sa
+    # eks.amazonaws.com/role-arn is injected by the ArgoCD ApplicationSet
+    # from the kas_role_arn Terraform output.
+    annotations: {}
+
+  # Kine: etcd-shim that translates etcd v3 gRPC to PostgreSQL queries
+  kine:
+    image:
+      repository: ghcr.io/k3s-io/kine
+      tag: v0.16.2
+      pullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  # kube-apiserver: standalone Kubernetes API server
+  # Version aligned with HyperShift 4.23 (k8s.io/api v0.35.x = Kubernetes 1.35)
+  apiserver:
+    image:
+      repository: registry.k8s.io/kube-apiserver
+      tag: v1.35.6
+      pullPolicy: IfNotPresent
+    # Service CIDR for the KAS — must not overlap with the RC EKS service CIDR
+    serviceClusterIPRange: 10.96.0.0/12
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+
+  deployment:
+    replicas: 2
+    # Number of availability zones for topology spread constraints
+    zoneCount: 3
+
+  db:
+    sslMode: require
+    # Secrets Manager secret name for DB credentials.
+    # Injected by ApplicationSet: "${cluster_name}-kas-db-credentials"
+    secretName: ""
+
+  tls:
+    # Name of the K8s Secret created by the kas-tls cert-manager Certificate
+    serverSecretName: kas-tls
+    # ClusterIssuer that signs the KAS server cert (created by cert-manager chart)
+    caIssuerName: kas-ca-issuer
+    # Name of the K8s Secret containing the self-signed CA (created by cert-manager chart)
+    caSecretName: kas-ca-tls
+
+  saSigningKey:
+    # Name of the K8s Secret created by the kas-sa-signing-key Certificate
+    secretName: kas-sa-signing-key
+
+  service:
+    port: 6443
+
+  probes:
+    liveness:
+      initialDelaySeconds: 30
+      periodSeconds: 15
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readiness:
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3

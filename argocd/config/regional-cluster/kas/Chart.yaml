@@ -1,0 +1,16 @@
+apiVersion: v2
+name: kas
+description: Kubernetes API Server backed by Kine with AWS RDS PostgreSQL
+type: application
+version: 0.1.0
+appVersion: "v1.35.6"
+home: https://github.com/openshift-online/rosa-regional-platform
+maintainers:
+  - name: ROSA Regional Platform Team
+keywords:
+  - kas
+  - kine
+  - kubernetes
+  - apiserver
+  - rosa
+  - eks

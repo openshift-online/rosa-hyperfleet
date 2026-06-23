@@ -1,0 +1,63 @@
+# =============================================================================
+# KAS TLS Certificate
+#
+# Issued by kas-ca-issuer (created by the cert-manager chart).
+# Covers all in-cluster DNS names for the KAS service.
+# The resulting Secret (kas-tls) contains: ca.crt, tls.crt, tls.key
+# =============================================================================
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: kas-tls
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kas.labels" . | nindent 4 }}
+  annotations:
+    # CRD may not exist yet if cert-manager hasn't fully synced
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  secretName: {{ .Values.kas.tls.serverSecretName }}
+  issuerRef:
+    name: {{ .Values.kas.tls.caIssuerName }}
+    kind: ClusterIssuer
+  dnsNames:
+    - kas
+    - kas.{{ .Release.Namespace }}
+    - kas.{{ .Release.Namespace }}.svc
+    - kas.{{ .Release.Namespace }}.svc.cluster.local
+  duration: 8760h    # 1 year
+  renewBefore: 720h  # 30 days before expiry
+---
+# =============================================================================
+# KAS Service Account Signing Key
+#
+# RSA key pair used by kube-apiserver for signing and verifying ServiceAccount
+# tokens. Issued as a cert-manager Certificate so rotation is handled
+# automatically and the key is stored as a standard K8s Secret.
+#
+# Note: kube-apiserver uses --service-account-key-file (public, for verify)
+# and --service-account-signing-key-file (private, for sign). cert-manager
+# stores the private key as tls.key and the public key as tls.crt.
+# =============================================================================
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: kas-sa-signing-key
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kas.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  secretName: {{ .Values.kas.saSigningKey.secretName }}
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+  privateKey:
+    algorithm: RSA
+    size: 4096
+  usages:
+    - digital signature
+  commonName: kas-sa-signing-key
+  duration: 87600h   # 10 years — SA signing keys are long-lived
+  renewBefore: 720h

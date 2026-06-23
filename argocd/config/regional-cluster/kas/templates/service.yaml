@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kas
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kas.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "kas.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: https
+      port: {{ .Values.kas.service.port }}
+      targetPort: https
+      protocol: TCP

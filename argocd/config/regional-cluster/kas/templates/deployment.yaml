@@ -1,0 +1,207 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kas
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kas.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.kas.deployment.replicas }}
+  selector:
+    matchLabels:
+      {{- include "kas.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "kas.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "kas.serviceAccountName" . }}
+      {{- if gt (int .Values.kas.deployment.zoneCount) 0 }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "kas.selectorLabels" . | nindent 14 }}
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "kas.selectorLabels" . | nindent 14 }}
+      {{- end }}
+      volumes:
+        # CSI secrets-store volume — mounting this triggers the SecretProviderClass
+        # to fetch credentials from Secrets Manager and create the kas-db-credentials
+        # K8s Secret. Both containers mount this to ensure the secret exists before use.
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ include "kas.fullname" . }}-secrets
+        # Shared Unix socket between kine and kube-apiserver (localhost IPC)
+        - name: kine-socket
+          emptyDir: {}
+        # KAS server TLS certificate (issued by cert-manager via kas-tls Certificate)
+        # Contains: ca.crt, tls.crt, tls.key
+        - name: kas-tls
+          secret:
+            secretName: {{ .Values.kas.tls.serverSecretName }}
+        # KAS CA certificate — needed by kube-apiserver as --client-ca-file
+        # for verifying client certificates (separate from server cert)
+        - name: kas-ca
+          secret:
+            secretName: {{ .Values.kas.tls.caSecretName }}
+        # ServiceAccount signing key pair (issued by cert-manager)
+        # Contains: tls.key (private — for signing), tls.crt (public — for verification)
+        - name: kas-sa-signing-key
+          secret:
+            secretName: {{ .Values.kas.saSigningKey.secretName }}
+      initContainers:
+        # Wait for kine to create its Unix socket before starting kube-apiserver.
+        # kube-apiserver fails immediately if --etcd-servers is not reachable.
+        - name: wait-for-kine
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for kine socket at /tmp/kine.sock..."
+              until [ -S /tmp/kine.sock ]; do
+                sleep 1
+              done
+              echo "kine socket ready"
+          volumeMounts:
+            - name: kine-socket
+              mountPath: /tmp
+      containers:
+        # =======================================================================
+        # kine: etcd-shim that translates etcd v3 gRPC to PostgreSQL
+        # Listens on a Unix domain socket shared with kube-apiserver.
+        # =======================================================================
+        - name: kine
+          image: "{{ .Values.kas.kine.image.repository }}:{{ .Values.kas.kine.image.tag }}"
+          imagePullPolicy: {{ .Values.kas.kine.image.pullPolicy }}
+          command:
+            - kine
+            - --endpoint=postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode={{ .Values.kas.db.sslMode }}
+            - --listen-address=unix:///tmp/kine.sock
+          env:
+            # DB credentials sourced from the kas-db-credentials K8s Secret,
+            # which is created by the SecretProviderClass above.
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: kas-db-credentials
+                  key: db.user
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kas-db-credentials
+                  key: db.password
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: kas-db-credentials
+                  key: db.host
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: kas-db-credentials
+                  key: db.port
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: kas-db-credentials
+                  key: db.name
+          volumeMounts:
+            # Must mount secrets-store to trigger SecretProviderClass secret creation
+            - name: secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
+            - name: kine-socket
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: {{ .Values.kas.kine.resources.requests.cpu | quote }}
+              memory: {{ .Values.kas.kine.resources.requests.memory | quote }}
+            limits:
+              cpu: {{ .Values.kas.kine.resources.limits.cpu | quote }}
+              memory: {{ .Values.kas.kine.resources.limits.memory | quote }}
+        # =======================================================================
+        # kube-apiserver: standalone Kubernetes API server
+        # Uses kine Unix socket as its etcd backend (localhost IPC, no network hop).
+        # =======================================================================
+        - name: kube-apiserver
+          image: "{{ .Values.kas.apiserver.image.repository }}:{{ .Values.kas.apiserver.image.tag }}"
+          imagePullPolicy: {{ .Values.kas.apiserver.image.pullPolicy }}
+          command:
+            - kube-apiserver
+            # Storage backend: Kine Unix socket (etcd v3 gRPC)
+            - --etcd-servers=unix:///tmp/kine.sock
+            # Networking
+            - --service-cluster-ip-range={{ .Values.kas.apiserver.serviceClusterIPRange }}
+            # Authorization: RBAC only — sufficient for CLM controller and platform-api
+            - --authorization-mode=RBAC
+            - --anonymous-auth=false
+            # TLS — server certificate issued by cert-manager (kas-tls Secret)
+            - --tls-cert-file=/etc/kas/tls/tls.crt
+            - --tls-private-key-file=/etc/kas/tls/tls.key
+            # Client CA — used to verify client certs (e.g. controller kubeconfigs)
+            - --client-ca-file=/etc/kas/ca/tls.crt
+            # ServiceAccount token signing
+            - --service-account-key-file=/etc/kas/sa/tls.crt
+            - --service-account-signing-key-file=/etc/kas/sa/tls.key
+            - --service-account-issuer=https://kas.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.kas.service.port }}
+            # Admission: NodeRestriction limits what kubelets (if any) can modify
+            - --enable-admission-plugins=NodeRestriction
+            # RequestHeader passthrough (for aggregated APIs if needed in future)
+            - --requestheader-client-ca-file=/etc/kas/ca/tls.crt
+          volumeMounts:
+            - name: kine-socket
+              mountPath: /tmp
+            - name: kas-tls
+              mountPath: /etc/kas/tls
+              readOnly: true
+            - name: kas-ca
+              mountPath: /etc/kas/ca
+              readOnly: true
+            - name: kas-sa-signing-key
+              mountPath: /etc/kas/sa
+              readOnly: true
+          ports:
+            - name: https
+              containerPort: {{ .Values.kas.service.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: {{ .Values.kas.service.port }}
+              scheme: HTTPS
+            initialDelaySeconds: {{ .Values.kas.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.kas.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.kas.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.kas.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: {{ .Values.kas.service.port }}
+              scheme: HTTPS
+            initialDelaySeconds: {{ .Values.kas.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.kas.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.kas.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.kas.probes.readiness.failureThreshold }}
+          resources:
+            requests:
+              cpu: {{ .Values.kas.apiserver.resources.requests.cpu | quote }}
+              memory: {{ .Values.kas.apiserver.resources.requests.memory | quote }}
+            limits:
+              cpu: {{ .Values.kas.apiserver.resources.limits.cpu | quote }}
+              memory: {{ .Values.kas.apiserver.resources.limits.memory | quote }}

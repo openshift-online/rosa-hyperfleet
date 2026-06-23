@@ -114,6 +114,12 @@ spec:
             hyperfleetAdapter:
               aws:
                 region: '{{ .metadata.labels.aws_region }}'
+            kas:
+              serviceAccount:
+                annotations:
+                  eks.amazonaws.com/role-arn: '{{ .metadata.annotations.kas_role_arn }}'
+              db:
+                secretName: '{{ .metadata.labels.cluster_name }}-kas-db-credentials'
         path: '{{ .path.path }}'
         repoURL: '{{ .metadata.annotations.git_repo }}'
         targetRevision: '{{ .metadata.annotations.git_revision }}'

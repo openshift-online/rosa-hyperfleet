@@ -445,6 +445,28 @@ module "hyperfleet_infrastructure" {
 }
 
 # =============================================================================
+# KAS Infrastructure Module — Kubernetes API Server backed by Kine (RDS)
+# =============================================================================
+
+module "kas_infrastructure" {
+  source = "../../modules/kas-infrastructure"
+
+  regional_id                           = var.regional_id
+  vpc_id                                = module.vpc.vpc_id
+  private_subnets                       = module.vpc.private_subnet_ids
+  eks_cluster_name                      = module.regional_cluster.cluster_name
+  eks_cluster_security_group_id         = module.vpc.cluster_security_group_id
+  eks_cluster_primary_security_group_id = module.regional_cluster.node_security_group_id
+
+  bastion_enabled           = var.enable_bastion
+  bastion_security_group_id = var.enable_bastion ? module.bastion[0].security_group_id : null
+
+  db_instance_class      = var.kas_db_instance_class
+  db_multi_az            = var.kas_db_multi_az
+  db_deletion_protection = var.kas_db_deletion_protection
+}
+
+# =============================================================================
 # CloudWatch Exporter (Pod Identity for YACE)
 # =============================================================================
 

@@ -379,6 +379,50 @@ output "hyperfleet_configuration_summary" {
 }
 
 # =============================================================================
+# KAS Infrastructure Outputs
+# =============================================================================
+
+# RDS Database
+output "kas_rds_endpoint" {
+  description = "KAS RDS PostgreSQL endpoint (hostname:port)"
+  value       = module.kas_infrastructure.rds_endpoint
+}
+
+output "kas_rds_address" {
+  description = "KAS RDS PostgreSQL hostname"
+  value       = module.kas_infrastructure.rds_address
+}
+
+output "kas_rds_port" {
+  description = "KAS RDS PostgreSQL port"
+  value       = module.kas_infrastructure.rds_port
+}
+
+output "kas_rds_database_name" {
+  description = "KAS PostgreSQL database name"
+  value       = module.kas_infrastructure.rds_database_name
+}
+
+# Secrets Manager
+output "kas_db_secret_name" {
+  description = "Secrets Manager secret name for KAS database credentials"
+  value       = module.kas_infrastructure.db_secret_name
+}
+
+# IAM Roles
+output "kas_role_arn" {
+  description = "IAM role ARN for KAS server (Pod Identity)"
+  value       = module.kas_infrastructure.kas_role_arn
+}
+
+# Configuration Summary
+output "kas_configuration_summary" {
+  description = "Complete KAS infrastructure configuration for use in Helm values"
+  value       = module.kas_infrastructure.configuration_summary
+  sensitive   = true
+}
+
+# =============================================================================
 # CloudWatch Exporter Outputs
 # =============================================================================
 

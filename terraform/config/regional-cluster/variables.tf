@@ -301,6 +301,28 @@ variable "hyperfleet_mq_deployment_mode" {
 }
 
 # =============================================================================
+# KAS Configuration Variables
+# =============================================================================
+
+variable "kas_db_instance_class" {
+  description = "RDS instance class for KAS PostgreSQL database (Kine backend)"
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "kas_db_multi_az" {
+  description = "Enable Multi-AZ deployment for KAS RDS (recommended for production)"
+  type        = bool
+  default     = false
+}
+
+variable "kas_db_deletion_protection" {
+  description = "Enable deletion protection for KAS RDS instance (recommended for production)"
+  type        = bool
+  default     = false
+}
+
+# =============================================================================
 # Regional OIDC Configuration Variables
 # =============================================================================
 

@@ -1,0 +1,64 @@
+# =============================================================================
+# cert-manager ClusterIssuers for the Regional Cluster
+#
+# Unlike the Management Cluster, the RC does not serve public TLS certificates.
+# We only need an internal self-signed CA chain for in-cluster KAS TLS.
+#
+# Chain:
+#   selfsigned-issuer (SelfSigned ClusterIssuer)
+#     └─▶ kas-ca (CA Certificate in kas-system)
+#           └─▶ kas-ca-issuer (CA ClusterIssuer)
+#                 └─▶ kas-tls (KAS server cert, issued by kas chart)
+# =============================================================================
+
+# Bootstrap issuer: signs the KAS CA certificate using cert-manager's own
+# self-signed mechanism. This issuer has no backing CA — it self-signs whatever
+# Certificate points at it.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+  annotations:
+    # CRD may not exist yet when ArgoCD dry-runs this resource
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  selfSigned: {}
+---
+# Namespace for KAS — created here so the kas-ca Certificate below can target
+# it. The kas chart also creates this namespace; whichever applies first wins.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kas-system
+---
+# KAS CA Certificate: a long-lived self-signed CA whose private key lives in
+# kas-system/kas-ca-tls. The kas-ca-issuer ClusterIssuer below uses this
+# Secret to sign the actual KAS server cert.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: kas-ca
+  namespace: kas-system
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  isCA: true
+  commonName: kas-ca
+  secretName: kas-ca-tls
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+  duration: 87600h   # 10 years
+  renewBefore: 720h  # 30 days before expiry
+---
+# CA ClusterIssuer: backed by the kas-ca-tls Secret. All KAS server certs
+# (and the SA signing key cert) are issued by this issuer.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: kas-ca-issuer
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  ca:
+    secretName: kas-ca-tls
