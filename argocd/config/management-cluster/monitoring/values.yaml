@@ -17,23 +17,17 @@ kube-prometheus-stack:
 
   prometheusOperator:
     admissionWebhooks:
-      # Drop "hook-succeeded" from the upstream hook-delete-policy.
-      # If the ArgoCD application controller restarts while a hook Job
-      # is in flight (bootstrap, chart upgrades, node rotation, OOM),
-      # "hook-succeeded" deletes the completed Job before the new
-      # controller can observe it, leaving the sync stuck indefinitely.
-      # Keeping only "before-hook-creation" lets the completed Job
-      # persist until the next sync cleans it up.
+      # During bootstrap, ArgoCD syncs itself and restarts its controllers
+      # while other app syncs are in flight. If a PreSync hook Job completes
+      # while no controller is watching, the Kubernetes TTL controller deletes
+      # the Job (upstream default: 60s) before the replacement controller can
+      # observe it, leaving the sync stuck indefinitely.
+      # Bump to 600s to give the new controller time to come back.
       # Ref: https://github.com/argoproj/argo-cd/issues/21055
-      #      https://github.com/argoproj/argo-cd/issues/4979
-      #
-      # "annotations" targets the PreSync create Job (generates TLS cert),
-      # "patch.annotations" targets the PostSync patch Job (patches webhooks).
-      annotations:
-        helm.sh/hook-delete-policy: before-hook-creation
+      create:
+        ttlSecondsAfterFinished: 600
       patch:
-        annotations:
-          helm.sh/hook-delete-policy: before-hook-creation
+        ttlSecondsAfterFinished: 600
     resources:
       requests:
         cpu: 50m
