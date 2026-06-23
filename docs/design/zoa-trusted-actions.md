@@ -773,32 +773,18 @@ The `force: true` flag bypasses both write cooldown and max concurrent checks:
 
 ### Dispatch Flow (Two-Job Architecture)
 
-```
-Operator (zoa run) → Platform API → Maestro (gRPC CreateManifestWork) → Maestro Agent → Target Cluster
-                                                                                              │
-                                                                                  Applies ManifestWork:
-                                                                                  SA, RBAC, ConfigMaps, Jobs
-                                                                                              │
-                                                                            ┌─────────────────┴────────────────────┐
-                                                                            │                                      │
-                                                                     Runner Job                             Uploader Job
-                                                                     (per-exec SA)                          (static SA: zoa-uploader)
-                                                                            │                                      │
-                                                                   /zoa/entrypoint.sh                     Poll runner (1s loop)
-                                                                     (tee → execution.log)                         │
-                                                                            │                              Read output ConfigMap
-                                                                  Patch output ConfigMap                    Decode base64 → files
-                                                                   (base64: log + output)                          │
-                                                                            │                              aws s3 cp → S3 bucket
-                                                                          Exit                                   Exit
-                                                                            │                                      │
-                                                                            └──────────────────┬───────────────────┘
-                                                                                               │
-Platform API Reconciler (5s loop):                                                             │
-  ← Maestro (GetManifestWork) ← feedbackRules (succeeded/failed + Job timestamps) ←───────────┘
-  → Compute: runner_seconds, upload_seconds, duration_seconds
-  → Delete ResourceBundle (on terminal status, race-safe → cascades cleanup on target cluster)
-  → DynamoDB (status, durations, output_status, revision, updated_at)
+```mermaid
+flowchart TB
+    Op["Operator (zoa run)"] --> API["Platform API"]
+    API --> Maestro["Maestro (gRPC CreateManifestWork)"]
+    Maestro --> Agent["Maestro Agent"]
+    Agent -->|"Applies ManifestWork:\nSA, RBAC, ConfigMaps, Jobs"| TC["Target Cluster"]
+
+    TC --> Runner["Runner Job (per-exec SA)\n/zoa/entrypoint.sh\nPatches output ConfigMap\n(base64: log + output)"]
+    TC --> Uploader["Uploader Job (static SA: zoa-uploader)\nPolls runner (1s loop)\nReads output ConfigMap\naws s3 cp → S3 bucket"]
+
+    Runner --> Reconciler["Platform API Reconciler (5s loop)\nMaestro GetManifestWork ← feedbackRules\nCompute: runner_seconds, upload_seconds\nDelete ResourceBundle → cascades cleanup\nDynamoDB (status, durations, output_status)"]
+    Uploader --> Reconciler
 ```
 
 ### TA Versioning

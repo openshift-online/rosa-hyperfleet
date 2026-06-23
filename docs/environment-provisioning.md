@@ -60,7 +60,7 @@ Push the Regional and Management account IDs to SSM Parameter Store in the Centr
 ENV=my-env
 REGION=us-east-1
 RC_ACCOUNT_ID=123456789012    # Regional Cluster account
-MC_ACCOUNT_ID=987654321098    # Management Cluster account
+MC_ACCOUNT_ID=210987654321    # Management Cluster account
 
 aws ssm put-parameter --name "/infra/${ENV}/${REGION}/account_id" \
   --value "$RC_ACCOUNT_ID" --type String

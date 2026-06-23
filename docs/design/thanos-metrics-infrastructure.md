@@ -123,6 +123,10 @@ All templates are platform-specific resources not provided by either upstream re
 | ThanosCompact          | Compacts and downsamples S3 blocks                  | 1        |
 | ThanosRuler            | Evaluates alerting/recording rules via Thanos Query | 2        |
 
+### Memory Tuning
+
+The Thanos Receive ingester runs with `--enable-auto-gomemlimit` and `--auto-gomemlimit.ratio=0.9` to prevent OOM kills. Without these flags, the Go runtime does not account for the container memory ceiling and can allocate past the cgroup limit, triggering an OOM kill before GC runs. WAL compression (`--tsdb.wal-compression`) is also enabled to reduce memory pressure during block compaction. Future-timestamped samples are rejected with `tooFarInFutureTimeWindow: 5m`.
+
 ### Terraform Resources (`terraform/modules/thanos-infrastructure/`)
 
 - `aws_s3_bucket` — `${cluster_id}-thanos-metrics-${account_id}`, versioning + SSE-KMS + lifecycle policies
