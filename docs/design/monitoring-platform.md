@@ -163,6 +163,7 @@ Grafana on the RC queries Thanos Query Frontend for a unified view of all cluste
 | ArgoCD Application Overview   | RC      | Application sync status, health                                                  |
 | ArgoCD Notifications Overview | RC      | Notification delivery status                                                     |
 | ArgoCD Operational Overview   | RC      | Controller performance, reconciliation                                           |
+| CLM Observability             | RC      | CLM operational metrics, reconciliation rates, queue depths                      |
 
 Additionally, three community dashboards are imported from grafana.com: Node Exporter Full (1860), Kubernetes Cluster Monitoring (7249), and Kubernetes Pods (6417).
 

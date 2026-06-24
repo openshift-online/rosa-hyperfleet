@@ -976,8 +976,7 @@ This network topology demonstrates the fundamental isolation principle: Regional
 
 ### Design Decisions
 
-- **[001-fully-private-eks-bootstrap.md](./001-fully-private-eks-bootstrap.md)** - ECS-based bootstrap strategy for fully private EKS clusters
-- **[maestro-agent-iot-provisioning.md](./maestro-agent-iot-provisioning.md)** - Detailed IoT Core provisioning and certificate management
+- **[fully-private-eks-bootstrap.md](./fully-private-eks-bootstrap.md)** - ECS-based bootstrap strategy for fully private EKS clusters
 
 ### External References
 

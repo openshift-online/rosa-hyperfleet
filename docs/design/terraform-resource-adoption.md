@@ -43,7 +43,7 @@ graph TD
         APPLY[terraform apply]
     end
 
-    subgraph "Import Framework (terraform-import.sh)"
+    subgraph "Import Framework (lib.sh)"
         IIN[import_if_needed]
         TSV[tf_state_value]
         SUM[tf_import_summary]
@@ -76,7 +76,7 @@ graph TD
 
 ```text
 scripts/pipeline-common/
-└── terraform-import.sh          # Generic library (shared across all pipelines)
+└── lib.sh                       # Generic library (shared across all pipelines)
 
 terraform/config/
 ├── regional-cluster/
@@ -179,7 +179,7 @@ Create `imports.sh` if it doesn't exist yet, or append to it. Classify the impor
 ```bash
 #!/usr/bin/env bash
 set -uo pipefail
-source "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/pipeline-common/terraform-import.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/pipeline-common/lib.sh"
 
 echo "--- Importing resources ---"
 
@@ -236,7 +236,7 @@ If the team prefers minimal code:
 2. Remove the specific `import_if_needed` entries from `imports.sh`
 3. If `imports.sh` becomes empty, delete the file entirely (the buildspec's `[ -f imports.sh ]` check handles this gracefully)
 
-The framework library (`terraform-import.sh`) itself should remain as long as any `imports.sh` file exists in the repository.
+The framework library (`lib.sh`) itself should remain as long as any `imports.sh` file exists in the repository.
 
 **Our recommendation is to keep `imports.sh` entries permanently.** The cost is negligible and the safety margin is worth it — environments can be rebuilt, state can be recovered, and the imports will silently do the right thing without anyone having to remember what was migrated.
 

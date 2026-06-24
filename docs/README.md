@@ -36,6 +36,9 @@ Detailed architecture and rationale for key technical decisions:
 | [Terraform Resource Adoption](design/terraform-resource-adoption.md)               | Idempotent import of auto-created AWS resources into Terraform     |
 | [Testing Strategy](design/testing-strategy.md)                                     | Ephemeral and long-lived test environments                         |
 | [Thanos Metrics Infrastructure](design/thanos-metrics-infrastructure.md)           | Thanos S3 storage, operator, and Pod Identity setup                |
+| [Alerting Architecture](design/alerting-architecture.md)                           | Alert routing, silencing, and notification design                  |
+| [AWS IAM Hosted Cluster Auth](design/aws-iam-hosted-cluster-authentication.md)     | IAM authentication for hosted cluster access                       |
+| [Regional OIDC Ownership](design/regional-oidc-ownership.md)                       | OIDC provider lifecycle within regional accounts                   |
 | [ZOA Architecture](design/zoa-architecture.md)                                     | Zero Operator Access — system components, flows, infrastructure    |
 | [ZOA Trusted Actions](design/zoa-trusted-actions.md)                               | TA template format, API design, CLI, dispatch flow                 |
 | [ZOA Security Model](design/zoa-security-model.md)                                 | SA isolation, RBAC, audit trail, threat model, FIPS                |
@@ -70,24 +73,17 @@ Each module has its own README with usage, inputs, outputs, and architecture:
 - [`bastion`](../terraform/modules/bastion/README.md) - Ephemeral bastion for private cluster access
 - [`maestro-infrastructure`](../terraform/modules/maestro-infrastructure/README.md) - IoT Core, RDS, Secrets Manager for Maestro Server
 - [`maestro-agent`](../terraform/modules/maestro-agent/README.md) - IAM and Pod Identity for Maestro Agent
-- [`grafana-cloudwatch-logs`](../terraform/modules/grafana-cloudwatch-logs/) - IAM + Pod Identity for Grafana CloudWatch Logs datasources (RC primary + MC reader)
+- [`grafana-cloudwatch-logs`](../terraform/modules/grafana-cloudwatch-logs/main.tf) - IAM + Pod Identity for Grafana CloudWatch Logs datasources (RC primary + MC reader)
 - [`hyperfleet-infrastructure`](../terraform/modules/hyperfleet-infrastructure/README.md) - RDS, Amazon MQ, IAM for HyperFleet (CLM)
 
 ### ArgoCD Helm Chart Documentation
 
-- [`hyperfleet-api-chart`](../argocd/config/regional-cluster/hyperfleet-api-chart/) - HyperFleet API (CLM)
-- [`hyperfleet-sentinel-chart`](../argocd/config/regional-cluster/hyperfleet-sentinel-chart/) - HyperFleet Sentinel
+- [`hyperfleet-api-chart`](../argocd/config/regional-cluster/hyperfleet-api-chart/Chart.yaml) - HyperFleet API (CLM)
+- [`hyperfleet-sentinel-chart`](../argocd/config/regional-cluster/hyperfleet-sentinel-chart/Chart.yaml) - HyperFleet Sentinel
 - [`hyperfleet-adapter1-chart`](../argocd/config/regional-cluster/hyperfleet-adapter1-chart/README.md) - HyperFleet Adapter (cluster status reporting)
 - [`platform-api`](../argocd/config/regional-cluster/platform-api/README.md) - Platform API with Envoy sidecar
-- [`thanos`](../argocd/config/regional-cluster/thanos/) - Thanos platform resources (CRs, S3 secret, Pod Identity SA, ALB TargetGroupBinding) plus app-of-apps Application that installs the upstream operator
-- [`thanos-operator`](../argocd/config/regional-cluster/thanos-operator/) - Thin wrapper chart that delivers the Thanos operator via OCI-packaged Helm subchart
-
-### Presentations
-
-Slidev-based presentations for project overview and milestones:
-
-- [Project Overview](presentations/project/README.md) - ROSA Regional Platform project presentation
-- [Milestone 1](presentations/milestone-1/README.md) - Full region provisioning demonstration
+- [`thanos`](../argocd/config/regional-cluster/thanos/Chart.yaml) - Thanos platform resources (CRs, S3 secret, Pod Identity SA, ALB TargetGroupBinding) plus app-of-apps Application that installs the upstream operator
+- [`thanos-operator`](../argocd/config/regional-cluster/thanos-operator/Chart.yaml) - Thin wrapper chart that delivers the Thanos operator via OCI-packaged Helm subchart
 
 ## Scope
 
