@@ -184,3 +184,16 @@ module "grafana_cloudwatch_logs" {
   regional_id             = var.management_id
   grafana_role_account_id = var.regional_aws_account_id
 }
+
+# =============================================================================
+# kube-applier (DynamoDB-backed GitOps controller)
+# =============================================================================
+
+module "kube_applier" {
+  source = "../../modules/kube-applier"
+
+  management_id     = var.management_id
+  eks_cluster_name  = module.management_cluster.cluster_name
+  rc_aws_account_id = var.regional_aws_account_id
+  aws_region        = var.region
+}

@@ -173,3 +173,11 @@ output "cloudwatch_exporter_role_arn" {
   description = "IAM role ARN for CloudWatch Exporter (Pod Identity)"
   value       = module.cloudwatch_exporter.role_arn
 }
+# =============================================================================
+# kube-applier Outputs
+# =============================================================================
+
+output "kube_applier_role_arn" {
+  description = "IAM role ARN for the kube-applier-aws controller"
+  value       = module.kube_applier.kube_applier_role_arn
+}
