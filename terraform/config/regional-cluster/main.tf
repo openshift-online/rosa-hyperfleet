@@ -51,6 +51,9 @@ provider "pagerduty" {
 # =============================================================================
 
 data "aws_caller_identity" "current" {}
+data "aws_caller_identity" "central" {
+  provider = aws.central
+}
 
 locals {
   mc_entries     = var.management_clusters != "" ? split(",", var.management_clusters) : []
@@ -127,6 +130,31 @@ resource "aws_iam_role_policy" "eso_secretsmanager" {
       Resource = "arn:aws:secretsmanager:${var.region}:${data.aws_caller_identity.current.account_id}:secret:${var.regional_id}-*"
     }]
   })
+}
+
+resource "aws_iam_role_policy" "eso_central_secretsmanager" {
+  count = var.enable_grafana_ingress ? 1 : 0
+  name  = "${var.regional_id}-eso-central-secretsmanager"
+  role  = aws_iam_role.external_secrets_operator.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+      ]
+      Resource = "arn:aws:secretsmanager:${var.region}:${data.aws_caller_identity.central.account_id}:secret:sso/rh-internal-*"
+    }]
+  })
+}
+
+resource "aws_ssm_parameter" "grafana_sso_secret_arn" {
+  count = var.enable_grafana_ingress ? 1 : 0
+  name  = "/${var.regional_id}/sso/rh-internal-secret-arn"
+  type  = "String"
+  value = "arn:aws:secretsmanager:${var.region}:${data.aws_caller_identity.central.account_id}:secret:sso/rh-internal"
 }
 
 resource "aws_eks_pod_identity_association" "external_secrets_operator" {

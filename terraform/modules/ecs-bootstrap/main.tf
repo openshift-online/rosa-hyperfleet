@@ -211,6 +211,7 @@ resource "aws_ecs_task_definition" "bootstrap" {
               loki_distributor_target_group_arn: "$LOKI_DISTRIBUTOR_TARGET_GROUP_ARN"
               loki_query_frontend_target_group_arn: "$LOKI_QUERY_FRONTEND_TARGET_GROUP_ARN"
               grafana_target_group_arn: "$GRAFANA_TARGET_GROUP_ARN"
+              grafana_sso_secret_arn: "$GRAFANA_SSO_SECRET_ARN"
               aws_account_id: "$AWS_ACCOUNT_ID"
               management_clusters: "$MANAGEMENT_CLUSTERS"
               rhobs_api_url: "$RHOBS_API_URL"

@@ -82,6 +82,8 @@ spec:
             grafana:
               targetGroup:
                 arn: '{{ .metadata.annotations.grafana_target_group_arn }}'
+              sso:
+                secretArn: '{{ .metadata.annotations.grafana_sso_secret_arn }}'
             # Thanos Operator values (keys must match chart's values.yaml structure)
             thanos:
               kmsKeyArn: '{{ .metadata.annotations.thanos_kms_key_arn }}'
