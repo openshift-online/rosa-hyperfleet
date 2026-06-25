@@ -51,10 +51,10 @@ resource "aws_dynamodb_table" "specs" {
 
   name         = each.key
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "DocumentID"
+  hash_key     = "documentID"
 
   attribute {
-    name = "DocumentID"
+    name = "documentID"
     type = "S"
   }
 
@@ -83,10 +83,10 @@ resource "aws_dynamodb_table" "status" {
 
   name         = each.key
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "DocumentID"
+  hash_key     = "documentID"
 
   attribute {
-    name = "DocumentID"
+    name = "documentID"
     type = "S"
   }
 
