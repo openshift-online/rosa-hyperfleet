@@ -36,59 +36,14 @@ grafana:
     create: true
     name: grafana
 
+  createConfigmap: false
+
   envFromSecrets:
     - name: grafana-sso
       optional: true
 
-  "grafana.ini":
-    server:
-      root_url: "https://%(domain)s/"
-
-    security:
-      disable_gravatar: true
-
-    database:
-      type: sqlite3
-      path: /var/lib/grafana/grafana.db
-      wal: true
-
-    auth:
-      disable_login_form: false
-
-    "auth.anonymous":
-      enabled: false
-
-    "auth.basic":
-      enabled: false
-
-    "auth.generic_oauth":
-      enabled: true
-      name: Red Hat SSO
-      allow_sign_up: true
-      client_id: $__env{client-id}
-      client_secret: $__env{client-secret}
-      scopes: openid email profile offline_access
-      email_attribute_path: email
-      login_attribute_path: preferred_username
-      name_attribute_path: name
-      auth_url: $__env{oidc-url}/protocol/openid-connect/auth
-      token_url: $__env{oidc-url}/protocol/openid-connect/token
-      api_url: $__env{oidc-url}/protocol/openid-connect/userinfo
-      skip_org_role_sync: true
-      auto_login: true
-
-    users:
-      allow_sign_up: false
-      auto_assign_org_role: Admin
-
-    analytics:
-      reporting_enabled: false
-      check_for_updates: false
-      check_for_plugin_updates: false
-
-    log:
-      mode: console
-      level: info
+  envFromConfigMaps:
+    - name: grafana-region-env
 
   service:
     type: ClusterIP
@@ -97,9 +52,6 @@ grafana:
 
   persistence:
     enabled: false
-
-  envFromConfigMaps:
-    - name: grafana-region-env
 
   datasources:
     datasources.yaml:
