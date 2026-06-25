@@ -50,5 +50,6 @@ global:
   cluster_name: ""
   aws_region: ""
   aws_account_id: ""
+  rc_aws_account_id: ""
   environment: ""
   cluster_type: ""

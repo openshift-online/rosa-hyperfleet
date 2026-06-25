@@ -29,8 +29,8 @@ spec:
             - --management-cluster={{ .Values.global.cluster_name }}
             - --aws-region={{ .Values.global.aws_region }}
             - --namespace={{ .Release.Namespace }}
-            - --specs-table=mc-{{ .Values.global.cluster_name }}-specs
-            - --status-table=mc-{{ .Values.global.cluster_name }}-status
+            - --specs-table=arn:aws:dynamodb:{{ .Values.global.aws_region }}:{{ .Values.global.rc_aws_account_id }}:table/mc-{{ .Values.global.cluster_name }}-specs
+            - --status-table=arn:aws:dynamodb:{{ .Values.global.aws_region }}:{{ .Values.global.rc_aws_account_id }}:table/mc-{{ .Values.global.cluster_name }}-status
             - --metrics-listen-address={{ .Values.kubeApplier.config.metricsListenAddress }}
             - --healthz-listen-address={{ .Values.kubeApplier.config.healthzListenAddress }}
             - --leader-election-id={{ .Values.kubeApplier.config.leaderElectionId }}

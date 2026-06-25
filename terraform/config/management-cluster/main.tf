@@ -64,6 +64,7 @@ module "ecs_bootstrap" {
   eks_cluster_security_group_id = module.vpc.cluster_security_group_id
   cluster_id                    = var.management_id
   container_image               = var.container_image
+  rc_aws_account_id             = var.regional_aws_account_id
 
   repository_url    = var.repository_url
   repository_branch = var.repository_branch

@@ -65,3 +65,9 @@ variable "management_clusters" {
   default     = ""
 }
 
+variable "rc_aws_account_id" {
+  description = "AWS account ID of the regional cluster where DynamoDB tables reside. Injected into the ArgoCD cluster secret so charts can build cross-account resource ARNs."
+  type        = string
+  default     = ""
+}
+
