@@ -129,36 +129,46 @@ manifests, SBOMs, or a dedicated image list artifact) need to be defined as part
 Authentication to ECR for image pulls is required in two contexts:
 
 1. **MC/RC node pools and system components**: EKS nodes pulling platform operational images from
-   ECR. This is relatively straightforward — EKS node IAM roles can be granted `ecr:GetAuthorizationToken`
-   and `ecr:BatchGetImage` permissions for the relevant repositories, and the kubelet will handle
-   token refresh automatically via the ECR credential provider plugin (enabled by default on EKS).
+   ECR. This is relatively straightforward — EKS node IAM roles can be granted:
+   - `ecr:GetAuthorizationToken` with `Resource: "*"` (this action is account-level and cannot be
+     scoped to specific repositories; attempting to restrict it to a repository ARN results in an
+     `AccessDeniedException`).
+   - `ecr:BatchGetImage` and `ecr:GetDownloadUrlForLayer` with `Resource` limited to the specific
+     repository ARNs for platform and OCP images (least-privilege, repository-scoped).
+
+   The kubelet handles token refresh automatically via the ECR credential provider plugin (enabled
+   by default on EKS).
 
 2. **HCP dataplane pods inside Hosted Clusters**: Pods running inside Hosted Clusters need to pull
-   images from ECR. The most likely scenario is to leverage HyperShift's existing pull secret
-   handling to include an ECR token.
+   images from ECR. Static `imagePullSecrets` are not suitable here because ECR authorization
+   tokens expire after 12 hours, causing image pull failures on any new pod start after token
+   expiry.
 
-   An investigation should determine the specifics of the auth mechanism and will be tightly 
-   integrated with the HyperShift Operator changes. The goal is that a
-   single IAM identity or pull secret mechanism covers both OCP HCP dataplane images and platform
-   operational images from ECR.
+   The preferred approach is a dynamic credential mechanism such as AWS Pod Identity (EKS Pod
+   Identity Associations) or IRSA (IAM Roles for Service Accounts), which allows the HyperShift
+   Operator to obtain short-lived ECR tokens on demand without operator intervention. An
+   investigation should determine which mechanism integrates most cleanly with HyperShift's
+   existing image pull handling (e.g., whether HyperShift can refresh and inject a rotating ECR
+   token into the control plane namespace, or whether a sidecar credential rotation controller is
+   required). The goal is that a single IAM identity or dynamic pull mechanism covers both OCP HCP
+   dataplane images and platform operational images from ECR, with no manual token rotation.
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        Image Pull Flow                              │
-│                                                                     │
-│  MC / RC Nodes                                                      │
-│  ┌─────────────────┐    ECR Credential Provider    ┌─────────────┐ │
-│  │  kubelet        │ ─────────────────────────────▶│  ECR (regional) │ │
-│  │  (node IAM role)│                               │  OCP images  │ │
-│  └─────────────────┘                               │  Platform    │ │
-│                                                    │  images      │ │
-│  HCP Control Plane Pods                            └─────────────┘ │
-│  ┌─────────────────┐    [Existing HyperShift auth]         ▲        │
-│  │  etcd / apiserver│ ─────────────────────────────────────┘        │
-│  │  ingress / etc  │                                                │
-│  └─────────────────┘                                                │
-└─────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+  subgraph MC_RC["MC / RC Nodes"]
+    kubelet["kubelet\n(node IAM role)"]
+  end
 
+  subgraph HCP["HCP Control Plane Pods"]
+    hcp_pods["etcd / apiserver\ningress / etc"]
+  end
+
+  subgraph ECR["ECR (regional)"]
+    ocp_imgs["OCP images\nPlatform images"]
+  end
+
+  kubelet -->|"ECR credential provider\n(auto token refresh)"| ocp_imgs
+  hcp_pods -->|"HyperShift dynamic auth\n(Pod Identity / IRSA)"| ocp_imgs
 ```
 
 ## Consequences
@@ -245,9 +255,12 @@ Authentication to ECR for image pulls is required in two contexts:
    the existing OCP mirroring pipeline? Who owns that pipeline, and what is the process for
    contributing extensions?
 
-4. **Repository naming conventions**: Should platform images share ECR repositories with OCP
-   images (under a common namespace) or live in separate repositories? The answer affects IAM
-   policy scoping and lifecycle rule management.
+4. **Repository naming conventions**: Platform images will be mirrored into the same regional ECR
+   repository structure as OCP images (this is a constraint established in the design). The open
+   question is how to namespace them within that structure — for example, should platform images
+   share the same repository namespace as OCP release images, or live under a distinct
+   platform-specific prefix within the same ECR registry? The answer affects IAM policy scoping
+   (whether a single repository ARN pattern covers both sets) and lifecycle rule management.
 
 5. **Cross-account ECR access for Hosted Cluster nodes**: If Hosted Cluster nodes run in customer
    AWS accounts and need to pull from platform-account ECR repositories, what cross-account IAM
