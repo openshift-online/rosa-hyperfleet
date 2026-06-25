@@ -64,6 +64,7 @@ spec:
               aws_region: '{{ .metadata.labels.aws_region }}'
               cluster_name: '{{ .metadata.labels.cluster_name }}'
               aws_account_id: '{{ .metadata.annotations.aws_account_id }}'
+
               management_clusters: '{{ .metadata.annotations.management_clusters }}'
               rhobs_api_url: '{{ .metadata.annotations.rhobs_api_url }}'
               dns_zone_operator_role_arn: '{{ .metadata.annotations.dns_zone_operator_role_arn }}'

@@ -211,6 +211,7 @@ resource "aws_ecs_task_definition" "bootstrap" {
               loki_distributor_target_group_arn: "$LOKI_DISTRIBUTOR_TARGET_GROUP_ARN"
               loki_query_frontend_target_group_arn: "$LOKI_QUERY_FRONTEND_TARGET_GROUP_ARN"
               aws_account_id: "$AWS_ACCOUNT_ID"
+              rc_aws_account_id: "$RC_AWS_ACCOUNT_ID"
               management_clusters: "$MANAGEMENT_CLUSTERS"
               rhobs_api_url: "$RHOBS_API_URL"
               dns_zone_operator_role_arn: "$DNS_ZONE_OPERATOR_ROLE_ARN"
@@ -281,6 +282,10 @@ resource "aws_ecs_task_definition" "bootstrap" {
         {
           name  = "MANAGEMENT_CLUSTERS"
           value = var.management_clusters
+        },
+        {
+          name  = "RC_AWS_ACCOUNT_ID"
+          value = var.rc_aws_account_id
         }
       ]
 
