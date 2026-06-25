@@ -12,10 +12,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OUT="${SCRIPT_DIR}/data.json"
 
 REPOS=(
-  openshift-online/rosa-regional-platform
-  openshift-online/rosa-regional-platform-api
-  openshift-online/rosa-regional-platform-cli
-  openshift-online/rosa-regional-platform-internal
+  openshift-online/rosa-hyperfleet
+  openshift-online/rosa-hyperfleet-api
+  openshift-online/rosa-hyperfleet-cli
+  openshift-online/rosa-hyperfleet-internal
 )
 
 JSON_FIELDS="number,title,author,labels,reviewRequests,createdAt,updatedAt,url"
@@ -48,7 +48,7 @@ fetch_label "review-ready" > /tmp/rr.json
 echo "Fetching discussion-needed PRs..."
 fetch_label "discussion-needed" > /tmp/dn.json
 
-BOT_AUTHORS="app/dependabot|rosa-regional-platform-ci|rrp-bot"
+BOT_AUTHORS="app/dependabot|rosa-hyperfleet-ci|rrp-bot"
 
 echo "Fetching needs-ok-to-test PRs (bot authors only)..."
 fetch_label "needs-ok-to-test" | jq --arg bots "$BOT_AUTHORS" \
