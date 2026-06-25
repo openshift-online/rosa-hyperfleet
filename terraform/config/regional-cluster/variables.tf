@@ -111,7 +111,11 @@ variable "enable_sns_alerting" {
   default     = false
 }
 
-
+variable "enable_grafana_ingress" {
+  description = "Enable internet-facing Grafana ingress with ALB, ACM cert, and DNS"
+  type        = bool
+  default     = false
+}
 
 # =============================================================================
 # Platform API Variables

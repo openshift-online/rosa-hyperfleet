@@ -505,6 +505,23 @@ module "pagerduty_service" {
 }
 
 # =============================================================================
+# Grafana Ingress (Optional) - Internet-facing ALB for Grafana
+# =============================================================================
+
+module "grafana_ingress" {
+  count  = var.enable_grafana_ingress && var.environment_domain != null ? 1 : 0
+  source = "../../modules/grafana-ingress"
+
+  regional_id             = var.regional_id
+  vpc_id                  = module.vpc.vpc_id
+  public_subnet_ids       = module.vpc.public_subnet_ids
+  node_security_group_id  = module.regional_cluster.node_security_group_id
+  cluster_name            = module.regional_cluster.cluster_name
+  domain_name             = "grafana.${var.deployment_name}.${var.environment_domain}"
+  regional_hosted_zone_id = aws_route53_zone.regional[0].zone_id
+}
+
+# =============================================================================
 # SNS Alerting Module (Phase 2 Alert Fan-Out)
 # =============================================================================
 

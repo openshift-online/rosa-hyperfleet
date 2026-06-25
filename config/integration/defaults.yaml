@@ -15,3 +15,5 @@ management_cluster_defaults:
 observability:
   pagerduty:
     enabled: true
+  grafana_ingress:
+    enabled: true

@@ -471,3 +471,12 @@ output "zoa_kms_key_arn" {
   description = "KMS key ARN for ZOA encryption (used by MC Pod Identity for S3 SSE-KMS)"
   value       = module.zoa.kms_key_arn
 }
+
+# =============================================================================
+# Grafana Ingress Outputs
+# =============================================================================
+
+output "grafana_target_group_arn" {
+  description = "Target group ARN for Grafana TargetGroupBinding"
+  value       = var.enable_grafana_ingress && var.environment_domain != null ? module.grafana_ingress[0].target_group_arn : null
+}
