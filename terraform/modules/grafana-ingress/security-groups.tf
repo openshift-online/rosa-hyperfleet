@@ -30,18 +30,18 @@ resource "aws_vpc_security_group_ingress_rule" "alb_http" {
 
 resource "aws_vpc_security_group_egress_rule" "alb_to_targets" {
   security_group_id            = aws_security_group.alb.id
-  description                  = "Allow traffic to oauth2-proxy pods"
+  description                  = "Allow traffic to Grafana pods"
   ip_protocol                  = "tcp"
-  from_port                    = 4180
-  to_port                      = 4180
+  from_port                    = 3000
+  to_port                      = 3000
   referenced_security_group_id = var.node_security_group_id
 }
 
 resource "aws_vpc_security_group_ingress_rule" "nodes_from_alb" {
   security_group_id            = var.node_security_group_id
-  description                  = "Allow Grafana ALB traffic to oauth2-proxy pods"
+  description                  = "Allow Grafana ALB traffic to Grafana pods"
   ip_protocol                  = "tcp"
-  from_port                    = 4180
-  to_port                      = 4180
+  from_port                    = 3000
+  to_port                      = 3000
   referenced_security_group_id = aws_security_group.alb.id
 }
