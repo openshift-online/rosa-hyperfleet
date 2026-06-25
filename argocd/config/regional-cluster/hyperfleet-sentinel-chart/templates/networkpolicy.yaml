@@ -1,0 +1,46 @@
+{{- if .Values.hyperfleetSentinelChart.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hyperfleet-sentinel
+  namespace: {{ .Values.hyperfleetSentinelChart.targetNamespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: hyperfleet-sentinel
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Health checks (kubelet)
+    - ports:
+        - protocol: TCP
+          port: 8081
+    # Metrics scraping
+    - ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # DNS
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # hyperfleet-api
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: hyperfleet-api
+      ports:
+        - protocol: TCP
+          port: 8000
+    # AmazonMQ RabbitMQ (AMQPS)
+    - ports:
+        - protocol: TCP
+          port: 5671
+    # HTTPS (AWS APIs, secrets store)
+    - ports:
+        - protocol: TCP
+          port: 443
+{{- end }}
