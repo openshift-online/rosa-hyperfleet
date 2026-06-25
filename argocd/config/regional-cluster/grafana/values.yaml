@@ -78,7 +78,7 @@ grafana:
       auto_login: true
 
     users:
-      allow_sign_up: true
+      allow_sign_up: false
       auto_assign_org_role: Admin
 
     analytics:
