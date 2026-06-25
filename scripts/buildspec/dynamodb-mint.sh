@@ -48,6 +48,7 @@ fi
 TEMP_TFVARS=$(mktemp /tmp/dynamodb-mint-XXXXXX.tfvars)
 cat > "$TEMP_TFVARS" <<TFVARS
 management_cluster_id = "${CLUSTER_ID}"
+mc_aws_account_id     = "${TARGET_ACCOUNT_ID}"
 regional_id           = "${REGIONAL_ID}"
 enable_pitr           = ${ENABLE_PITR}
 app_code              = "${APP_CODE}"

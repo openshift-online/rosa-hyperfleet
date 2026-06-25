@@ -37,6 +37,9 @@ locals {
     "mc-${var.mc_name}-status-deletedesires",
     "mc-${var.mc_name}-status-readdesires",
   ])
+
+  # IAM role ARN for the kube-applier pod running in the MC account
+  mc_kube_applier_role_arn = "arn:aws:iam::${var.mc_aws_account_id}:role/${var.mc_name}-kube-applier"
 }
 
 # =============================================================================
@@ -98,4 +101,74 @@ resource "aws_dynamodb_table" "status" {
       TableType = "status"
     }
   )
+}
+
+# =============================================================================
+# Cross-account resource-based policies
+#
+# DynamoDB requires a resource-based policy on the table in addition to the
+# identity-based policy on the caller's role for cross-account access.
+# These grant the MC kube-applier role the minimum required permissions.
+# =============================================================================
+
+resource "aws_dynamodb_resource_policy" "specs" {
+  for_each    = local.specs_tables
+  resource_arn = aws_dynamodb_table.specs[each.key].arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowMCKubeApplierRead"
+        Effect = "Allow"
+        Principal = {
+          AWS = local.mc_kube_applier_role_arn
+        }
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:Scan",
+          "dynamodb:Query",
+        ]
+        Resource = aws_dynamodb_table.specs[each.key].arn
+      },
+      {
+        Sid    = "AllowMCKubeApplierStreams"
+        Effect = "Allow"
+        Principal = {
+          AWS = local.mc_kube_applier_role_arn
+        }
+        Action = [
+          "dynamodb:DescribeStream",
+          "dynamodb:GetRecords",
+          "dynamodb:GetShardIterator",
+          "dynamodb:ListStreams",
+        ]
+        Resource = "${aws_dynamodb_table.specs[each.key].arn}/stream/*"
+      },
+    ]
+  })
+}
+
+resource "aws_dynamodb_resource_policy" "status" {
+  for_each     = local.status_tables
+  resource_arn = aws_dynamodb_table.status[each.key].arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "AllowMCKubeApplierReadWrite"
+      Effect = "Allow"
+      Principal = {
+        AWS = local.mc_kube_applier_role_arn
+      }
+      Action = [
+        "dynamodb:GetItem",
+        "dynamodb:Scan",
+        "dynamodb:Query",
+        "dynamodb:PutItem",
+        "dynamodb:DeleteItem",
+      ]
+      Resource = aws_dynamodb_table.status[each.key].arn
+    }]
+  })
 }

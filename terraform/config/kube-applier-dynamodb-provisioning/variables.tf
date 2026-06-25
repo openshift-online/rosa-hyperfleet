@@ -7,6 +7,16 @@ variable "management_cluster_id" {
   type        = string
 }
 
+variable "mc_aws_account_id" {
+  description = "AWS account ID of the management cluster. Used to grant the MC kube-applier role cross-account DynamoDB access."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9]{12}$", var.mc_aws_account_id))
+    error_message = "mc_aws_account_id must be a 12-digit AWS account ID"
+  }
+}
+
 variable "regional_id" {
   description = "Regional cluster identifier for backend role naming (e.g., 'regional')"
   type        = string

@@ -15,10 +15,11 @@ data "aws_region" "current" {}
 module "kube_applier_dynamodb" {
   source = "../../modules/kube-applier-dynamodb"
 
-  mc_name    = var.management_cluster_id
-  rc_id      = var.regional_id
-  aws_region = data.aws_region.current.name
-  enable_pitr = var.enable_pitr
+  mc_name           = var.management_cluster_id
+  mc_aws_account_id = var.mc_aws_account_id
+  rc_id             = var.regional_id
+  aws_region        = data.aws_region.current.name
+  enable_pitr       = var.enable_pitr
 
   tags = merge(
     var.tags,
