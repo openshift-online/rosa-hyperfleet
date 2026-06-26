@@ -1,6 +1,6 @@
 ---
 name: ic
-description: IC briefing. Checks CI job health, the PR queue, and the ROSAENG-140 epic, then gives the IC a prioritised action list. Can be run multiple times per day for updated information.
+description: IC briefing. Checks CI job health, the PR queue, and the IC queue, then gives the IC a prioritised action list. Can be run multiple times per day for updated information.
 argument-hint: ""
 ---
 
@@ -26,15 +26,13 @@ This outputs a JSON object with:
 - `open_prs` — all open PRs with author, labels, review requests, draft status, and body (description)
 - `recently_merged_prs` — PRs merged in the last 7 days, including body (description)
 
-### 2. ROSAENG-140 epic — Jira
+### 2. IC Queue — Jira
 
-Use the Jira MCP tools to search for all open issues in the epic. Cloud ID is `redhat.atlassian.net`.
+Use the Jira MCP tools to run the saved filter. Cloud ID is `redhat.atlassian.net`.
 
 ```
-"Epic Link" = ROSAENG-140 AND statusCategory != Done ORDER BY priority DESC, created ASC
+filter = 112523
 ```
-
-**Important:** Use `statusCategory != Done` (not `status != Done`). Jira's "Closed" status has statusCategory "Done" but is a different status name.
 
 When analysing results, group issues by whether the `assignee` field is empty (unassigned) or populated (in progress).
 
@@ -96,9 +94,9 @@ List PRs needing IC attention:
 2. `review-ready` PRs without active reviewers (IC should assign or review)
 3. Stale PRs that need a nudge
 
-### ROSAENG-140 — Unassigned Work
+### IC Queue — Unassigned Work
 
-List unassigned items from the epic, prioritised by:
+List unassigned items from the queue, prioritised by:
 
 1. Priority field (Blocker > Critical > Major > Minor > Trivial)
 2. Age (older items first)
@@ -113,5 +111,5 @@ End with a short numbered list (max 5 items) of what the IC should tackle first,
 
 - Red CI jobs with no fix PR are always top priority
 - `rrp-bot` PRs and review-ready PRs are next
-- Unassigned ROSAENG-140 items fill the remaining time
+- Unassigned IC queue items fill the remaining time
 - Remind the IC that this should take ~1 hour; if overwhelmed, pull the Andon Cord and ask the team for help
