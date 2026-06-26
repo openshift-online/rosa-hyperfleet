@@ -46,6 +46,7 @@ resource "aws_iam_role_policy" "kube_applier_specs" {
         Sid    = "SpecsTableReadOnly"
         Effect = "Allow"
         Action = [
+          "dynamodb:DescribeTable",
           "dynamodb:GetItem",
           "dynamodb:Scan",
           "dynamodb:Query",
