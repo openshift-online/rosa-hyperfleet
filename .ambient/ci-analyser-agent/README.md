@@ -6,8 +6,8 @@ You are an automated CI engineer for the ROSA Regional Platform. Monitor nightly
 
 Check the Job History URLs for **each** job:
 
-- **Nightly Ephemeral**: `https://prow.ci.openshift.org/job-history/gs/test-platform-results/logs/periodic-ci-openshift-online-rosa-regional-platform-main-nightly-ephemeral`
-- **Nightly Integration**: `https://prow.ci.openshift.org/job-history/gs/test-platform-results/logs/periodic-ci-openshift-online-rosa-regional-platform-main-nightly-integration`
+- **Nightly Ephemeral**: `https://prow.ci.openshift.org/job-history/gs/test-platform-results/logs/periodic-ci-openshift-online-rosa-hyperfleet-main-nightly-ephemeral`
+- **Nightly Integration**: `https://prow.ci.openshift.org/job-history/gs/test-platform-results/logs/periodic-ci-openshift-online-rosa-hyperfleet-main-nightly-integration`
 
 **Analysis Trigger:** Identify the single most recent run for each job.
 

@@ -1,6 +1,6 @@
 ---
 name: ci-troubleshoot
-description: "Systematically troubleshoot CI test failures by fetching and analyzing Prow job artifacts. Examples: <example>Context: A CI job has failed and the user wants to understand why. user: 'Can you look at this CI failure? https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/openshift-online_rosa-regional-platform/191/pull-ci-openshift-online-rosa-regional-platform-main-on-demand-e2e/1234' assistant: 'I'll use the ci-troubleshoot agent to analyze the failure artifacts and identify the root cause.'</example> <example>Context: The nightly job failed and the user wants a diagnosis. user: 'The nightly-ephemeral job failed last night, can you check it?' assistant: 'I'll use the ci-troubleshoot agent to investigate the nightly-ephemeral failure.'</example>"
+description: "Systematically troubleshoot CI test failures by fetching and analyzing Prow job artifacts. Examples: <example>Context: A CI job has failed and the user wants to understand why. user: 'Can you look at this CI failure? https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/openshift-online_rosa-regional-platform/191/pull-ci-openshift-online-rosa-hyperfleet-main-on-demand-e2e/1234' assistant: 'I'll use the ci-troubleshoot agent to analyze the failure artifacts and identify the root cause.'</example> <example>Context: The nightly job failed and the user wants a diagnosis. user: 'The nightly-ephemeral job failed last night, can you check it?' assistant: 'I'll use the ci-troubleshoot agent to investigate the nightly-ephemeral failure.'</example>"
 tools: WebFetch, WebSearch, Read, Grep, Glob, Bash
 ---
 
@@ -49,8 +49,8 @@ The `<short-job-name>` is the last segment of the job name (e.g., `on-demand-e2e
 
 **Example:**
 
-- Prow: `https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/openshift-online_rosa-regional-platform/191/pull-ci-openshift-online-rosa-regional-platform-main-on-demand-e2e/123456`
-- Artifacts: `https://gcsweb-ci.apps.ci.l2s4.p1.openshiftapps.com/gcs/test-platform-results/pr-logs/pull/openshift-online_rosa-regional-platform/191/pull-ci-openshift-online-rosa-regional-platform-main-on-demand-e2e/123456/artifacts/on-demand-e2e/`
+- Prow: `https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/openshift-online_rosa-regional-platform/191/pull-ci-openshift-online-rosa-hyperfleet-main-on-demand-e2e/123456`
+- Artifacts: `https://gcsweb-ci.apps.ci.l2s4.p1.openshiftapps.com/gcs/test-platform-results/pr-logs/pull/openshift-online_rosa-regional-platform/191/pull-ci-openshift-online-rosa-hyperfleet-main-on-demand-e2e/123456/artifacts/on-demand-e2e/`
 
 Use WebFetch to browse artifact directory listings (HTML pages with links to subdirectories and files).
 
@@ -237,10 +237,10 @@ Present findings in this format:
 
 | Job                    | History URL                                                                                                                                                      |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `check-docs`           | `https://prow.ci.openshift.org/job-history/gs/test-platform-results/pr-logs/directory/pull-ci-openshift-online-rosa-regional-platform-main-check-docs`           |
-| `terraform-validate`   | `https://prow.ci.openshift.org/job-history/gs/test-platform-results/pr-logs/directory/pull-ci-openshift-online-rosa-regional-platform-main-terraform-validate`   |
-| `helm-lint`            | `https://prow.ci.openshift.org/job-history/gs/test-platform-results/pr-logs/directory/pull-ci-openshift-online-rosa-regional-platform-main-helm-lint`            |
-| `check-rendered-files` | `https://prow.ci.openshift.org/job-history/gs/test-platform-results/pr-logs/directory/pull-ci-openshift-online-rosa-regional-platform-main-check-rendered-files` |
-| `on-demand-e2e`        | `https://prow.ci.openshift.org/job-history/gs/test-platform-results/pr-logs/directory/pull-ci-openshift-online-rosa-regional-platform-main-on-demand-e2e`        |
-| `nightly-ephemeral`    | `https://prow.ci.openshift.org/job-history/gs/test-platform-results/logs/periodic-ci-openshift-online-rosa-regional-platform-main-nightly-ephemeral`             |
-| `nightly-integration`  | `https://prow.ci.openshift.org/job-history/gs/test-platform-results/logs/periodic-ci-openshift-online-rosa-regional-platform-main-nightly-integration`           |
+| `check-docs`           | `https://prow.ci.openshift.org/job-history/gs/test-platform-results/pr-logs/directory/pull-ci-openshift-online-rosa-hyperfleet-main-check-docs`           |
+| `terraform-validate`   | `https://prow.ci.openshift.org/job-history/gs/test-platform-results/pr-logs/directory/pull-ci-openshift-online-rosa-hyperfleet-main-terraform-validate`   |
+| `helm-lint`            | `https://prow.ci.openshift.org/job-history/gs/test-platform-results/pr-logs/directory/pull-ci-openshift-online-rosa-hyperfleet-main-helm-lint`            |
+| `check-rendered-files` | `https://prow.ci.openshift.org/job-history/gs/test-platform-results/pr-logs/directory/pull-ci-openshift-online-rosa-hyperfleet-main-check-rendered-files` |
+| `on-demand-e2e`        | `https://prow.ci.openshift.org/job-history/gs/test-platform-results/pr-logs/directory/pull-ci-openshift-online-rosa-hyperfleet-main-on-demand-e2e`        |
+| `nightly-ephemeral`    | `https://prow.ci.openshift.org/job-history/gs/test-platform-results/logs/periodic-ci-openshift-online-rosa-hyperfleet-main-nightly-ephemeral`             |
+| `nightly-integration`  | `https://prow.ci.openshift.org/job-history/gs/test-platform-results/logs/periodic-ci-openshift-online-rosa-hyperfleet-main-nightly-integration`           |

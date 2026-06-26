@@ -19,9 +19,9 @@ The IC is expected to use AI and write automation to reduce the burden on themse
 The IC is responsible for the following tasks:
 
 - Ensure that the CI jobs are running correctly, in particular:
-  - [Nightly Ephemeral](https://prow.ci.openshift.org/job-history/gs/test-platform-results/logs/periodic-ci-openshift-online-rosa-regional-platform-main-nightly-ephemeral)
-  - [Nightly Integration](https://prow.ci.openshift.org/job-history/gs/test-platform-results/logs/periodic-ci-openshift-online-rosa-regional-platform-main-nightly-integration)
-  - [On-demand E2E](https://prow.ci.openshift.org/job-history/gs/test-platform-results/pr-logs/directory/pull-ci-openshift-online-rosa-regional-platform-main-on-demand-e2e)
+  - [Nightly Ephemeral](https://prow.ci.openshift.org/job-history/gs/test-platform-results/logs/periodic-ci-openshift-online-rosa-hyperfleet-main-nightly-ephemeral)
+  - [Nightly Integration](https://prow.ci.openshift.org/job-history/gs/test-platform-results/logs/periodic-ci-openshift-online-rosa-hyperfleet-main-nightly-integration)
+  - [On-demand E2E](https://prow.ci.openshift.org/job-history/gs/test-platform-results/pr-logs/directory/pull-ci-openshift-online-rosa-hyperfleet-main-on-demand-e2e)
     - Note that only consistent, platform-level failures are the IC's responsibility, as opposed to one-off failures caused by the PRs being tested
 - Monitor the PR queue via the [PR Dashboard](https://openshift-online.github.io/rosa-regional-platform/pr-dashboard):
   - Ensure all review-ready PRs have assigned reviewers

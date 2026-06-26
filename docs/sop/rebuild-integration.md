@@ -133,7 +133,7 @@ The RHOBS API Gateway uses a raw `execute-api` URL that changes on every rebuild
    curl -X POST \
        -H "Authorization: Bearer $(oc whoami -t)" \
        'https://gangway-ci.apps.ci.l2s4.p1.openshiftapps.com/v1/executions/' \
-       -d '{"job_name": "periodic-ci-openshift-online-rosa-regional-platform-main-nightly-integration", "job_execution_type": "1"}'
+       -d '{"job_name": "periodic-ci-openshift-online-rosa-hyperfleet-main-nightly-integration", "job_execution_type": "1"}'
    ```
 
 ## Reference

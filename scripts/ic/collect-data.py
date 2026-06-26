@@ -18,10 +18,10 @@ GCS_BUCKET = "https://storage.googleapis.com/test-platform-results"
 BUILD_COUNT = 10
 
 PERIODIC_JOBS = [
-    "periodic-ci-openshift-online-rosa-regional-platform-main-nightly-ephemeral",
-    "periodic-ci-openshift-online-rosa-regional-platform-main-nightly-integration",
+    "periodic-ci-openshift-online-rosa-hyperfleet-main-nightly-ephemeral",
+    "periodic-ci-openshift-online-rosa-hyperfleet-main-nightly-integration",
 ]
-PR_JOB = "pull-ci-openshift-online-rosa-regional-platform-main-on-demand-e2e"
+PR_JOB = "pull-ci-openshift-online-rosa-hyperfleet-main-on-demand-e2e"
 
 
 def log(msg):
