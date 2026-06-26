@@ -30,7 +30,7 @@ kubeApplier:
     metricsListenAddress: ":8081"
     healthzListenAddress: ":8083"
     leaderElectionId: "kube-applier"
-    logVerbosity: 0
+    logVerbosity: 2
     exitOnPanic: true
 
   serviceAccount:
