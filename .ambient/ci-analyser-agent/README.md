@@ -20,7 +20,7 @@ Follow the detailed investigation procedure in `.claude/agents/ci-troubleshooter
 
 The source is `main` — read files directly with the Read tool.
 
-Determine if the fix belongs in `rosa-regional-platform` or `rosa-regional-platform-api`.
+Determine if the fix belongs in `rosa-hyperfleet` or `rosa-hyperfleet-api`.
 
 ### Limitation: No AWS Credentials
 
@@ -46,12 +46,12 @@ Determine your GitHub username dynamically:
 GH_USER=$(gh api user --jq .login)
 ```
 
-All branches and PRs go through your own fork, opened against `openshift-online/rosa-regional-platform`.
+All branches and PRs go through your own fork, opened against `openshift-online/rosa-hyperfleet`.
 
 **Before creating any branch**, sync your fork's main with upstream to avoid opening PRs hundreds of commits behind:
 
 ```bash
-gh repo sync ${GH_USER}/rosa-regional-platform --source openshift-online/rosa-regional-platform
+gh repo sync ${GH_USER}/rosa-hyperfleet --source openshift-online/rosa-hyperfleet
 git fetch fork
 git checkout main
 git reset --hard fork/main
@@ -65,7 +65,7 @@ git checkout -b fix/ci-<job-name>-<date> main
 git push fork fix/ci-<job-name>-<date>
 
 gh pr create \
-  --repo openshift-online/rosa-regional-platform \
+  --repo openshift-online/rosa-hyperfleet \
   --head ${GH_USER}:fix/ci-<job-name>-<date> \
   --base main \
   --title "Fix: <short description>" \
@@ -95,7 +95,7 @@ git checkout fix/ci-<job-name>-<date>
 git push fork fix/ci-<job-name>-<date>
 
 gh pr comment <PR-number> \
-  --repo openshift-online/rosa-regional-platform \
+  --repo openshift-online/rosa-hyperfleet \
   --body "Updated fix based on latest failure: <job URL>
 
 **New diagnosis**: <explanation>

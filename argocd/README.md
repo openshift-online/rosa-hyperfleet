@@ -6,7 +6,7 @@ Each cluster's ArgoCD is configured to use a rendered ApplicationSet from `confi
 
 1. **Live Config**: Uses Helm charts from `argocd/config/<cluster_type>/` and `argocd/config/shared/` directly from the current git revision (main branch or your development branch passed during cluster provisioning)
 
-2. **Pinned Commits**: Uses specific commit hashes that refer to a snapshotted point in time of the rosa-regional-platform repository's charts. This is used for progressive delivery where we "cut releases" by bundling applications.
+2. **Pinned Commits**: Uses specific commit hashes that refer to a snapshotted point in time of the rosa-hyperfleet repository's charts. This is used for progressive delivery where we "cut releases" by bundling applications.
 
 ## Repository Structure
 

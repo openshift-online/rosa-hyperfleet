@@ -19,4 +19,4 @@ serviceAccounts:
 
 labels:
   managed-by: zoa
-  part-of: rosa-regional-platform
+  part-of: rosa-hyperfleet

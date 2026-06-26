@@ -8,7 +8,7 @@ An agentic workflow that takes a feature specification (from a JIRA ticket or de
 
 - **Existing agents**: adversary, architect, ci-troubleshooter, code-reviewer, documentation-updater, scope-creep-craig, tech-spec-beck
 - **Ephemeral env targets**: `ephemeral-{provision,teardown,resync,swap-branch,list,shell,bastion-rc,bastion-mc,port-forward-*,e2e,collect-logs}`
-- **E2E testing**: Tests live in `rosa-regional-platform-api` repo, run via `ci/e2e-tests.sh`, use `make ephemeral-e2e ID=<env-id>`
+- **E2E testing**: Tests live in `rosa-hyperfleet-api` repo, run via `ci/e2e-tests.sh`, use `make ephemeral-e2e ID=<env-id>`
 - **Component repos**: platform-api, maestro-agent, maestro-server, hyperfleet-adapter, hyperfleet-api, hyperfleet-sentinel
 - **CLI proxy**: Credential-isolating sidecar for `gh` CLI with deny list for destructive commands
 - **Config rendering**: `uv run scripts/render.py` for region configs

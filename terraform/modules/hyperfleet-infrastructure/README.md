@@ -359,4 +359,4 @@ For issues or questions:
 1. Check CloudWatch logs and metrics
 2. Review this documentation
 3. Consult the troubleshooting section
-4. Contact the platform team via Slack #rosa-regional-platform
+4. Contact the platform team via Slack #rosa-hyperfleet

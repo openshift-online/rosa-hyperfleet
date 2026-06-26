@@ -4,9 +4,9 @@ description: Slim wrapper deploying Thanos platform resources; operator itself c
 type: application
 version: 0.4.0
 appVersion: "0.1.0-alpha"
-home: https://github.com/openshift-online/rosa-regional-platform
+home: https://github.com/openshift-online/rosa-hyperfleet
 sources:
-  - https://github.com/openshift-online/rosa-regional-platform
+  - https://github.com/openshift-online/rosa-hyperfleet
   - https://github.com/thanos-community/thanos-operator
   - https://github.com/rhobs/rhobs-konflux-thanos-operator
   - https://github.com/thanos-io/thanos

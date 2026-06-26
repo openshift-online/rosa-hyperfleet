@@ -1,40 +1,40 @@
 # Cross-Component E2E Testing
 
-Component repositories (e.g., `rosa-regional-platform-api`) can run the rosa-regional-platform e2e test suite against a full ephemeral environment with their PR-built image deployed.
+Component repositories (e.g., `rosa-hyperfleet-api`) can run the rosa-hyperfleet e2e test suite against a full ephemeral environment with their PR-built image deployed.
 
 ## Overview
 
-A reusable [step-registry workflow](https://github.com/openshift/release/tree/master/ci-operator/step-registry/rosa-regional-platform/ephemeral-e2e) in `openshift/release` handles everything:
+A reusable [step-registry workflow](https://github.com/openshift/release/tree/master/ci-operator/step-registry/rosa-hyperfleet/ephemeral-e2e) in `openshift/release` handles everything:
 
 1. **Image build** — ci-operator builds the component's Docker image from the PR source
 2. **Image push** — The image is copied to `quay.io/rrp-dev-ci/` using `oc image mirror` from the OCP `cli` image (public, so EKS can pull it without credentials), tagged `ci-<PR>-<BUILD_ID>`
-3. **Provision** — Ephemeral environment provisioned from `rosa-regional-platform` main, with the component's Helm values deep-merged with an inline YAML override
-4. **E2E tests** — The RRP testing suite (`./ci/e2e-tests.sh`) from rosa-regional-platform runs against the environment
+3. **Provision** — Ephemeral environment provisioned from `rosa-hyperfleet` main, with the component's Helm values deep-merged with an inline YAML override
+4. **E2E tests** — The RRP testing suite (`./ci/e2e-tests.sh`) from rosa-hyperfleet runs against the environment
 5. **Teardown** — Ephemeral environment torn down (fire-and-forget)
 
 ## Workflow Steps
 
 | Step                                | Image                       | Purpose                                                              |
 | ----------------------------------- | --------------------------- | -------------------------------------------------------------------- |
-| `rosa-regional-platform-image-push` | `ocp/4.21:cli`              | Copies CI-built image to quay.io using `oc image mirror`             |
-| `rosa-regional-platform-provision`  | `rosa-regional-platform-ci` | Calls ephemeral provider with YAML overrides, provisions environment |
-| `rosa-regional-platform-e2e`        | `rosa-regional-platform-ci` | Clones this repo, runs `./ci/e2e-tests.sh`                           |
-| `rosa-regional-platform-teardown`   | `rosa-regional-platform-ci` | Clones this repo, runs teardown                                      |
+| `rosa-hyperfleet-image-push` | `ocp/4.21:cli`              | Copies CI-built image to quay.io using `oc image mirror`             |
+| `rosa-hyperfleet-provision`  | `rosa-hyperfleet-ci` | Calls ephemeral provider with YAML overrides, provisions environment |
+| `rosa-hyperfleet-e2e`        | `rosa-hyperfleet-ci` | Clones this repo, runs `./ci/e2e-tests.sh`                           |
+| `rosa-hyperfleet-teardown`   | `rosa-hyperfleet-ci` | Clones this repo, runs teardown                                      |
 
-The `rosa-regional-platform-ci` image is built from `ci/Containerfile` and promoted to the CI registry on every merge to `main` of `openshift-online/rosa-regional-platform`.
+The `rosa-hyperfleet-ci` image is built from `ci/Containerfile` and promoted to the CI registry on every merge to `main` of `openshift-online/rosa-hyperfleet`.
 
 ## CI Credentials
 
 | Secret                                    | Purpose                                             |
 | ----------------------------------------- | --------------------------------------------------- |
-| `rosa-regional-platform-dev-ci-quay-push` | Robot account for pushing to `quay.io/rrp-dev-ci/`  |
-| `rosa-regional-platform-ephemeral-creds`  | AWS credentials for provisioning, e2e, and teardown |
+| `rosa-hyperfleet-dev-ci-quay-push` | Robot account for pushing to `quay.io/rrp-dev-ci/`  |
+| `rosa-hyperfleet-ephemeral-creds`  | AWS credentials for provisioning, e2e, and teardown |
 
-Managed in [Vault](https://vault.ci.openshift.org/ui/vault/secrets/kv/kv/list/selfservice/cluster-secrets-rosa-regional-platform-int/).
+Managed in [Vault](https://vault.ci.openshift.org/ui/vault/secrets/kv/kv/list/selfservice/cluster-secrets-rosa-hyperfleet-int/).
 
 ## Override Mechanism
 
-The provision step deep-merges a YAML fragment into a target file in the rosa-regional-platform repo before the ephemeral provider commits and pushes the CI branch. This is used to inject PR-built component images into Helm values files.
+The provision step deep-merges a YAML fragment into a target file in the rosa-hyperfleet repo before the ephemeral provider commits and pushes the CI branch. This is used to inject PR-built component images into Helm values files.
 
 The override is configured via env vars in the CI config:
 
@@ -95,15 +95,15 @@ The `name: cert-manager` entry is matched against the existing dependencies list
 ### Prerequisites
 
 - The component has a `Dockerfile` that ci-operator can build
-- The component is deployable via a Helm chart in this repo (rosa-regional-platform)
+- The component is deployable via a Helm chart in this repo (rosa-hyperfleet)
 
 ### Step 1: Create quay.io repository
 
-Create a **public** repository under `quay.io/rrp-dev-ci/` for the component. Grant the existing robot account (used by `rosa-regional-platform-dev-ci-quay-push`) push access.
+Create a **public** repository under `quay.io/rrp-dev-ci/` for the component. Grant the existing robot account (used by `rosa-hyperfleet-dev-ci-quay-push`) push access.
 
 ### Step 2: Add CI config in openshift/release to your repository's job config
 
-Edit `ci-operator/config/<repo>/<org>-<repo>-<branch>.yaml`, e.g. [here](https://github.com/openshift/release/pull/76818/changes#diff-e1f3e71b4382080dfc304ae3b05b7cc97e95f2bf6cf49d744c4901fdc55274e1) for [rosa-regional-platform-api](https://github.com/openshift-online/rosa-regional-platform-api):
+Edit `ci-operator/config/<repo>/<org>-<repo>-<branch>.yaml`, e.g. [here](https://github.com/openshift/release/pull/76818/changes#diff-e1f3e71b4382080dfc304ae3b05b7cc97e95f2bf6cf49d744c4901fdc55274e1) for [rosa-hyperfleet-api](https://github.com/openshift-online/rosa-hyperfleet-api):
 
 ```yaml
 images:
@@ -123,7 +123,7 @@ tests:
           <yaml-fragment-with-IMAGE_REPO-and-IMAGE_TAG-placeholders>
         ROSA_REGIONAL_HELM_VALUES_FILE: "argocd/config/regional-cluster/<component-name>/values.yaml"
         ROSA_REGIONAL_QUAY_DEST_REPO: "quay.io/rrp-dev-ci/<component>"
-      workflow: rosa-regional-platform-ephemeral-e2e
+      workflow: rosa-hyperfleet-ephemeral-e2e
 ```
 
 Where:

@@ -5,7 +5,7 @@
 #
 # Setup:
 #   1. In repo Settings > Pages, set Source to "GitHub Actions".
-#   2. (Optional) To include rosa-regional-platform-internal, create a
+#   2. (Optional) To include rosa-hyperfleet-internal, create a
 #      fine-grained PAT with "Pull Requests: read" permission on all 4 repos
 #      and add it as a repository secret named DASHBOARD_TOKEN.
 #      Without it, only the 3 public repos are queried.

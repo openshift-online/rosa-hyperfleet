@@ -20,10 +20,10 @@ Port forwarding additionally requires `aws` and `lsof`.
 
 ### AWS Account Setup
 
-By default, scripts look for account ID files in the `rosa-regional-platform-internal` sibling repo:
+By default, scripts look for account ID files in the `rosa-hyperfleet-internal` sibling repo:
 
-- **Ephemeral (dev)**: `../rosa-regional-platform-internal/infra/accounts/dev/accounts.json`
-- **Integration**: `../rosa-regional-platform-internal/infra/accounts/int/accounts.json`
+- **Ephemeral (dev)**: `../rosa-hyperfleet-internal/infra/accounts/dev/accounts.json`
+- **Integration**: `../rosa-hyperfleet-internal/infra/accounts/int/accounts.json`
 
 If you have the internal repo checked out alongside this one, no extra setup is needed.
 
@@ -137,7 +137,7 @@ Ephemeral environments:
 
 ID           REPO                                          BRANCH                    REGION       STATE                  CREATED              API_URL                                                      RHOBS_API_URL
 ------------ --------------------------------------------- ------------------------- ------------ ---------------------- -------------------- ------------------------------------------------------------ ------------------------------------------------------------
-6bd2d3d7     typeid/rosa-regional-platform                 ROSAENG-143               us-east-1    ready                  2026-03-19T10:14:23Z https://thfvcunmr3.execute-api.us-east-1.amazonaws.com/prod  https://abc123xyz.execute-api.us-east-1.amazonaws.com/prod
+6bd2d3d7     typeid/rosa-hyperfleet                 ROSAENG-143               us-east-1    ready                  2026-03-19T10:14:23Z https://thfvcunmr3.execute-api.us-east-1.amazonaws.com/prod  https://abc123xyz.execute-api.us-east-1.amazonaws.com/prod
 
 To clear list: rm .ephemeral-envs
 ```
@@ -258,14 +258,14 @@ make ephemeral-e2e
 make ephemeral-e2e ID=6bd2d3d7
 ```
 
-By default, tests are cloned from the `main` branch of `rosa-regional-platform-api`. Use `E2E_REF` and `E2E_REPO` to run against a different branch or fork:
+By default, tests are cloned from the `main` branch of `rosa-hyperfleet-api`. Use `E2E_REF` and `E2E_REPO` to run against a different branch or fork:
 
 ```bash
 # Run tests from a feature branch
 make ephemeral-e2e ID=6bd2d3d7 E2E_REF=my-feature-branch
 
 # Run tests from a fork
-make ephemeral-e2e ID=6bd2d3d7 E2E_REPO=https://github.com/my-fork/rosa-regional-platform-api.git E2E_REF=my-feature-branch
+make ephemeral-e2e ID=6bd2d3d7 E2E_REPO=https://github.com/my-fork/rosa-hyperfleet-api.git E2E_REF=my-feature-branch
 ```
 
 To keep the cluster and infrastructure alive after a test run (useful for debugging failures), set `E2E_SKIP_CLEANUP`:
@@ -324,7 +324,7 @@ make ephemeral-swap-branch
 make ephemeral-swap-branch ID=6bd2d3d7 NEW_BRANCH=my-other-feature
 
 # Explicit — swap to a branch on a different fork
-make ephemeral-swap-branch ID=6bd2d3d7 NEW_BRANCH=my-feature NEW_REPO=my-fork/rosa-regional-platform
+make ephemeral-swap-branch ID=6bd2d3d7 NEW_BRANCH=my-feature NEW_REPO=my-fork/rosa-hyperfleet
 ```
 
 > ⚠️ _Ensure the new branch is pushed to the remote before swapping — the environment is built from the remote ref._

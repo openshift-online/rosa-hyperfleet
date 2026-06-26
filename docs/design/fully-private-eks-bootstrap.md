@@ -8,7 +8,7 @@ The ROSA Regional Platform uses AWS ECS Fargate tasks to bootstrap ArgoCD instal
 
 ## Context
 
-The rosa-regional-platform requires a mechanism to provision and configure secure and private EKS clusters.
+The rosa-hyperfleet requires a mechanism to provision and configure secure and private EKS clusters.
 
 - **Problem Statement**: Management and Regional clusters must be provisioned and configured while maintaining complete network isolation from terraform runners
 - **Constraints**: Terraform runners have AWS API access but cannot directly reach private EKS cluster APIs. Solution must work regardless of terraform runner choice (HCP Terraform, AWS CodePipeline, Atlantis)

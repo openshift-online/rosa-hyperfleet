@@ -146,7 +146,7 @@ Build a **Spec-to-PR Agent** — a Python-based orchestrator using the Claude Ag
 ## Constraints
 
 - The existing `scripts/dev/ephemeral-env.sh` script is the source of truth for ephemeral operations — the skill wraps it rather than reimplementing
-- E2E tests live in the `rosa-regional-platform-api` repo, not this repo
+- E2E tests live in the `rosa-hyperfleet-api` repo, not this repo
 - Ephemeral environments require AWS credentials injected at container startup (no Vault OIDC)
 - The persona format from the `psav/persona` branch needs to be migrated to structured JSON/YAML
 - Image build and push to ECR is a stretch goal — design for it but don't block on it

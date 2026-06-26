@@ -1,4 +1,4 @@
-# CI build-root image for rosa-regional-platform PR checks.
+# CI build-root image for rosa-hyperfleet PR checks.
 # Used by ci-operator via build_root.project_image.dockerfile_path.
 # Tools are layer-cached — installs only re-run when this file changes.
 

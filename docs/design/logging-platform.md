@@ -252,7 +252,7 @@ Three dashboards deployed as ConfigMaps with `grafana_dashboard: "1"` label (sid
 
 - **Vector**: PodMonitor (upstream chart, port `prom-exporter` on 9090) → Prometheus → Thanos
 - **Loki**: ServiceMonitor (upstream chart, port 3100 `/metrics`) → Prometheus → Thanos
-- **E2E tests** (`rosa-regional-platform-api/test/e2e/`):
+- **E2E tests** (`rosa-hyperfleet-api/test/e2e/`):
   - `logging_test.go` — validates RC and MC logs exist in Loki via API Gateway
   - `observability_test.go` — validates Vector and Loki metrics flow to Thanos via remote-write
 

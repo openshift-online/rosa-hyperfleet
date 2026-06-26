@@ -29,7 +29,7 @@ Usage: $0 [OPTIONS] [GITHUB_REPOSITORY] [GITHUB_BRANCH] [ENVIRONMENT]
 Bootstrap the central AWS account with pipeline infrastructure.
 
 ARGUMENTS:
-    GITHUB_REPOSITORY    GitHub repository in owner/name format (default: 'openshift-online/rosa-regional-platform')
+    GITHUB_REPOSITORY    GitHub repository in owner/name format (default: 'openshift-online/rosa-hyperfleet')
     GITHUB_BRANCH        Branch name (default: 'main')
     ENVIRONMENT          Environment to monitor (e.g., integration, staging, production) (default: 'staging')
 
@@ -37,7 +37,7 @@ OPTIONS:
     -h, --help          Show this help message
 
 ENVIRONMENT VARIABLES:
-    GITHUB_REPOSITORY   GitHub repository in owner/name format (e.g., 'openshift-online/rosa-regional-platform')
+    GITHUB_REPOSITORY   GitHub repository in owner/name format (e.g., 'openshift-online/rosa-hyperfleet')
     GITHUB_BRANCH       Git branch to track (default: main)
     TARGET_ENVIRONMENT  Environment to monitor (default: staging)
     SLACK_WEBHOOK_SSM_PARAM  SSM Parameter Store path containing Slack webhook URL (optional, only for stage/staging/production/integration)
@@ -46,12 +46,12 @@ ENVIRONMENT VARIABLES:
 
 EXAMPLES:
     # With environment variables (recommended)
-    GITHUB_REPOSITORY=openshift-online/rosa-regional-platform GITHUB_BRANCH=bugfix-environment TARGET_ENVIRONMENT=brian $0
+    GITHUB_REPOSITORY=openshift-online/rosa-hyperfleet GITHUB_BRANCH=bugfix-environment TARGET_ENVIRONMENT=brian $0
 
     # With command-line arguments
-    $0 custom-org/rosa-regional-platform feature-branch staging
+    $0 custom-org/rosa-hyperfleet feature-branch staging
 
-    # Using defaults (openshift-online/rosa-regional-platform, main, staging)
+    # Using defaults (openshift-online/rosa-hyperfleet, main, staging)
     $0
 EOF
 }
@@ -127,7 +127,7 @@ if [ $# -ge 1 ]; then
 fi
 
 # Set defaults for optional parameters
-GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-openshift-online/rosa-regional-platform}"
+GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-openshift-online/rosa-hyperfleet}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
 TARGET_ENVIRONMENT="${TARGET_ENVIRONMENT:-staging}"
 NAME_PREFIX="${NAME_PREFIX:-}"
@@ -136,7 +136,7 @@ SLACK_WEBHOOK_SSM_PARAM="${SLACK_WEBHOOK_SSM_PARAM:-/rosa-regional/slack/webhook
 # Validate repository format (must be owner/name)
 if [[ ! "$GITHUB_REPOSITORY" =~ ^[^/]+/[^/]+$ ]]; then
     echo "❌ Error: GITHUB_REPOSITORY must be in 'owner/name' format"
-    echo "   Example: openshift-online/rosa-regional-platform"
+    echo "   Example: openshift-online/rosa-hyperfleet"
     exit 1
 fi
 

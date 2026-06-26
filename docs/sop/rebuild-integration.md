@@ -103,7 +103,7 @@ The RHOBS API Gateway uses a raw `execute-api` URL that changes on every rebuild
      | jq -r '.outputs.rhobs_api_url.value'
    ```
 
-2. Update the `rhobs_api_url` field in the Vault secret `selfservice/cluster-secrets-rosa-regional-platform-int/integration-creds` with the new URL.
+2. Update the `rhobs_api_url` field in the Vault secret `selfservice/cluster-secrets-rosa-hyperfleet-int/integration-creds` with the new URL.
 
 ### Verify the rebuild
 

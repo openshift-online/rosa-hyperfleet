@@ -38,7 +38,7 @@ variable "container_image" {
 variable "repository_url" {
   description = "Git repository URL for cluster configuration"
   type        = string
-  default     = "https://github.com/openshift-online/rosa-regional-platform"
+  default     = "https://github.com/openshift-online/rosa-hyperfleet"
 }
 
 variable "repository_branch" {

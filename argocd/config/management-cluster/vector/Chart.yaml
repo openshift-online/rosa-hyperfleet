@@ -3,9 +3,9 @@ name: vector
 description: Vector log collector for management cluster — collects pod logs and forwards to RC Loki via sigv4-proxy
 type: application
 version: 0.2.0
-home: https://github.com/openshift-online/rosa-regional-platform
+home: https://github.com/openshift-online/rosa-hyperfleet
 sources:
-  - https://github.com/openshift-online/rosa-regional-platform
+  - https://github.com/openshift-online/rosa-hyperfleet
   - https://vector.dev
   - https://github.com/vectordotdev/helm-charts
 maintainers:

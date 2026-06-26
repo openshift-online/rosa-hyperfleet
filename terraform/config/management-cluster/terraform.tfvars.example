@@ -21,7 +21,7 @@ cost_center   = "123"
 # Git repository configuration for cluster bootstrap and ongoing management
 
 # Git repository URL containing cluster configuration
-repository_url    = "https://github.com/openshift-online/rosa-regional-platform"
+repository_url    = "https://github.com/openshift-online/rosa-hyperfleet"
 
 # Git branch to use for cluster configuration (defaults to "main" if not specified)
 repository_branch = "main"

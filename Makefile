@@ -183,7 +183,7 @@ pre-push: ## Run all CI validation checks (parallel)
 # Thin wrappers around scripts/dev/ephemeral-env.sh.
 # See docs/development-environment.md for full usage guide.
 
-REPO   ?= openshift-online/rosa-regional-platform
+REPO   ?= openshift-online/rosa-hyperfleet
 BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 
 ephemeral-provision: ## Provision an ephemeral environment
@@ -234,7 +234,7 @@ ephemeral-collect-logs: ## Collect logs from an ephemeral env (CLUSTER=rc|mc)
 # Integration Environment
 # =============================================================================
 # Thin wrappers around scripts/dev/int-env.sh.
-# Uses AWS profiles with SAML auth (account IDs from rosa-regional-platform-internal or RRP_ACCOUNTS_INT).
+# Uses AWS profiles with SAML auth (account IDs from rosa-hyperfleet-internal or RRP_ACCOUNTS_INT).
 
 int-shell: ## Interactive shell for Platform API access (int)
 	@./scripts/dev/int-env.sh shell

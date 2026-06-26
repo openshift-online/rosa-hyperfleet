@@ -100,7 +100,7 @@ module "regional_cluster" {
 | `bootstrap_enabled`             | Enable ArgoCD bootstrap for GitOps management                                   | `bool`         | `true`                                                         | no       |
 | `argocd_namespace`              | Kubernetes namespace for ArgoCD installation                                    | `string`       | `"argocd"`                                                     | no       |
 | `argocd_chart_version`          | ArgoCD Helm chart version                                                       | `string`       | `"9.3.0"`                                                      | no       |
-| `bootstrap_repository_url`      | Git repository URL for ArgoCD configuration                                     | `string`       | `"https://github.com/openshift-online/rosa-regional-platform"` | no       |
+| `bootstrap_repository_url`      | Git repository URL for ArgoCD configuration                                     | `string`       | `"https://github.com/openshift-online/rosa-hyperfleet"` | no       |
 | `bootstrap_repository_branch`   | Git branch to track                                                             | `string`       | `"main"`                                                       | no       |
 
 ## Outputs

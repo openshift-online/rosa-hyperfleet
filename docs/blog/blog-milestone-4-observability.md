@@ -189,4 +189,4 @@ We're also working with the RHOBS team to consume RHOBS-maintained images and pa
 
 ---
 
-_For questions or feedback, reach out in #team-rosa-regional-platform on Slack._
+_For questions or feedback, reach out in #team-rosa-hyperfleet on Slack._

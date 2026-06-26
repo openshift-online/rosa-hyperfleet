@@ -11,7 +11,7 @@ You are helping the user onboard a new component repository for cross-component 
 If not provided via `$ARGUMENTS`, ask the user for:
 
 1. **Component name** — the directory name under `argocd/config/regional-cluster/` or `argocd/config/management-cluster/` in this repo (e.g., `platform-api`, `maestro-server`). Validate it exists.
-2. **Org and repo** — the GitHub org/repo for the component (e.g., `openshift-online/rosa-regional-platform-api`). This determines the CI config path in openshift/release.
+2. **Org and repo** — the GitHub org/repo for the component (e.g., `openshift-online/rosa-hyperfleet-api`). This determines the CI config path in openshift/release.
 3. **Branch** — the branch to configure (default: `main`).
 4. **Dockerfile path** — path to the Dockerfile in the component repo (default: `Dockerfile`).
 5. **Pipeline image name** — the `to` field for the built image in ci-operator (default: component name with hyphens, e.g., `platform-api`).
@@ -61,7 +61,7 @@ tests:
           <generated-override-yaml>
         ROSA_REGIONAL_HELM_VALUES_FILE: "argocd/config/<cluster-type>/<component-name>/values.yaml"
         ROSA_REGIONAL_QUAY_DEST_REPO: "quay.io/rrp-dev-ci/<quay-repo-name>"
-      workflow: rosa-regional-platform-ephemeral-e2e
+      workflow: rosa-hyperfleet-ephemeral-e2e
 ```
 
 ## Output

@@ -3,6 +3,6 @@ name: alerting-rules
 description: Platform alerting rules evaluated by Thanos Ruler
 type: application
 version: 0.1.0
-home: https://github.com/openshift-online/rosa-regional-platform
+home: https://github.com/openshift-online/rosa-hyperfleet
 maintainers:
   - name: ROSA Regional Platform Team

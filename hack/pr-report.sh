@@ -1,9 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-REPO="openshift-online/rosa-regional-platform"
+REPO="openshift-online/rosa-hyperfleet"
 STATE_DIR="${HOME}/.cache/pr-report"
-STATE_FILE="${STATE_DIR}/rosa-regional-platform.json"
+STATE_FILE="${STATE_DIR}/rosa-hyperfleet.json"
 REPORT_DIR="${STATE_DIR}/reports"
 
 mkdir -p "$STATE_DIR" "$REPORT_DIR"
@@ -58,7 +58,7 @@ PROMPT_FILE=$(mktemp)
 trap 'rm -f "$PROMPT_FILE"' EXIT
 
 cat >"$PROMPT_FILE" <<PROMPT_EOF
-You are generating a PR status report for the rosa-regional-platform project.
+You are generating a PR status report for the rosa-hyperfleet project.
 The GitHub repo is: https://github.com/${REPO}
 Today's date is $(date +%Y-%m-%d).
 
@@ -82,7 +82,7 @@ For each open PR, provide:
 - **Size**: +additions / -deletions / N files
 - **Age**: how long it has been open (calculate from createdAt vs today)
 - **Big picture**: This is the most important part. Write 1-2 paragraphs explaining:
-  1. What capability or change this PR introduces to the platform and why it matters in the context of the rosa-regional-platform architecture (regional clusters, management clusters, GitOps, Terraform, etc.)
+  1. What capability or change this PR introduces to the platform and why it matters in the context of the rosa-hyperfleet architecture (regional clusters, management clusters, GitOps, Terraform, etc.)
   2. What areas of the codebase it touches — group the changed files by area (e.g. "Terraform modules", "ArgoCD config", "scripts", "docs") and explain what the changes in each area accomplish together.
   3. Any risks, dependencies, or architectural implications you can infer from the file paths and PR body.
   Do NOT just list files. Synthesize and explain.

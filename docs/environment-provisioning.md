@@ -122,13 +122,13 @@ Switch to your Central AWS profile and create the CodePipelines.
 ```bash
 export AWS_PROFILE=<central-profile>
 
-GITHUB_REPOSITORY=<org>/rosa-regional-platform \
+GITHUB_REPOSITORY=<org>/rosa-hyperfleet \
 GITHUB_BRANCH=<branch> \
 TARGET_ENVIRONMENT=<environment> \
 ./scripts/bootstrap-central-account.sh
 ```
 
-Defaults to `openshift-online/rosa-regional-platform` on `main` if not specified.
+Defaults to `openshift-online/rosa-hyperfleet` on `main` if not specified.
 
 ### 3.2 Accept the CodeStar connection
 

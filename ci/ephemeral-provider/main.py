@@ -86,7 +86,7 @@ def main():
     )
     parser.add_argument(
         "--repo",
-        default=os.environ.get("REPOSITORY_URL", "openshift-online/rosa-regional-platform"),
+        default=os.environ.get("REPOSITORY_URL", "openshift-online/rosa-hyperfleet"),
         help="GitHub repository in owner/name format (default: from REPOSITORY_URL env var)",
     )
     parser.add_argument(

@@ -1,6 +1,6 @@
 # CI
 
-CI is managed through the [OpenShift CI](https://docs.ci.openshift.org/) system (Prow + ci-operator). The job configuration lives in [openshift/release](https://github.com/openshift/release/tree/master/ci-operator/config/openshift-online/rosa-regional-platform).
+CI is managed through the [OpenShift CI](https://docs.ci.openshift.org/) system (Prow + ci-operator). The job configuration lives in [openshift/release](https://github.com/openshift/release/tree/master/ci-operator/config/openshift-online/rosa-hyperfleet).
 
 ## Jobs
 
@@ -10,8 +10,8 @@ CI is managed through the [OpenShift CI](https://docs.ci.openshift.org/) system 
 | [`terraform-validate`](https://prow.ci.openshift.org/job-history/gs/test-platform-results/pr-logs/directory/pull-ci-openshift-online-rosa-hyperfleet-main-terraform-validate)     | Pre-submit               | Runs `terraform validate` on all root modules                                                                                                           |
 | [`helm-lint`](https://prow.ci.openshift.org/job-history/gs/test-platform-results/pr-logs/directory/pull-ci-openshift-online-rosa-hyperfleet-main-helm-lint)                       | Pre-submit               | Lints Helm charts                                                                                                                                       |
 | [`check-rendered-files`](https://prow.ci.openshift.org/job-history/gs/test-platform-results/pr-logs/directory/pull-ci-openshift-online-rosa-hyperfleet-main-check-rendered-files) | Pre-submit               | Verifies rendered deploy files are up to date                                                                                                           |
-| [`on-demand-e2e`](https://prow.ci.openshift.org/job-history/gs/test-platform-results/pr-logs/directory/pull-ci-openshift-online-rosa-hyperfleet-main-on-demand-e2e)               | Pre-submit (manual)      | End-to-end: provisions ephemeral environment using PR rosa-regional-platform branch, runs tests, tears down. Trigger with `/test on-demand-e2e` on a PR |
-| [`nightly-ephemeral`](https://prow.ci.openshift.org/job-history/gs/test-platform-results/logs/periodic-ci-openshift-online-rosa-hyperfleet-main-nightly-ephemeral)                | Daily at 04:00 UTC       | End-to-end: provisions ephemeral environment using `main` rosa-regional-platform branch, runs tests, tears down                                         |
+| [`on-demand-e2e`](https://prow.ci.openshift.org/job-history/gs/test-platform-results/pr-logs/directory/pull-ci-openshift-online-rosa-hyperfleet-main-on-demand-e2e)               | Pre-submit (manual)      | End-to-end: provisions ephemeral environment using PR rosa-hyperfleet branch, runs tests, tears down. Trigger with `/test on-demand-e2e` on a PR |
+| [`nightly-ephemeral`](https://prow.ci.openshift.org/job-history/gs/test-platform-results/logs/periodic-ci-openshift-online-rosa-hyperfleet-main-nightly-ephemeral)                | Daily at 04:00 UTC       | End-to-end: provisions ephemeral environment using `main` rosa-hyperfleet branch, runs tests, tears down                                         |
 | [`nightly-integration`](https://prow.ci.openshift.org/job-history/gs/test-platform-results/logs/periodic-ci-openshift-online-rosa-hyperfleet-main-nightly-integration)            | Daily at 04:00 UTC       | Runs e2e tests against a standing integration environment                                                                                               |
 | `nightly-m6i` (planned)                                                                                                                                                                  | Mon/Wed/Fri at 05:00 UTC | Nightly ephemeral with `m6i.large` instance types — validates general-purpose Intel machines                                                            |
 | `nightly-c6i` (planned)                                                                                                                                                                  | Tue/Thu/Sat at 05:00 UTC | Nightly ephemeral with `c6i.xlarge` instance types — validates compute-optimized Intel machines                                                         |
@@ -20,7 +20,7 @@ CI is managed through the [OpenShift CI](https://docs.ci.openshift.org/) system 
 
 ## Load Testing (Planned)
 
-Load testing scripts are implemented but not yet wired into the Prow workflow. The `rosa-regional-platform-load-test` step needs to be added to the `rosa-regional-platform-ephemeral-e2e` workflow in [openshift/release](https://github.com/openshift/release).
+Load testing scripts are implemented but not yet wired into the Prow workflow. The `rosa-hyperfleet-load-test` step needs to be added to the `rosa-hyperfleet-ephemeral-e2e` workflow in [openshift/release](https://github.com/openshift/release).
 
 - **Entrypoint**: `ci/nightly-load-test.sh` (will run as a Prow step after e2e, before teardown)
 - **Scripts**: `ci/load-test/scripts/platform-api-load.js` (API throughput), `ci/load-test/scripts/hcp-lifecycle-load.js` (concurrent HCP creation)
@@ -40,7 +40,7 @@ To add a new machine type, create a YAML file in `ci/nightly-overrides/machine-t
 
 ## Cross-Component E2E Testing
 
-Component repos (e.g., `rosa-regional-platform-api`) can run the e2e test suite against an ephemeral environment with their PR-built image deployed. See [Enabling Pre-Merge E2E for Component Repos](../docs/adding-component-pre-merge.md) for the full workflow, architecture, and SOP for onboarding new repos.
+Component repos (e.g., `rosa-hyperfleet-api`) can run the e2e test suite against an ephemeral environment with their PR-built image deployed. See [Enabling Pre-Merge E2E for Component Repos](../docs/adding-component-pre-merge.md) for the full workflow, architecture, and SOP for onboarding new repos.
 
 ## Build Image
 
@@ -142,16 +142,16 @@ Not every job needs every profile. The table below shows which profiles each job
 
 **CI (Prow):** Each Vault secret contains a pre-built `aws_config` file with the profiles that job type needs. Prow mounts it at `/var/run/rosa-credentials/aws_config`. Scripts source [`ci/setup-aws-profiles.sh`](setup-aws-profiles.sh) which sets `AWS_CONFIG_FILE` to point at this file.
 
-**Local development:** The dev scripts (`scripts/dev/ephemeral-env.sh`, `scripts/dev/int-env.sh`) read account IDs from `rosa-regional-platform-internal` (or a custom path via `RRP_ACCOUNTS_DEV`/`RRP_ACCOUNTS_INT`) and obtain STS credentials via SAML, writing them to a config file with the same `rrp-*` profile names so containers see an identical interface.
+**Local development:** The dev scripts (`scripts/dev/ephemeral-env.sh`, `scripts/dev/int-env.sh`) read account IDs from `rosa-hyperfleet-internal` (or a custom path via `RRP_ACCOUNTS_DEV`/`RRP_ACCOUNTS_INT`) and obtain STS credentials via SAML, writing them to a config file with the same `rrp-*` profile names so containers see an identical interface.
 
 ### CI Vault secrets
 
-CI jobs still use Vault-mounted credentials. These are managed in [Vault](https://vault.ci.openshift.org/ui/vault/secrets/kv/kv/list/selfservice/cluster-secrets-rosa-regional-platform-int/):
+CI jobs still use Vault-mounted credentials. These are managed in [Vault](https://vault.ci.openshift.org/ui/vault/secrets/kv/kv/list/selfservice/cluster-secrets-rosa-hyperfleet-int/):
 
 | Secret                                     | Used by                              | Key fields   |
 | ------------------------------------------ | ------------------------------------ | ------------ |
-| `rosa-regional-platform-ephemeral-creds`   | `nightly-ephemeral`, `on-demand-e2e` | `aws_config` |
-| `rosa-regional-platform-integration-creds` | `nightly-integration`                | `aws_config` |
+| `rosa-hyperfleet-ephemeral-creds`   | `nightly-ephemeral`, `on-demand-e2e` | `aws_config` |
+| `rosa-hyperfleet-integration-creds` | `nightly-integration`                | `aws_config` |
 
 Each `aws_config` field contains a complete AWS CLI config file with only the profiles that job type requires. To update credentials, edit the `aws_config` field in the relevant Vault secret.
 

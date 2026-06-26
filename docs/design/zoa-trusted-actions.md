@@ -544,7 +544,7 @@ Implementation: `hack/zoa.sh` (source in `.zshrc`). This is a temporary shell wr
 
 ```bash
 # Add to .zshrc
-source /path/to/rosa-regional-platform/hack/zoa.sh
+source /path/to/rosa-hyperfleet/hack/zoa.sh
 export ZOA_API="https://<api-gateway-id>.execute-api.<region>.amazonaws.com/prod"
 ```
 

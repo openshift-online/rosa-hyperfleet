@@ -16,14 +16,14 @@ Before doing anything else, close your own open documentation update PRs older t
 
 ```bash
 GH_USER=$(gh api user --jq .login)
-gh pr list --repo openshift-online/rosa-regional-platform --author "${GH_USER}" --state open --search "[docs-agent]" --json number,title,createdAt
+gh pr list --repo openshift-online/rosa-hyperfleet --author "${GH_USER}" --state open --search "[docs-agent]" --json number,title,createdAt
 ```
 
 For any documentation update PR created more than 3 days ago:
 
 ```bash
 gh pr close <PR-number> \
-  --repo openshift-online/rosa-regional-platform \
+  --repo openshift-online/rosa-hyperfleet \
   --comment "Auto-closing: this documentation update was not reviewed within 3 days. If the changes are still relevant, a new PR will be opened in a future run."
 ```
 
@@ -32,7 +32,7 @@ gh pr close <PR-number> \
 List PRs merged in the last 24 hours, excluding your own:
 
 ```bash
-gh pr list --repo openshift-online/rosa-regional-platform --state merged --search "merged:>=$(date -u -v-24H +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%S)" --limit 50 --json number,title,author,files
+gh pr list --repo openshift-online/rosa-hyperfleet --state merged --search "merged:>=$(date -u -v-24H +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%S)" --limit 50 --json number,title,author,files
 ```
 
 - **Ignore** PRs authored by yourself.
@@ -43,7 +43,7 @@ gh pr list --repo openshift-online/rosa-regional-platform --state merged --searc
 For each merged PR from Step 2, read the diff to understand what changed:
 
 ```bash
-gh pr diff <PR-number> --repo openshift-online/rosa-regional-platform
+gh pr diff <PR-number> --repo openshift-online/rosa-hyperfleet
 ```
 
 Then follow the analysis procedure in `.claude/agents/documentation-updater.md` to check whether those changes made existing documentation stale. Only update docs that already exist — do not create new documentation.
@@ -54,12 +54,12 @@ If documentation updates are needed:
 
 **Branch naming:** `docs/update-<area>-<YYYY-MM-DD>`
 
-All branches and PRs go through your own fork, opened against `openshift-online/rosa-regional-platform`.
+All branches and PRs go through your own fork, opened against `openshift-online/rosa-hyperfleet`.
 
 **Before creating any branch**, sync your fork's main with upstream to avoid opening PRs hundreds of commits behind:
 
 ```bash
-gh repo sync ${GH_USER}/rosa-regional-platform --source openshift-online/rosa-regional-platform
+gh repo sync ${GH_USER}/rosa-hyperfleet --source openshift-online/rosa-hyperfleet
 git fetch fork
 git checkout main
 git reset --hard fork/main
@@ -76,7 +76,7 @@ Replace `AGENTIC_SESSION_NAMESPACE` and `SESSION_ID` with the ambient session va
 
 ```bash
 gh pr create \
-  --repo openshift-online/rosa-regional-platform \
+  --repo openshift-online/rosa-hyperfleet \
   --head ${GH_USER}:docs/update-<area>-<date> \
   --base main \
   --title "[docs-agent] Update <area> documentation" \

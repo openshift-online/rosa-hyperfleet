@@ -12,4 +12,4 @@ keywords:
 maintainers:
   - name: ROSA Regional Platform Team
 sources:
-  - https://github.com/openshift-online/rosa-regional-platform
+  - https://github.com/openshift-online/rosa-hyperfleet

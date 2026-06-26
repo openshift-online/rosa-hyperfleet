@@ -1,6 +1,6 @@
 ---
 name: ci-troubleshoot
-description: "Systematically troubleshoot CI test failures by fetching and analyzing Prow job artifacts. Examples: <example>Context: A CI job has failed and the user wants to understand why. user: 'Can you look at this CI failure? https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/openshift-online_rosa-regional-platform/191/pull-ci-openshift-online-rosa-hyperfleet-main-on-demand-e2e/1234' assistant: 'I'll use the ci-troubleshoot agent to analyze the failure artifacts and identify the root cause.'</example> <example>Context: The nightly job failed and the user wants a diagnosis. user: 'The nightly-ephemeral job failed last night, can you check it?' assistant: 'I'll use the ci-troubleshoot agent to investigate the nightly-ephemeral failure.'</example>"
+description: "Systematically troubleshoot CI test failures by fetching and analyzing Prow job artifacts. Examples: <example>Context: A CI job has failed and the user wants to understand why. user: 'Can you look at this CI failure? https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/openshift-online_rosa-hyperfleet/191/pull-ci-openshift-online-rosa-hyperfleet-main-on-demand-e2e/1234' assistant: 'I'll use the ci-troubleshoot agent to analyze the failure artifacts and identify the root cause.'</example> <example>Context: The nightly job failed and the user wants a diagnosis. user: 'The nightly-ephemeral job failed last night, can you check it?' assistant: 'I'll use the ci-troubleshoot agent to investigate the nightly-ephemeral failure.'</example>"
 tools: WebFetch, WebSearch, Read, Grep, Glob, Bash
 ---
 
@@ -22,7 +22,7 @@ If the user has not provided a Prow job URL, ask them for one.
 
 Valid URL formats:
 
-- `https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/openshift-online_rosa-regional-platform/<PR#>/<job-name>/<run-id>`
+- `https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/openshift-online_rosa-hyperfleet/<PR#>/<job-name>/<run-id>`
 - `https://prow.ci.openshift.org/view/gs/test-platform-results/logs/<job-name>/<run-id>`
 
 If the user only says "the nightly failed" or similar, use the job history URLs from the reference table below to find the most recent failure.
@@ -49,8 +49,8 @@ The `<short-job-name>` is the last segment of the job name (e.g., `on-demand-e2e
 
 **Example:**
 
-- Prow: `https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/openshift-online_rosa-regional-platform/191/pull-ci-openshift-online-rosa-hyperfleet-main-on-demand-e2e/123456`
-- Artifacts: `https://gcsweb-ci.apps.ci.l2s4.p1.openshiftapps.com/gcs/test-platform-results/pr-logs/pull/openshift-online_rosa-regional-platform/191/pull-ci-openshift-online-rosa-hyperfleet-main-on-demand-e2e/123456/artifacts/on-demand-e2e/`
+- Prow: `https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/openshift-online_rosa-hyperfleet/191/pull-ci-openshift-online-rosa-hyperfleet-main-on-demand-e2e/123456`
+- Artifacts: `https://gcsweb-ci.apps.ci.l2s4.p1.openshiftapps.com/gcs/test-platform-results/pr-logs/pull/openshift-online_rosa-hyperfleet/191/pull-ci-openshift-online-rosa-hyperfleet-main-on-demand-e2e/123456/artifacts/on-demand-e2e/`
 
 Use WebFetch to browse artifact directory listings (HTML pages with links to subdirectories and files).
 
@@ -66,7 +66,7 @@ Use WebFetch to browse artifact directory listings (HTML pages with links to sub
    ```
 2. Find the commit hash from the `provision-ephemeral` build log:
    ```
-   Cloned at 4f3ef1fb56583f9c3ad3be022ee896b3ff66fe37 (https://github.com/typeid/rosa-regional-platform/tree/4f3ef1fb)
+   Cloned at 4f3ef1fb56583f9c3ad3be022ee896b3ff66fe37 (https://github.com/typeid/rosa-hyperfleet/tree/4f3ef1fb)
    ```
 3. Use `git show <commit>:<path>` to read files at that commit without checking out:
    ```bash

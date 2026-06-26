@@ -41,7 +41,7 @@ Nightly ephemeral tests validate the platform across different EC2 instance fami
 | nightly-c6i | `c6i.xlarge`           | Tue/Thu/Sat 05:00 UTC |
 | default     | `t3.medium/t3a.medium` | Daily 04:00 UTC       |
 
-Jobs are staggered to avoid ephemeral account contention (only one MC account available per run). Each machine-type job uses the same `rosa-regional-platform-ephemeral-e2e` step-registry workflow.
+Jobs are staggered to avoid ephemeral account contention (only one MC account available per run). Each machine-type job uses the same `rosa-hyperfleet-ephemeral-e2e` step-registry workflow.
 
 ## CI Flows
 
@@ -120,7 +120,7 @@ Implementation: `ci/ephemeral-provider/`, entry point: `ci/ephemeral-provider/ma
 ```mermaid
 flowchart TB
     subgraph SOURCE ["Source"]
-        A["Source repo/branch<br/>(PR branch or main)"] -->|clone| B["rosa-regional-platform-ci fork<br/>(CI branch with injected config)"]
+        A["Source repo/branch<br/>(PR branch or main)"] -->|clone| B["rosa-hyperfleet-ci fork<br/>(CI branch with injected config)"]
     end
 
     B -->|push rendered config| C

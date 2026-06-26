@@ -206,7 +206,7 @@ x-logging:
     - Service account JSON contents
     - Request or response bodies
   example: |
-    {"timestamp":"2026-04-24T10:15:30Z","source_ip":"10.0.1.42","destination":"api.github.com:443","method":"GET","path":"/repos/openshift-online/rosa-regional-platform","status":200,"duration_ms":42,"credential_type":"github"}
+    {"timestamp":"2026-04-24T10:15:30Z","source_ip":"10.0.1.42","destination":"api.github.com:443","method":"GET","path":"/repos/openshift-online/rosa-hyperfleet","status":200,"duration_ms":42,"credential_type":"github"}
 
 x-error-responses:
   connect_rejected_domain:

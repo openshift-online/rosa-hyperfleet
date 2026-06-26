@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from urllib.request import urlopen
 
-REPO = "openshift-online/rosa-regional-platform"
+REPO = "openshift-online/rosa-hyperfleet"
 GCS_BUCKET = "https://storage.googleapis.com/test-platform-results"
 BUILD_COUNT = 10
 
@@ -101,7 +101,7 @@ def collect_pr_job():
         pr_number = "unknown"
         parts = path.split("/")
         for i, part in enumerate(parts):
-            if part == "rosa-regional-platform" and i + 1 < len(parts):
+            if part == "rosa-hyperfleet" and i + 1 < len(parts):
                 pr_number = parts[i + 1]
                 break
 

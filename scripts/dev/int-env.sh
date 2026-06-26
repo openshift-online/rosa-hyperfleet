@@ -8,7 +8,7 @@
 # Typically invoked via Makefile targets (make int-shell, etc.)
 #
 # The script constructs a temporary AWS config with the int profiles.
-# Account IDs default to rosa-regional-platform-internal; override with RRP_ACCOUNTS_INT.
+# Account IDs default to rosa-hyperfleet-internal; override with RRP_ACCOUNTS_INT.
 
 set -euo pipefail
 
@@ -81,10 +81,10 @@ profile_for() {
 
 # Create temporary AWS config with int profiles.
 setup_aws_config() {
-    local accounts_file="${RRP_ACCOUNTS_INT:-${REPO_ROOT}/../rosa-regional-platform-internal/infra/accounts/int/accounts.json}"
+    local accounts_file="${RRP_ACCOUNTS_INT:-${REPO_ROOT}/../rosa-hyperfleet-internal/infra/accounts/int/accounts.json}"
     [[ -f "$accounts_file" ]] \
         || die "Account IDs file not found: $accounts_file
-    Either clone rosa-regional-platform-internal as a sibling directory,
+    Either clone rosa-hyperfleet-internal as a sibling directory,
     or set RRP_ACCOUNTS_INT to point to your accounts JSON file.
     See docs/development-environment.md for details."
     load_accounts "$accounts_file" central rc mc customer
@@ -463,7 +463,7 @@ cmd_port_forward() {
 
 cmd_e2e() {
     local e2e_ref="${E2E_REF:-main}"
-    local e2e_repo="${E2E_REPO:-https://github.com/openshift-online/rosa-regional-platform-api.git}"
+    local e2e_repo="${E2E_REPO:-https://github.com/openshift-online/rosa-hyperfleet-api.git}"
 
     setup_aws_config
     write_int_container_config

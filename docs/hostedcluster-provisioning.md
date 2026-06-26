@@ -7,8 +7,8 @@ This guide walks through creating a ROSA HCP cluster on the integration environm
 ### ROSA Regional Platform CLI
 
 ```bash
-git clone https://github.com/openshift-online/rosa-regional-platform-cli.git
-cd rosa-regional-platform-cli
+git clone https://github.com/openshift-online/rosa-hyperfleet-cli.git
+cd rosa-hyperfleet-cli
 make build
 
 # Install globally (optional)
@@ -23,7 +23,7 @@ command -v jq >/dev/null || echo "Need jq installed"
 
 ### Account Allowlisting
 
-Your AWS account must be registered with the platform before you can create clusters. Ask `@rrp-team-ic` in `#team-rosa-regional-platform` to allowlist your account — provide your **AWS account ID** and the target **environment** (e.g. integration). This is a one-time step per account per environment.
+Your AWS account must be registered with the platform before you can create clusters. Ask `@rrp-team-ic` in `#team-rosa-hyperfleet` to allowlist your account — provide your **AWS account ID** and the target **environment** (e.g. integration). This is a one-time step per account per environment.
 
 <details>
 <summary>IC reference: allowlisting command</summary>
@@ -109,4 +109,4 @@ The generated kubeconfig uses `rosactl` as a credential plugin, which signs requ
 - If you create more than 5 hosted clusters, ensure your AWS account has sufficient NAT gateway quota (default limit is 5).
 - For ephemeral (dev) environments, see [Development Environment](development-environment.md). The cluster creation flow is the same — only the `API_URL` differs.
 - For admin teardown procedures, see [Hosted Cluster Teardown](hostedcluster-teardown.md).
-- For assistance, reach out to @rrp-team-ic in #team-rosa-regional-platform.
+- For assistance, reach out to @rrp-team-ic in #team-rosa-hyperfleet.

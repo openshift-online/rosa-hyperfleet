@@ -20,9 +20,9 @@ Detect the current repository from the working directory or `git remote get-url 
 
 | Remote contains              | Repo label                   |
 | ---------------------------- | ---------------------------- |
-| `rosa-regional-platform-cli` | `rosa-regional-platform-cli` |
-| `rosa-regional-platform-api` | `rosa-regional-platform-api` |
-| `rosa-regional-platform`     | `rosa-regional-platform`     |
+| `rosa-hyperfleet-cli` | `rosa-hyperfleet-cli` |
+| `rosa-hyperfleet-api` | `rosa-hyperfleet-api` |
+| `rosa-hyperfleet`     | `rosa-hyperfleet`     |
 
 Use this label as the default **Repo** field in the description. If detection fails, ask the user.
 

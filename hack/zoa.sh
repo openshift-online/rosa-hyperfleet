@@ -6,7 +6,7 @@
 #
 # Setup:
 #   1. Source this file:
-#        source /path/to/rosa-regional-platform/hack/zoa.sh
+#        source /path/to/rosa-hyperfleet/hack/zoa.sh
 #
 #   2. Export AWS credentials (SigV4 auth):
 #        eval "$(aws configure export-credentials --format env --profile rrp-regional-dev)"

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run e2e API tests from rosa-regional-platform-api against the provisioned environment.
+# Run e2e API tests from rosa-hyperfleet-api against the provisioned environment.
 #
 # API URL resolution (first match wins):
 #   1. BASE_URL env var            — set by local wrapper scripts (ephemeral-env.sh, int-env.sh)
@@ -73,9 +73,9 @@ else
 fi
 
 E2E_REF="${E2E_REF:-main}"
-E2E_REPO="${E2E_REPO:-https://github.com/openshift-online/rosa-regional-platform-api.git}"
+E2E_REPO="${E2E_REPO:-https://github.com/openshift-online/rosa-hyperfleet-api.git}"
 CLI_REF="${CLI_REF:-main}"
-CLI_REPO="${CLI_REPO:-https://github.com/openshift-online/rosa-regional-platform-cli.git}"
+CLI_REPO="${CLI_REPO:-https://github.com/openshift-online/rosa-hyperfleet-cli.git}"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "${WORK_DIR}"' EXIT
 echo ""

@@ -107,10 +107,10 @@ If `creatorARN` is not set (e.g. API change not deployed), the ConfigMap is stil
 
 | Repository                   | Files                                     | Change                                                      |
 | ---------------------------- | ----------------------------------------- | ----------------------------------------------------------- |
-| `rosa-regional-platform`     | `manifestwork.yaml`                       | `aws-iam-auth-config` ConfigMap, HC annotation              |
-| `rosa-regional-platform`     | `adapter-task-config.yaml`                | `creatorARN` CEL capture                                    |
-| `rosa-regional-platform-api` | `pkg/handlers/cluster.go`                 | Inject `creatorARN` from SigV4 caller identity              |
-| `rosa-regional-platform-cli` | `internal/commands/cluster/kubeconfig.go` | `rosactl cluster kubeconfig` command                        |
+| `rosa-hyperfleet`     | `manifestwork.yaml`                       | `aws-iam-auth-config` ConfigMap, HC annotation              |
+| `rosa-hyperfleet`     | `adapter-task-config.yaml`                | `creatorARN` CEL capture                                    |
+| `rosa-hyperfleet-api` | `pkg/handlers/cluster.go`                 | Inject `creatorARN` from SigV4 caller identity              |
+| `rosa-hyperfleet-cli` | `internal/commands/cluster/kubeconfig.go` | `rosactl cluster kubeconfig` command                        |
 | `hypershift`                 | `hostedcluster_controller.go`             | ConfigMap sync HC->HCP, annotation in `mirroredAnnotations` |
 | `hypershift`                 | `kas/deployment.go`                       | `aws-iam-authenticator` sidecar injection                   |
 | `hypershift`                 | `kas/oauth.go`                            | Webhook redirect to localhost:21362                         |

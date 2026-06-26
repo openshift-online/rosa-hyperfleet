@@ -155,7 +155,7 @@ The pipeline-provisioner is a "meta-pipeline" that manages other pipelines. It's
 The pipeline-provisioner must be created once manually:
 
 ```bash
-GITHUB_REPOSITORY=openshift-online/rosa-regional-platform \
+GITHUB_REPOSITORY=openshift-online/rosa-hyperfleet \
 GITHUB_BRANCH=main \
 TARGET_ENVIRONMENT=staging \
 ./scripts/bootstrap-central-account.sh
