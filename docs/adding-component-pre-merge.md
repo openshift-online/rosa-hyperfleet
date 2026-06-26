@@ -17,11 +17,11 @@ A reusable [step-registry workflow](https://github.com/openshift/release/tree/ma
 | Step                         | Image                | Purpose                                                              |
 | ---------------------------- | -------------------- | -------------------------------------------------------------------- |
 | `rosa-hyperfleet-image-push` | `ocp/4.21:cli`       | Copies CI-built image to quay.io using `oc image mirror`             |
-| `rosa-hyperfleet-provision`  | `rosa-hyperfleet-ci` | Calls ephemeral provider with YAML overrides, provisions environment |
-| `rosa-hyperfleet-e2e`        | `rosa-hyperfleet-ci` | Clones this repo, runs `./ci/e2e-tests.sh`                           |
-| `rosa-hyperfleet-teardown`   | `rosa-hyperfleet-ci` | Clones this repo, runs teardown                                      |
+| `rosa-hyperfleet-provision`  | `rosa-regional-platform-ci` | Calls ephemeral provider with YAML overrides, provisions environment |
+| `rosa-hyperfleet-e2e`        | `rosa-regional-platform-ci` | Clones this repo, runs `./ci/e2e-tests.sh`                           |
+| `rosa-hyperfleet-teardown`   | `rosa-regional-platform-ci` | Clones this repo, runs teardown                                      |
 
-The `rosa-hyperfleet-ci` image is built from `ci/Containerfile` and promoted to the CI registry on every merge to `main` of `openshift-online/rosa-hyperfleet`.
+The `rosa-regional-platform-ci` image is built from `ci/Containerfile` and promoted to the CI registry on every merge to `main` of `openshift-online/rosa-hyperfleet`.
 
 ## CI Credentials
 

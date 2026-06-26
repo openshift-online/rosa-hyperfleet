@@ -120,7 +120,7 @@ Implementation: `ci/ephemeral-provider/`, entry point: `ci/ephemeral-provider/ma
 ```mermaid
 flowchart TB
     subgraph SOURCE ["Source"]
-        A["Source repo/branch<br/>(PR branch or main)"] -->|clone| B["rosa-hyperfleet-ci fork<br/>(CI branch with injected config)"]
+        A["Source repo/branch<br/>(PR branch or main)"] -->|clone| B["rosa-regional-platform-ci fork<br/>(CI branch with injected config)"]
     end
 
     B -->|push rendered config| C
