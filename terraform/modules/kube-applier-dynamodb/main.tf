@@ -161,7 +161,6 @@ resource "aws_dynamodb_resource_policy" "specs_stream" {
         "dynamodb:DescribeStream",
         "dynamodb:GetRecords",
         "dynamodb:GetShardIterator",
-        "dynamodb:ListStreams",
       ]
       Resource = aws_dynamodb_table.specs[each.key].stream_arn
     }]
