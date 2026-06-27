@@ -19,6 +19,7 @@ from aws import AWSCredentials
 from codebuild_logs import download_codebuild_logs
 from git import GitManager
 from pipeline import PipelineMonitor
+from timing import timed
 from yaml_utils import deep_merge, load_and_merge
 
 PROVISION_TIMEOUT = 3600  # seconds (1 hour); total time for provisioning
@@ -91,30 +92,33 @@ class EphemeralEnvOrchestrator:
         Args:
             save_state: If set, save terraform outputs JSON to this path after provisioning.
         """
-        self._setup_aws()
+        with timed("setup-aws", "provision"):
+            self._setup_aws()
 
         git = GitManager(self.creds_dir, self.repo, self.branch)
         self.git = git
         git.create_eph_branch(self.eph_prefix)
 
-        # Inject ephemeral environment into config.yaml (not checked into the repo)
-        self._inject_ephemeral_config(git)
+        with timed("inject-config", "provision"):
+            self._inject_ephemeral_config(git)
 
-        # Apply provision override files (deep-merge YAML fragments into repo files)
-        self._apply_provision_overrides(git)
+        with timed("apply-overrides", "provision"):
+            self._apply_provision_overrides(git)
 
         git.render_and_push("ci: add ephemeral environment and render deploy files")
 
         # Bootstrap pipeline provisioner
         self.central_monitor = PipelineMonitor(self.aws.session)
         self.target_monitor = PipelineMonitor(self.aws.target_session)
-        self._bootstrap_pipeline_provisioner(git)
+        with timed("bootstrap-provisioner", "provision"):
+            self._bootstrap_pipeline_provisioner(git)
 
-        # Wait for provisioning pipelines
-        self._wait_for_provision()
+        with timed("wait-for-pipelines", "provision"):
+            self._wait_for_provision()
 
         if save_state:
-            self._save_terraform_outputs(git, save_state)
+            with timed("save-terraform-outputs", "provision"):
+                self._save_terraform_outputs(git, save_state)
 
     def teardown(self, fire_and_forget: bool = False):
         """Tear down a previously provisioned ephemeral environment.
@@ -143,18 +147,21 @@ class EphemeralEnvOrchestrator:
         self.region = discover_region(env_config_dir)
         log.info("Region (from ephemeral branch): %s", self.region)
 
-        self._setup_aws()
+        with timed("setup-aws", "teardown"):
+            self._setup_aws()
 
         # Collect CodeBuild logs before teardown destroys infrastructure.
         # In Prow, teardown runs as a separate step — this captures logs
         # from the provisioning phase that would otherwise be lost.
-        self.collect_codebuild_logs()
+        with timed("collect-codebuild-logs", "teardown"):
+            self.collect_codebuild_logs()
 
         # Purge clusters and resource bundles before infrastructure teardown.
         # Deleting bundles triggers ManifestWork removal on the MC, which is
         # what actually tears down the HostedClusters. Without this, terraform
         # destroy on the MC can be blocked by active HCPs.
-        self._purge_clusters(git)
+        with timed("cluster-bundle-purge", "teardown"):
+            self._purge_clusters(git)
 
         self.central_monitor = PipelineMonitor(self.aws.session)
         self.target_monitor = PipelineMonitor(self.aws.target_session)
@@ -689,84 +696,87 @@ class EphemeralEnvOrchestrator:
         """Tear down infrastructure via GitOps and destroy the pipeline-provisioner."""
 
         # Phase 1: Infrastructure teardown
-        log.info("")
-        log.info("==========================================")
-        log.info("Teardown: Infrastructure Destroy")
-        log.info("==========================================")
+        with timed("infra-destroy", "teardown"):
+            log.info("")
+            log.info("==========================================")
+            log.info("Teardown: Infrastructure Destroy")
+            log.info("==========================================")
 
-        # Snapshot known executions (RC/MC pipelines are in the target region)
-        pipeline_known = self.target_monitor.snapshot_pipeline_executions(self.pipeline_prefix)
+            # Snapshot known executions (RC/MC pipelines are in the target region)
+            pipeline_known = self.target_monitor.snapshot_pipeline_executions(self.pipeline_prefix)
 
-        def set_delete_flag(region_config):
-            region_config["delete"] = True
-            for mc_name, mc_config in region_config.get("provision_mcs", {}).items():
-                if mc_config is None:
-                    region_config["provision_mcs"][mc_name] = mc_config = {}
-                mc_config["delete"] = True
+            def set_delete_flag(region_config):
+                region_config["delete"] = True
+                for mc_name, mc_config in region_config.get("provision_mcs", {}).items():
+                    if mc_config is None:
+                        region_config["provision_mcs"][mc_name] = mc_config = {}
+                    mc_config["delete"] = True
 
-        git.modify_config(TARGET_ENVIRONMENT, self.region, set_delete_flag)
+            git.modify_config(TARGET_ENVIRONMENT, self.region, set_delete_flag)
 
-        if fire_and_forget:
-            log.info(
-                "Fire-and-forget mode: pushed infrastructure delete flags (Phase 1) "
-                "and exiting. Phases 2 (delete_pipeline) and 3 (pipeline-provisioner "
-                "destroy) will NOT run — complete teardown must be triggered separately."
-            )
-            return
+            if fire_and_forget:
+                log.info(
+                    "Fire-and-forget mode: pushed infrastructure delete flags (Phase 1) "
+                    "and exiting. Phases 2 (delete_pipeline) and 3 (pipeline-provisioner "
+                    "destroy) will NOT run — complete teardown must be triggered separately."
+                )
+                return
 
-        # Discover and wait for RC/MC pipeline executions (infra destroy, target region)
-        teardown_pipelines = [
-            (name, exec_id)
-            for name, exec_id in self.target_monitor.discover_pipelines(self.pipeline_prefix, pipeline_known)
-            if name != self.provisioner_name
-        ]
+            # Discover and wait for RC/MC pipeline executions (infra destroy, target region)
+            teardown_pipelines = [
+                (name, exec_id)
+                for name, exec_id in self.target_monitor.discover_pipelines(self.pipeline_prefix, pipeline_known)
+                if name != self.provisioner_name
+            ]
 
-        # Monitor all teardown pipelines concurrently
-        if teardown_pipelines:
-            with ThreadPoolExecutor(max_workers=len(teardown_pipelines)) as executor:
-                future_to_pipeline = {
-                    executor.submit(self.target_monitor.wait_for_completion, name, exec_id): name
-                    for name, exec_id in teardown_pipelines
-                }
+            # Monitor all teardown pipelines concurrently
+            if teardown_pipelines:
+                with ThreadPoolExecutor(max_workers=len(teardown_pipelines)) as executor:
+                    future_to_pipeline = {
+                        executor.submit(self.target_monitor.wait_for_completion, name, exec_id): name
+                        for name, exec_id in teardown_pipelines
+                    }
 
-                for future in as_completed(future_to_pipeline):
-                    pipeline_name = future_to_pipeline[future]
-                    try:
-                        future.result()
-                    except (RuntimeError, TimeoutError) as e:
-                        log.error("Teardown pipeline '%s' failed: %s", pipeline_name, e)
-                        # Continue with teardown even if infrastructure destroy fails
+                    for future in as_completed(future_to_pipeline):
+                        pipeline_name = future_to_pipeline[future]
+                        try:
+                            future.result()
+                        except (RuntimeError, TimeoutError) as e:
+                            log.error("Teardown pipeline '%s' failed: %s", pipeline_name, e)
+                            # Continue with teardown even if infrastructure destroy fails
 
         # Phase 2: Pipeline teardown
-        log.info("")
-        log.info("==========================================")
-        log.info("Teardown: Pipeline Destroy")
-        log.info("==========================================")
+        with timed("pipeline-destroy", "teardown"):
+            log.info("")
+            log.info("==========================================")
+            log.info("Teardown: Pipeline Destroy")
+            log.info("==========================================")
 
-        # Snapshot again before pushing delete_pipeline flags (provisioner is in central region)
-        provisioner_known = self.central_monitor.get_execution_ids(self.provisioner_name)
+            # Snapshot again before pushing delete_pipeline flags (provisioner is in central region)
+            provisioner_known = self.central_monitor.get_execution_ids(self.provisioner_name)
 
-        def set_delete_pipeline_flag(region_config):
-            region_config["delete_pipeline"] = True
-            for mc_name, mc_config in region_config.get("provision_mcs", {}).items():
-                if mc_config is None:
-                    region_config["provision_mcs"][mc_name] = mc_config = {}
-                mc_config["delete_pipeline"] = True
+            def set_delete_pipeline_flag(region_config):
+                region_config["delete_pipeline"] = True
+                for mc_name, mc_config in region_config.get("provision_mcs", {}).items():
+                    if mc_config is None:
+                        region_config["provision_mcs"][mc_name] = mc_config = {}
+                    mc_config["delete_pipeline"] = True
 
-        git.modify_config(TARGET_ENVIRONMENT, self.region, set_delete_pipeline_flag)
+            git.modify_config(TARGET_ENVIRONMENT, self.region, set_delete_pipeline_flag)
 
-        # Wait for pipeline-provisioner to destroy the pipelines (central region)
-        provisioner_exec_id = self.central_monitor.wait_for_new_execution(
-            self.provisioner_name, provisioner_known
-        )
-        self.central_monitor.wait_for_completion(self.provisioner_name, provisioner_exec_id)
+            # Wait for pipeline-provisioner to destroy the pipelines (central region)
+            provisioner_exec_id = self.central_monitor.wait_for_new_execution(
+                self.provisioner_name, provisioner_known
+            )
+            self.central_monitor.wait_for_completion(self.provisioner_name, provisioner_exec_id)
 
         # Phase 3: Destroy pipeline-provisioner via terraform destroy
-        log.info("")
-        log.info("==========================================")
-        log.info("Teardown: Pipeline Provisioner Destroy")
-        log.info("==========================================")
-        self._destroy_pipeline_provisioner(git)
+        with timed("provisioner-destroy", "teardown"):
+            log.info("")
+            log.info("==========================================")
+            log.info("Teardown: Pipeline Provisioner Destroy")
+            log.info("==========================================")
+            self._destroy_pipeline_provisioner(git)
 
         log.info("Teardown complete.")
 
