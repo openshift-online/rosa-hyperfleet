@@ -16,8 +16,7 @@
   "zone_shard_count": {{ regional_cluster.zone_shard_count | default(1) | tojson }},
   "enable_sns_alerting": {{ observability.sns_alerting.enabled | default(false) | tojson }},
   "regional_id": "{% if eph_prefix %}{{ eph_prefix }}-regional{% else %}regional{% endif %}",
-  "eph_prefix": "{{ eph_prefix | default('') }}",
-  "iot_log_level": {{ applications['regional-cluster'].maestro.iotLogLevel | default('WARN') | tojson }}
+  "eph_prefix": "{{ eph_prefix | default('') }}"
 {%- set _mc_info = [] %}
 {%- for mc in management_clusters if mc.account_id is defined %}
 {%- set _ = _mc_info.append({"id": mc.management_id, "account_id": mc.account_id}) %}

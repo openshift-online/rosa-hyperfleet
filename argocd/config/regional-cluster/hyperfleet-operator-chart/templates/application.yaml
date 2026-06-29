@@ -1,0 +1,43 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ index .Values "hyperfleet-operator-chart" "applicationName" }}
+  namespace: {{ index .Values "hyperfleet-operator-chart" "namespace" }}
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: {{ index .Values "hyperfleet-operator-chart" "project" }}
+
+  source:
+    repoURL: {{ index .Values "hyperfleet-operator-chart" "source" "repoURL" }}
+    targetRevision: {{ index .Values "hyperfleet-operator-chart" "source" "targetRevision" }}
+    path: {{ index .Values "hyperfleet-operator-chart" "source" "path" }}
+    helm:
+      values: |
+        {{- if index .Values "hyperfleet-operator-chart" "helmValues" }}
+        {{- toYaml (index .Values "hyperfleet-operator-chart" "helmValues") | nindent 8 }}
+        {{- end }}
+        awsRegion: {{ .Values.global.aws_region }}
+        fleetDBClusterName: {{ .Values.global.fleet_db_cluster_name }}
+        baseDomain: {{ .Values.baseDomain }}
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ index .Values "hyperfleet-operator-chart" "targetNamespace" }}
+
+  syncPolicy:
+    {{- if index .Values "hyperfleet-operator-chart" "syncPolicy" "automated" }}
+    automated:
+      prune: {{ index .Values "hyperfleet-operator-chart" "syncPolicy" "automated" "prune" }}
+      selfHeal: {{ index .Values "hyperfleet-operator-chart" "syncPolicy" "automated" "selfHeal" }}
+    {{- end }}
+    retry:
+      limit: -1
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 1m
+    syncOptions:
+    - ServerSideApply=true
+    - CreateNamespace=true
+    - SkipDryRunOnMissingResource=true

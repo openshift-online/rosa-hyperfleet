@@ -40,13 +40,16 @@ spec:
             - serve
             - --log-level={{ .Values.platformApi.app.args.logLevel }}
             - --log-format={{ .Values.platformApi.app.args.logFormat }}
-            - --maestro-url={{ .Values.platformApi.app.args.maestroUrl }}
+            - --fleet-db-cluster-name={{ .Values.platformApi.app.args.fleetDbClusterName }}
             - --allowed-accounts={{ .Values.platformApi.app.args.allowedAccounts }}
             - --api-port={{ .Values.platformApi.app.args.apiPort }}
             - --health-port={{ .Values.platformApi.app.args.healthPort }}
             - --metrics-port={{ .Values.platformApi.app.args.metricsPort }}
             - --dynamodb-region={{ .Values.platformApi.app.args.dynamodbRegion }}
             - --dynamodb-prefix={{ .Values.platformApi.app.args.dynamodbPrefix }}
+            {{- if .Values.platformApi.app.args.oidcIssuerBaseURL }}
+            - --oidc-issuer-base-url={{ .Values.platformApi.app.args.oidcIssuerBaseURL }}
+            {{- end }}
           {{- if .Values.platformApi.zoa.enabled }}
           env:
             - name: ZOA_ENABLED

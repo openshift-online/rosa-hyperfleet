@@ -101,7 +101,7 @@ flowchart LR
 - Is idempotent and can run in normal or destroy mode
 - Runs in central account, stores terraform state in the target account, and deploys to target accounts
 - RC stages: Source → Deploy → Bootstrap-ArgoCD
-- MC stages: Source → Mint-IoT → Deploy → Bootstrap-ArgoCD → Register
+- MC stages: Source → Deploy → Bootstrap-ArgoCD → Register
 
 **Layer 3 - Infrastructure**:
 
@@ -198,7 +198,7 @@ See: `terraform/config/pipeline-regional-cluster/`, `terraform/config/regional-c
 
 Provisions a Management Cluster (EKS for hosting customer control planes).
 
-- Stages: Source → Mint-IoT → Deploy → Bootstrap-ArgoCD → Register
+- Stages: Source → Deploy → Bootstrap-ArgoCD → Register
 - Triggers on changes to `deploy/<env>/<region>/pipeline-management-cluster-<cluster>-inputs/terraform.json`
 - Deploys to management cluster account (may differ from regional account)
 - The **Register** stage calls the Regional Cluster Platform API to register the Management Cluster as a known consumer, passing:

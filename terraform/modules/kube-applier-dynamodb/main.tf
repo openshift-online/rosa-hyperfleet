@@ -3,8 +3,7 @@
 #
 # Creates the six DynamoDB tables used by kube-applier-aws for one Management
 # Cluster. These tables live in the Regional Cluster (RC) account and are
-# provisioned by the Mint-DynamoDB CodePipeline stage, which assumes RC account
-# credentials (analogous to the Mint-IoT stage for Maestro).
+# provisioned inline from regional-cluster/main.tf.
 #
 # Table naming follows the kube-applier-aws convention:
 #   Prefix (--specs-table):  mc-{mc}-specs
@@ -19,9 +18,9 @@ locals {
   common_tags = merge(
     var.tags,
     {
-      ManagedBy          = "terraform"
-      Module             = "kube-applier-dynamodb"
-      ManagementCluster  = var.mc_name
+      ManagedBy         = "terraform"
+      Module            = "kube-applier-dynamodb"
+      ManagementCluster = var.mc_name
     }
   )
 
@@ -75,7 +74,14 @@ resource "aws_dynamodb_table" "specs" {
 }
 
 # =============================================================================
-# Status Tables (read-write for the agent, no streams needed)
+# Status Tables (read-write for the agent)
+#
+# The status-readdesires table has DynamoDB Streams enabled so the
+# hyperfleet-operator can react to status changes written by kube-applier-aws
+# within seconds instead of polling. This is the inverse of the specs tables
+# pattern: kube-applier watches specs streams, the operator watches status
+# streams. Only readdesires needs streaming — it drives manifest status
+# feedback for time-sensitive SRE operations (ZOA).
 # =============================================================================
 
 resource "aws_dynamodb_table" "status" {
@@ -89,6 +95,9 @@ resource "aws_dynamodb_table" "status" {
     name = "documentID"
     type = "S"
   }
+
+  stream_enabled   = endswith(each.key, "-readdesires")
+  stream_view_type = endswith(each.key, "-readdesires") ? "NEW_AND_OLD_IMAGES" : null
 
   point_in_time_recovery {
     enabled = var.enable_pitr
@@ -106,19 +115,11 @@ resource "aws_dynamodb_table" "status" {
 # =============================================================================
 # Cross-account resource-based policies
 #
-# DynamoDB requires a resource-based policy on the resource in addition to the
+# DynamoDB requires a resource-based policy on the table in addition to the
 # identity-based policy on the caller's role for cross-account access.
 # These grant the MC kube-applier role the minimum required permissions.
-#
-# AWS treats tables and streams as distinct resource types with separate ARNs,
-# and strictly validates that only actions valid for that resource type appear
-# in the policy attached to it. Table actions (GetItem, Scan, etc.) must be
-# attached to the table ARN; stream actions (DescribeStream, GetRecords, etc.)
-# must be attached to the stream ARN. Mixing them in a single policy causes a
-# ValidationException from PutResourcePolicy.
 # =============================================================================
 
-# Table-level policy: read access for the MC kube-applier role.
 resource "aws_dynamodb_resource_policy" "specs" {
   for_each     = local.specs_tables
   resource_arn = aws_dynamodb_table.specs[each.key].arn
@@ -131,6 +132,9 @@ resource "aws_dynamodb_resource_policy" "specs" {
       Principal = {
         AWS = local.mc_kube_applier_role_arn
       }
+      # Streams actions (DescribeStream, GetRecords, GetShardIterator, ListStreams)
+      # are NOT valid in DynamoDB table resource policies — they are covered by
+      # the identity-based policy on the MC kube-applier role (kube-applier/iam.tf).
       Action = [
         "dynamodb:DescribeTable",
         "dynamodb:GetItem",
@@ -138,31 +142,6 @@ resource "aws_dynamodb_resource_policy" "specs" {
         "dynamodb:Query",
       ]
       Resource = aws_dynamodb_table.specs[each.key].arn
-    }]
-  })
-}
-
-# Stream-level policy: stream read access for the MC kube-applier role.
-# Attached to the stream ARN, not the table ARN, because stream actions are
-# invalid in a table resource policy.
-resource "aws_dynamodb_resource_policy" "specs_stream" {
-  for_each     = local.specs_tables
-  resource_arn = aws_dynamodb_table.specs[each.key].stream_arn
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid    = "AllowMCKubeApplierStreams"
-      Effect = "Allow"
-      Principal = {
-        AWS = local.mc_kube_applier_role_arn
-      }
-      Action = [
-        "dynamodb:DescribeStream",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
-      ]
-      Resource = aws_dynamodb_table.specs[each.key].stream_arn
     }]
   })
 }

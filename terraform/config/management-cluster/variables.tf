@@ -91,16 +91,6 @@ variable "dns_zone_operator_role_arn" {
   default     = ""
 }
 
-variable "maestro_agent_cert_file" {
-  description = "Path to JSON file containing Maestro agent certificate material (from IoT Mint outputs)"
-  type        = string
-}
-
-variable "maestro_agent_config_file" {
-  description = "Path to JSON file containing Maestro agent MQTT configuration (from IoT Mint outputs)"
-  type        = string
-}
-
 variable "zoa_outputs_bucket_arn" {
   description = "ARN of the ZOA outputs S3 bucket in the regional account (read from RC terraform state)"
   type        = string

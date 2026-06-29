@@ -21,7 +21,7 @@ params:
   - name: label_selector
     required: false
     default: ""
-    description: "Label selector to filter pods (e.g. app=maestro)"
+    description: "Label selector to filter pods (e.g. app=kube-applier)"
   - name: verbose
     required: false
     default: "false"

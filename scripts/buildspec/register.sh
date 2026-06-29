@@ -109,14 +109,9 @@ fi
 REGISTER_URL="${API_GATEWAY_URL}/api/v0/management_clusters"
 PAYLOAD=$(cat <<EOJSON
 {
-  "name": "${CLUSTER_ID}",
-  "labels": {
-    "cluster_type": "management",
-    "management_id": "${CLUSTER_ID}",
-    "region": "${TARGET_REGION}",
-    "alias": "${MANAGEMENT_ID}",
-    "cloudfront_url": "${CLOUDFRONT_URL}"
-  }
+  "id": "${CLUSTER_ID}",
+  "region": "${TARGET_REGION}",
+  "accountId": "${TARGET_ACCOUNT_ID}"
 }
 EOJSON
 )

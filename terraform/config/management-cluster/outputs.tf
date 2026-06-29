@@ -117,21 +117,6 @@ output "log_collector_task_family" {
   value       = var.enable_bastion ? module.bastion[0].log_collector_task_family : null
 }
 
-output "maestro_agent_cert_secret_name" {
-  description = "Secret name for Maestro Agent MQTT certificate"
-  value       = module.maestro_agent.maestro_agent_cert_secret_name
-}
-
-output "maestro_agent_config_secret_name" {
-  description = "Secret name for Maestro Agent MQTT configuration"
-  value       = module.maestro_agent.maestro_agent_config_secret_name
-}
-
-output "maestro_agent_role_arn" {
-  description = "IAM role ARN for Maestro Agent"
-  value       = module.maestro_agent.maestro_agent_role_arn
-}
-
 # =============================================================================
 # HyperShift OIDC Outputs
 # =============================================================================

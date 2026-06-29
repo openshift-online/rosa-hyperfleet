@@ -17,6 +17,5 @@
   "enable_sns_alerting": true,
   "regional_id": "regional",
   "eph_prefix": "",
-  "iot_log_level": "WARN",
   "management_clusters_info": [{"account_id": "ssm:///infra/ephemeral/us-east-1/mc01/account_id", "id": "mc01"}]
 }

@@ -13,7 +13,6 @@
 #   use_rc_account           Switch to RC account
 #   use_central_account      Restore central account credentials
 #   get_rc_account_id        Return resolved RC account ID
-#   read_iot_state           Read IoT cert/config from RC terraform state
 #   terraform_init_backend   Init terraform with S3 backend
 #   bootstrap_argocd         Run ArgoCD bootstrap via ECS task
 #   import_if_needed         Idempotent terraform import
@@ -225,56 +224,11 @@ config_load() {
     export DEPLOY_CONFIG_FILE APP_CODE SERVICE_PHASE COST_CENTER ENABLE_BASTION ENVIRONMENT_DOMAIN
 }
 
-# ── IoT State ────────────────────────────────────────────────────────────────
-
-# Read Maestro IoT certificate and config from RC terraform state.
-# Caller must already be in the RC account (use_rc_account).
-# Usage: read_iot_state <rc_account_id> <cluster_id> <region>
-# Exports: TF_VAR_maestro_agent_cert_file, TF_VAR_maestro_agent_config_file
-read_iot_state() {
-    local rc_account_id="$1"
-    local cluster_id="$2"
-    local region="$3"
-
-    local state_bucket="terraform-state-${rc_account_id}-${region}"
-    local state_key="maestro-agent-iot/${cluster_id}.tfstate"
-    local tf_dir="terraform/config/maestro-agent-iot-provisioning"
-
-    (
-        cd "$tf_dir"
-        terraform init -reconfigure \
-            -backend-config="bucket=${state_bucket}" \
-            -backend-config="key=${state_key}" \
-            -backend-config="region=${region}" \
-            -backend-config="use_lockfile=true"
-    )
-
-    TF_VAR_maestro_agent_cert_file=$(mktemp /tmp/agent-cert-XXXXXX.json)
-    TF_VAR_maestro_agent_config_file=$(mktemp /tmp/agent-config-XXXXXX.json)
-
-    (cd "$tf_dir" && terraform output -json agent_cert) > "$TF_VAR_maestro_agent_cert_file" || true
-    (cd "$tf_dir" && terraform output -json agent_config) > "$TF_VAR_maestro_agent_config_file" || true
-
-    if [ ! -s "$TF_VAR_maestro_agent_cert_file" ] || [ "$(cat "$TF_VAR_maestro_agent_cert_file")" = "null" ]; then
-        echo "ERROR: Failed to read agent_cert from IoT terraform state for cluster: $cluster_id" >&2
-        rm -f "$TF_VAR_maestro_agent_cert_file" "$TF_VAR_maestro_agent_config_file"
-        return 1
-    fi
-
-    if [ ! -s "$TF_VAR_maestro_agent_config_file" ] || [ "$(cat "$TF_VAR_maestro_agent_config_file")" = "null" ]; then
-        echo "ERROR: Failed to read agent_config from IoT terraform state for cluster: $cluster_id" >&2
-        rm -f "$TF_VAR_maestro_agent_cert_file" "$TF_VAR_maestro_agent_config_file"
-        return 1
-    fi
-
-    export TF_VAR_maestro_agent_cert_file TF_VAR_maestro_agent_config_file
-}
-
 # ── Terraform ────────────────────────────────────────────────────────────────
 
 # Init terraform with S3 backend in the current account.
 # Usage: terraform_init_backend <cluster-type> <region> <cluster-id>
-# cluster-type: regional-cluster, management-cluster, or maestro-agent-iot
+# cluster-type: regional-cluster or management-cluster
 terraform_init_backend() {
     local cluster_type="$1"
     local region="$2"

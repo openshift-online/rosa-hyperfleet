@@ -32,8 +32,8 @@ module "kube_applier" {
 
 ## DynamoDB Tables
 
-Tables are created separately in the RC account via the `kube-applier-dynamodb-provisioning`
-Terraform config (analogous to `maestro-agent-iot-provisioning`). Six tables are created per MC:
+Tables are created in the RC account by the `kube-applier-dynamodb` module
+(invoked from `regional-cluster/main.tf`). Six tables are created per MC:
 
 - `mc-{mc}-specs-applydesires`
 - `mc-{mc}-specs-deletedesires`

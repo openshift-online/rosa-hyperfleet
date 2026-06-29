@@ -1,28 +1,14 @@
-# =============================================================================
-# kube-applier DynamoDB Provisioning - Outputs
-# =============================================================================
-
-output "specs_table_names" {
-  description = "Names of the three DynamoDB specs tables for this MC"
-  value       = module.kube_applier_dynamodb.specs_table_names
-}
-
 output "specs_table_arns" {
-  description = "ARNs of the three DynamoDB specs tables for this MC"
+  description = "ARNs of the specs DynamoDB tables"
   value       = module.kube_applier_dynamodb.specs_table_arns
 }
 
-output "specs_table_stream_arns" {
-  description = "Stream ARNs of the three DynamoDB specs tables for this MC"
-  value       = module.kube_applier_dynamodb.specs_table_stream_arns
-}
-
-output "status_table_names" {
-  description = "Names of the three DynamoDB status tables for this MC"
-  value       = module.kube_applier_dynamodb.status_table_names
-}
-
 output "status_table_arns" {
-  description = "ARNs of the three DynamoDB status tables for this MC"
+  description = "ARNs of the status DynamoDB tables"
   value       = module.kube_applier_dynamodb.status_table_arns
+}
+
+output "status_readdesires_stream_arn" {
+  description = "Stream ARN for the status-readdesires table"
+  value       = module.kube_applier_dynamodb.status_readdesires_stream_arn
 }

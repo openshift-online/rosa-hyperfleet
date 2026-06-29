@@ -1,14 +1,20 @@
-# =============================================================================
-# kube-applier DynamoDB Provisioning - Variables
-# =============================================================================
-
-variable "management_cluster_id" {
-  description = "Management cluster identifier (e.g., 'mc01')"
+variable "region" {
+  description = "AWS region where DynamoDB tables will be created"
   type        = string
 }
 
+variable "mc_name" {
+  description = "Management cluster identifier (e.g., 'mc01')"
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9-]+$", var.mc_name))
+    error_message = "mc_name must contain only lowercase letters, numbers, and hyphens"
+  }
+}
+
 variable "mc_aws_account_id" {
-  description = "AWS account ID of the management cluster. Used to grant the MC kube-applier role cross-account DynamoDB access."
+  description = "AWS account ID of the management cluster"
   type        = string
 
   validation {
@@ -17,35 +23,33 @@ variable "mc_aws_account_id" {
   }
 }
 
-variable "regional_id" {
-  description = "Regional cluster identifier for backend role naming (e.g., 'regional')"
+variable "rc_id" {
+  description = "Regional cluster identifier (e.g., 'regional')"
   type        = string
 }
 
 variable "enable_pitr" {
-  description = "Enable Point-In-Time Recovery on DynamoDB tables. Recommended for non-ephemeral environments."
+  description = "Enable Point-In-Time Recovery on DynamoDB tables"
   type        = bool
   default     = false
 }
 
-# Tagging
 variable "app_code" {
-  description = "Application code for resource tagging and cost allocation"
+  description = "Application code for tagging"
   type        = string
 }
 
 variable "service_phase" {
-  description = "Service phase (development, staging, production)"
+  description = "Service phase for tagging"
   type        = string
 }
 
 variable "cost_center" {
-  description = "Cost center identifier for billing and cost allocation"
+  description = "Cost center for tagging"
   type        = string
 }
 
-variable "tags" {
-  description = "Additional tags to apply to resources"
-  type        = map(string)
-  default     = {}
+variable "environment" {
+  description = "Environment name (staging, production, etc.)"
+  type        = string
 }

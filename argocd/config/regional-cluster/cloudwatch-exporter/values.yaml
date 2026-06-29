@@ -55,39 +55,6 @@ prometheus-yet-another-cloudwatch-exporter:
             nilToZero: true
             statistics: [Sum]
 
-      - namespace: AWS/IoT
-        name: iot-mqtt
-        regions:
-          - {{ .Values.global.aws_region }}
-        dimensions:
-          - name: Protocol
-            value: MQTT
-        metrics:
-          - name: Connect.Success
-            period: 300
-            length: 3600
-            delay: 120
-            nilToZero: true
-            statistics: [Sum]
-          - name: Connect.AuthError
-            period: 300
-            length: 3600
-            delay: 120
-            nilToZero: true
-            statistics: [Sum]
-          - name: PublishIn.Success
-            period: 300
-            length: 3600
-            delay: 120
-            nilToZero: true
-            statistics: [Sum]
-          - name: PublishOut.Success
-            period: 300
-            length: 3600
-            delay: 120
-            nilToZero: true
-            statistics: [Sum]
-
     discovery:
       jobs:
         - type: AWS/ApiGateway
@@ -237,35 +204,6 @@ prometheus-yet-another-cloudwatch-exporter:
               nilToZero: true
             - name: SuccessfulRequestLatency
               statistics: [Average, p99]
-              nilToZero: true
-
-        - type: AWS/AmazonMQ
-          regions:
-            - {{ .Values.global.aws_region }}
-          searchTags:
-            - key: Name
-              value: ^{{ .Values.global.cluster_name }}-hyperfleet-mq$
-          period: 120
-          length: 120
-          delay: 120
-          metrics:
-            - name: MessageCount
-              statistics: [Average]
-              nilToZero: true
-            - name: MessageUnacknowledgedCount
-              statistics: [Average]
-              nilToZero: true
-            - name: ConsumerCount
-              statistics: [Average]
-              nilToZero: true
-            - name: QueueCount
-              statistics: [Average]
-              nilToZero: true
-            - name: NetworkIn
-              statistics: [Average]
-              nilToZero: true
-            - name: NetworkOut
-              statistics: [Average]
               nilToZero: true
 
         - type: AWS/CertificateManager
