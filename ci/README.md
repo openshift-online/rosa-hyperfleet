@@ -18,6 +18,8 @@ CI is managed through the [OpenShift CI](https://docs.ci.openshift.org/) system 
 
 > **Note:** `nightly-m6i` and `nightly-c6i` are pending periodic job definitions in [openshift/release](https://github.com/openshift/release). Scripts and override files are ready in this repo.
 
+> **Note:** The e2e suite (`on-demand-e2e`, `nightly-ephemeral`, `nightly-integration`) includes Platform API, ZOA Trusted Actions, HCP lifecycle, and platform monitoring tests.
+
 ## Load Testing (Planned)
 
 Load testing scripts are implemented but not yet wired into the Prow workflow. The `rosa-regional-platform-load-test` step needs to be added to the `rosa-regional-platform-ephemeral-e2e` workflow in [openshift/release](https://github.com/openshift/release).
