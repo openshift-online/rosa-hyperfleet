@@ -219,67 +219,29 @@ This means:
 
 ### Authentication Flow
 
-```
-Operator Terminal
-  │
-  │ eval "$(aws configure export-credentials --format env --profile rrp-regional-dev)"
-  │
-  ▼
-curl/zoa CLI
-  │
-  │ SigV4 signature (AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY + AWS_SESSION_TOKEN)
-  │
-  ▼
-API Gateway (us-east-1)
-  │
-  │ Validates SigV4, extracts caller identity (Account ID + ARN)
-  │ Passes identity via X-Amz-* headers
-  │
-  ▼
-Platform API
-  │
-  │ Reads: Account ID, Caller ARN, Operator name (from session name in ARN)
-  │ Records in DynamoDB: full caller identity with every execution
-  │
-  ▼
-Maestro (gRPC CreateManifestWork)
-  │
-  │ No additional auth — internal service call within RC
-  │
-  ▼
-MQTT → Maestro Agent → Job on target cluster
+```mermaid
+flowchart TB
+    A["Operator Terminal\neval $(aws configure export-credentials ...)"] -->|"SigV4 signature\n(AWS credentials)"| B["curl / zoa CLI"]
+    B --> C["API Gateway"]
+    C -->|"Validates SigV4, extracts caller identity\n(Account ID + ARN via X-Amz-* headers)"| D["Platform API"]
+    D -->|"Reads: Account ID, Caller ARN, Operator name\nRecords in DynamoDB"| E["Maestro (gRPC CreateManifestWork)\n(internal service call within RC)"]
+    E --> F["MQTT → Maestro Agent → Job on target cluster"]
 ```
 
 ### S3 Output Pipeline (Two-Job Architecture)
 
-```
-Runner Job (on target cluster)
-  │
-  │ SA: zoa-runner-<exec-id> (per-execution, no S3 access)
-  │ Writes output to ConfigMap: zoa-output-<exec-id>
-  │
-  ▼
-Uploader Job (on target cluster)
-  │
-  │ SA: zoa-uploader → IAM Role (S3 PutObject + KMS Encrypt)
-  │ Waits for runner job to complete
-  │ Reads output from ConfigMap
-  │ aws s3 cp output.json s3://<bucket>/<exec-id>/output.json
-  │ aws s3 cp execution.log s3://<bucket>/<exec-id>/execution.log
-  │
-  ▼
-S3 Bucket (regional, SSE-KMS encrypted)
-  │
-  │ Lifecycle: Standard → Intelligent-Tiering (30d) → Expire (365d)
-  │
-  ▼
-Platform API (on RC)
-  │
-  │ Pod Identity: platform-api role → IAM (S3 GetObject + KMS Decrypt)
-  │ Proxies content to consumers (no presigned URLs exposed)
-  │
-  ▼
-Operator (via GET /runs/{id}?include=output)
+```mermaid
+flowchart TB
+    Runner["Runner Job (on target cluster)\nSA: zoa-runner-exec-id (per-execution, no S3 access)\nWrites output to ConfigMap: zoa-output-exec-id"]
+    Uploader["Uploader Job (on target cluster)\nSA: zoa-uploader → IAM Role (S3 PutObject + KMS Encrypt)\nWaits for runner, reads output from ConfigMap\nUploads output.json and execution.log to S3"]
+    S3["S3 Bucket (regional, SSE-KMS encrypted)\nLifecycle: Standard → Intelligent-Tiering (30d) → Expire (365d)"]
+    API["Platform API (on RC)\nPod Identity: S3 GetObject + KMS Decrypt\nProxies content (no presigned URLs exposed)"]
+    Op["Operator (via GET /runs/id?include=output)"]
+
+    Runner --> Uploader
+    Uploader --> S3
+    S3 --> API
+    API --> Op
 ```
 
 ## Execution Flow (End-to-End)

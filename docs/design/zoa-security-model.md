@@ -24,28 +24,14 @@ This document details the security architecture for ZOA Trusted Actions: how pri
 
 ### Trust Boundaries
 
-```
-┌─────────────────────────────────────────┐
-│ Trust Zone A: Operator workstation       │
-│  - SigV4 credentials (STS, time-limited)│
-│  - Cannot reach MC/RC directly           │
-└────────────────────┬────────────────────┘
-                     │ HTTPS + SigV4
-                     ▼
-┌─────────────────────────────────────────┐
-│ Trust Zone B: Regional Cluster (RC)      │
-│  - Platform API (validates, dispatches) │
-│  - Maestro Server (stores, distributes) │
-│  - DynamoDB + S3 (persists)             │
-└────────────────────┬────────────────────┘
-                     │ MQTT (encrypted)
-                     ▼
-┌─────────────────────────────────────────┐
-│ Trust Zone C: Management Cluster (MC)    │
-│  - Maestro Agent (applies manifests)    │
-│  - zoa-jobs namespace (executes TAs)    │
-│  - Control plane namespaces (HCPs)      │
-└─────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    A["Trust Zone A: Operator Workstation\n- SigV4 credentials (STS, time-limited)\n- Cannot reach MC/RC directly"]
+    B["Trust Zone B: Regional Cluster (RC)\n- Platform API (validates, dispatches)\n- Maestro Server (stores, distributes)\n- DynamoDB + S3 (persists)"]
+    C["Trust Zone C: Management Cluster (MC)\n- Maestro Agent (applies manifests)\n- zoa-jobs namespace (executes TAs)\n- Control plane namespaces (HCPs)"]
+
+    A -->|"HTTPS + SigV4"| B
+    B -->|"MQTT (encrypted)"| C
 ```
 
 The ZOA system operates at the boundary between Zone B and Zone C. Platform API (Zone B) generates RBAC but cannot enforce it — the Kubernetes API server on the target cluster (Zone B or C) enforces RBAC at runtime.
