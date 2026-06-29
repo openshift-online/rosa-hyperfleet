@@ -132,9 +132,6 @@ resource "aws_dynamodb_resource_policy" "specs" {
       Principal = {
         AWS = local.mc_kube_applier_role_arn
       }
-      # Streams actions (DescribeStream, GetRecords, GetShardIterator, ListStreams)
-      # are NOT valid in DynamoDB table resource policies — they are covered by
-      # the identity-based policy on the MC kube-applier role (kube-applier/iam.tf).
       Action = [
         "dynamodb:DescribeTable",
         "dynamodb:GetItem",
@@ -142,6 +139,43 @@ resource "aws_dynamodb_resource_policy" "specs" {
         "dynamodb:Query",
       ]
       Resource = aws_dynamodb_table.specs[each.key].arn
+    }]
+  })
+}
+
+# Cross-account resource-based policy on each specs stream.
+#
+# For cross-account DynamoDB Streams access, AWS requires BOTH an identity-based
+# policy on the caller's role (kube-applier/iam.tf) AND a resource-based policy
+# on the stream itself. The stream resource type is distinct from the table — the
+# AWS IAM reference confirms PutResourcePolicy supports the stream ARN, and
+# DescribeStream/GetRecords/GetShardIterator/ListStreams all target the stream
+# resource type. Without this policy the identity-based policy alone is
+# insufficient for cross-account calls.
+#
+# stream_arn is a Terraform-computed attribute and will always reflect the
+# current stream. It only changes if streams are explicitly disabled and
+# re-enabled on the table, in which case a re-apply updates this policy
+# automatically.
+resource "aws_dynamodb_resource_policy" "specs_stream" {
+  for_each     = local.specs_tables
+  resource_arn = aws_dynamodb_table.specs[each.key].stream_arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "AllowMCKubeApplierStreams"
+      Effect = "Allow"
+      Principal = {
+        AWS = local.mc_kube_applier_role_arn
+      }
+      Action = [
+        "dynamodb:DescribeStream",
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator",
+        "dynamodb:ListStreams",
+      ]
+      Resource = aws_dynamodb_table.specs[each.key].stream_arn
     }]
   })
 }
