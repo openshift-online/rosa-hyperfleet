@@ -1,0 +1,22 @@
+# ClusterRole granting kube-applier-aws the permissions it needs to:
+# - Apply, delete, and read arbitrary Kubernetes resources (desire execution)
+# - Manage leader election leases
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kube-applier.fullname" . }}
+  labels:
+    {{- include "kube-applier.labels" . | nindent 4 }}
+rules:
+  # Leader election - Leases in the controller namespace
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "patch", "delete", "list", "watch"]
+  # Full access to all resources for ApplyDesire / DeleteDesire / ReadDesire execution
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Events (for controller status reporting)
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]

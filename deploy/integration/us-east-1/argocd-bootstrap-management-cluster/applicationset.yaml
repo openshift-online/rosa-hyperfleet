@@ -64,7 +64,11 @@ spec:
               aws_region: '{{ .metadata.labels.aws_region }}'
               cluster_name: '{{ .metadata.labels.cluster_name }}'
               aws_account_id: '{{ .metadata.annotations.aws_account_id }}'
+
+              rc_aws_account_id: '{{ .metadata.annotations.rc_aws_account_id }}'
+
               management_clusters: '{{ .metadata.annotations.management_clusters }}'
+              fleet_db_cluster_name: '{{ .metadata.annotations.fleet_db_cluster_name }}'
               rhobs_api_url: '{{ .metadata.annotations.rhobs_api_url }}'
               dns_zone_operator_role_arn: '{{ .metadata.annotations.dns_zone_operator_role_arn }}'
               git_revision: '{{ .metadata.annotations.git_revision }}'
@@ -73,8 +77,10 @@ spec:
                 arn: '{{ .metadata.annotations.api_target_group_arn }}'
               app:
                 args:
+                  fleetDbClusterName: '{{ .metadata.annotations.fleet_db_cluster_name }}'
                   dynamodbRegion: '{{ .metadata.annotations.dynamodb_region }}'
                   dynamodbPrefix: '{{ .metadata.annotations.dynamodb_prefix }}'
+                  oidcIssuerBaseURL: 'https://{{ .metadata.annotations.oidc_cloudfront_domain }}'
               zoa:
                 tableName: '{{ .metadata.annotations.zoa_table_name }}'
                 auditTableName: '{{ .metadata.annotations.zoa_audit_table_name }}'
@@ -105,15 +111,6 @@ spec:
                   bucketNames:
                     chunks: '{{ .metadata.labels.cluster_name }}-loki-logs-{{ .metadata.annotations.aws_account_id }}'
                     ruler: '{{ .metadata.labels.cluster_name }}-loki-logs-{{ .metadata.annotations.aws_account_id }}'
-            hyperfleetApi:
-              aws:
-                region: '{{ .metadata.labels.aws_region }}'
-            hyperfleetSentinel:
-              aws:
-                region: '{{ .metadata.labels.aws_region }}'
-            hyperfleetAdapter:
-              aws:
-                region: '{{ .metadata.labels.aws_region }}'
         path: '{{ .path.path }}'
         repoURL: '{{ .metadata.annotations.git_repo }}'
         targetRevision: '{{ .metadata.annotations.git_revision }}'

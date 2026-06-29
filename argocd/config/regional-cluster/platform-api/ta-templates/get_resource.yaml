@@ -24,7 +24,7 @@ params:
   - name: label_selector
     required: false
     default: ""
-    description: "Label selector to filter resources (e.g. app=maestro)"
+    description: "Label selector to filter resources (e.g. app=kube-applier)"
 rbac:
   cluster_scoped: true
   rules:

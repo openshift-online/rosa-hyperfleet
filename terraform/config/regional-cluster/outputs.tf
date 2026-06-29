@@ -35,9 +35,19 @@ output "private_subnets" {
   value       = module.vpc.private_subnet_ids
 }
 
+output "vpc_cidr" {
+  description = "VPC CIDR block"
+  value       = module.vpc.vpc_cidr
+}
+
 output "cluster_security_group_id" {
   description = "EKS cluster security group ID"
   value       = module.vpc.cluster_security_group_id
+}
+
+output "fleet_db_cluster_security_group_id" {
+  description = "Fleet-DB EKS cluster security group ID"
+  value       = aws_security_group.fleet_db_cluster.id
 }
 
 output "node_security_group_id" {
@@ -206,60 +216,6 @@ output "api_domain_regional_domain_name" {
   value       = module.api_gateway.api_domain_regional_domain_name
 }
 
-# Maestro Infrastructure Outputs
-# =============================================================================
-
-# AWS IoT Core
-output "maestro_iot_mqtt_endpoint" {
-  description = "AWS IoT Core MQTT endpoint for Maestro broker connection"
-  value       = module.maestro_infrastructure.iot_mqtt_endpoint
-}
-
-# RDS Database
-output "maestro_rds_endpoint" {
-  description = "Maestro RDS PostgreSQL endpoint (hostname:port)"
-  value       = module.maestro_infrastructure.rds_endpoint
-}
-
-output "maestro_rds_address" {
-  description = "Maestro RDS PostgreSQL hostname"
-  value       = module.maestro_infrastructure.rds_address
-}
-
-output "maestro_rds_port" {
-  description = "Maestro RDS PostgreSQL port"
-  value       = module.maestro_infrastructure.rds_port
-}
-
-# Secrets Manager
-output "maestro_server_cert_secret_name" {
-  description = "Secrets Manager secret name for Maestro Server certificate material"
-  value       = module.maestro_infrastructure.maestro_server_cert_secret_name
-}
-
-output "maestro_server_config_secret_name" {
-  description = "Secrets Manager secret name for Maestro Server MQTT configuration"
-  value       = module.maestro_infrastructure.maestro_server_config_secret_name
-}
-
-output "maestro_db_credentials_secret_name" {
-  description = "Secrets Manager secret name for Maestro database credentials"
-  value       = module.maestro_infrastructure.maestro_db_credentials_secret_name
-}
-
-# IAM Roles
-output "maestro_server_role_arn" {
-  description = "IAM role ARN for Maestro Server (Pod Identity)"
-  value       = module.maestro_infrastructure.maestro_server_role_arn
-}
-
-# Configuration Summary
-output "maestro_configuration_summary" {
-  description = "Complete Maestro configuration for use in Helm values"
-  value       = module.maestro_infrastructure.maestro_configuration_summary
-  sensitive   = false
-}
-
 # =============================================================================
 # Authorization Outputs
 # =============================================================================
@@ -309,73 +265,27 @@ output "authz_configuration_summary" {
 }
 
 # =============================================================================
-# HyperFleet Infrastructure Outputs
+# Hyperfleet Operator Outputs
 # =============================================================================
 
-# RDS Database
-output "hyperfleet_rds_endpoint" {
-  description = "HyperFleet RDS PostgreSQL endpoint (hostname:port)"
-  value       = module.hyperfleet_infrastructure.rds_endpoint
+output "hyperfleet_operator_role_arn" {
+  description = "IAM role ARN for hyperfleet-operator (Pod Identity)"
+  value       = aws_iam_role.hyperfleet_operator.arn
 }
 
-output "hyperfleet_rds_address" {
-  description = "HyperFleet RDS PostgreSQL hostname"
-  value       = module.hyperfleet_infrastructure.rds_address
+output "fleet_db_cluster_name" {
+  description = "Fleet-DB EKS cluster name (used by operator and platform-api for IAM auth)"
+  value       = module.fleet_db_cluster.cluster_name
 }
 
-output "hyperfleet_rds_port" {
-  description = "HyperFleet RDS PostgreSQL port"
-  value       = module.hyperfleet_infrastructure.rds_port
+output "fleet_db_cluster_arn" {
+  description = "Fleet-DB EKS cluster ARN"
+  value       = module.fleet_db_cluster.cluster_arn
 }
 
-output "hyperfleet_rds_database_name" {
-  description = "HyperFleet PostgreSQL database name"
-  value       = module.hyperfleet_infrastructure.rds_database_name
-}
-
-# Amazon MQ
-output "hyperfleet_mq_amqp_endpoint" {
-  description = "HyperFleet Amazon MQ AMQPS endpoint"
-  value       = module.hyperfleet_infrastructure.mq_amqp_endpoint
-}
-
-output "hyperfleet_mq_console_url" {
-  description = "HyperFleet RabbitMQ management console URL"
-  value       = module.hyperfleet_infrastructure.mq_console_url
-}
-
-# Secrets Manager
-output "hyperfleet_db_secret_name" {
-  description = "Secrets Manager secret name for HyperFleet database credentials"
-  value       = module.hyperfleet_infrastructure.db_secret_name
-}
-
-output "hyperfleet_mq_secret_name" {
-  description = "Secrets Manager secret name for HyperFleet MQ credentials"
-  value       = module.hyperfleet_infrastructure.mq_secret_name
-}
-
-# IAM Roles
-output "hyperfleet_api_role_arn" {
-  description = "IAM role ARN for HyperFleet API (Pod Identity)"
-  value       = module.hyperfleet_infrastructure.api_role_arn
-}
-
-output "hyperfleet_sentinel_role_arn" {
-  description = "IAM role ARN for HyperFleet Sentinel (Pod Identity)"
-  value       = module.hyperfleet_infrastructure.sentinel_role_arn
-}
-
-output "hyperfleet_adapter_role_arn" {
-  description = "IAM role ARN for HyperFleet Adapter (Pod Identity)"
-  value       = module.hyperfleet_infrastructure.adapter_role_arn
-}
-
-# Configuration Summary
-output "hyperfleet_configuration_summary" {
-  description = "Complete HyperFleet infrastructure configuration for use in Helm values"
-  value       = module.hyperfleet_infrastructure.configuration_summary
-  sensitive   = true
+output "fleet_db_cluster_endpoint" {
+  description = "Fleet-DB EKS cluster API server endpoint"
+  value       = module.fleet_db_cluster.cluster_endpoint
 }
 
 # =============================================================================

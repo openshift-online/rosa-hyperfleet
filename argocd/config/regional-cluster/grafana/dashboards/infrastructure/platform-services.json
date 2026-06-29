@@ -1,8 +1,8 @@
 {
   "title": "Platform Services",
   "uid": "platform-services",
-  "description": "CloudWatch metrics for shared platform services that support Maestro and HyperFleet: IoT Core (MQTT broker), Amazon MQ (RabbitMQ), and ACM certificate health.",
-  "tags": ["aws", "cloudwatch", "iot", "maestro", "sre"],
+  "description": "CloudWatch metrics for shared platform services: ACM certificate health.",
+  "tags": ["aws", "cloudwatch", "sre"],
   "timezone": "browser",
   "refresh": "1m",
   "schemaVersion": 38,
@@ -24,302 +24,11 @@
   "panels": [
 
     {
-      "id": 1,
-      "type": "row",
-      "title": "IoT Core – Maestro MQTT",
-      "collapsed": false,
-      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }
-    },
-
-    {
-      "id": 30,
-      "type": "stat",
-      "title": "MQTT Connect Success",
-      "description": "Recent successful MQTT connections. If zero, Maestro is not connecting to IoT Core.",
-      "gridPos": { "x": 0, "y": 1, "w": 6, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "aws_iot_connect_success_sum{dimension_Protocol=\"MQTT\"}",
-          "legendFormat": "Connect.Success"
-        }
-      ],
-      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "color": { "mode": "thresholds" },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "value": null, "color": "red" }, { "value": 1, "color": "green" }]
-          }
-        }
-      }
-    },
-
-    {
-      "id": 31,
-      "type": "stat",
-      "title": "MQTT Auth Errors",
-      "description": "Authentication failures. Should always be 0. Non-zero means Maestro IoT credentials are invalid or expired.",
-      "gridPos": { "x": 6, "y": 1, "w": 6, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "aws_iot_connect_autherror_sum{dimension_Protocol=\"MQTT\"}",
-          "legendFormat": "Connect.AuthError"
-        }
-      ],
-      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "color": { "mode": "thresholds" },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "value": null, "color": "green" }, { "value": 1, "color": "red" }]
-          }
-        }
-      }
-    },
-
-    {
-      "id": 32,
-      "type": "stat",
-      "title": "Messages In",
-      "description": "Messages published into IoT topics (from Maestro agents → broker).",
-      "gridPos": { "x": 12, "y": 1, "w": 6, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "aws_iot_publish_in_success_sum{dimension_Protocol=\"MQTT\"}",
-          "legendFormat": "PublishIn"
-        }
-      ],
-      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "fieldConfig": { "defaults": { "unit": "none" } }
-    },
-
-    {
-      "id": 33,
-      "type": "stat",
-      "title": "Messages Out",
-      "description": "Messages delivered from IoT topics to subscribers (broker → Maestro agents).",
-      "gridPos": { "x": 18, "y": 1, "w": 6, "h": 4 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "aws_iot_publish_out_success_sum{dimension_Protocol=\"MQTT\"}",
-          "legendFormat": "PublishOut"
-        }
-      ],
-      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "fieldConfig": { "defaults": { "unit": "none" } }
-    },
-
-    {
-      "id": 2,
-      "type": "timeseries",
-      "title": "IoT Core – Connect Success / AuthError",
-      "description": "If no data appears, verify that iot_log_level is not DISABLED and Maestro has connected to the IoT endpoint.",
-      "gridPos": { "x": 0, "y": 5, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "aws_iot_connect_success_sum{dimension_Protocol=\"MQTT\"}",
-          "legendFormat": "Connect.Success"
-        },
-        {
-          "refId": "B",
-          "expr": "aws_iot_connect_autherror_sum{dimension_Protocol=\"MQTT\"}",
-          "legendFormat": "Connect.AuthError"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": { "unit": "none" },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "Connect.AuthError" },
-            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
-          }
-        ]
-      },
-      "options": { "tooltip": { "mode": "multi", "sort": "desc" } }
-    },
-
-    {
-      "id": 3,
-      "type": "timeseries",
-      "title": "IoT Core – PublishIn / PublishOut Success",
-      "gridPos": { "x": 12, "y": 5, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "aws_iot_publish_in_success_sum{dimension_Protocol=\"MQTT\"}",
-          "legendFormat": "PublishIn.Success"
-        },
-        {
-          "refId": "B",
-          "expr": "aws_iot_publish_out_success_sum{dimension_Protocol=\"MQTT\"}",
-          "legendFormat": "PublishOut.Success"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "none" } },
-      "options": { "tooltip": { "mode": "multi", "sort": "desc" } }
-    },
-
-    {
-      "id": 7,
-      "type": "row",
-      "title": "Amazon MQ – HyperFleet RabbitMQ",
-      "collapsed": false,
-      "gridPos": { "x": 0, "y": 13, "w": 24, "h": 1 }
-    },
-
-    {
-      "id": 8,
-      "type": "stat",
-      "title": "Messages Ready",
-      "description": "Messages queued and waiting for consumers. A sustained climb means consumers are falling behind.",
-      "gridPos": { "x": 0, "y": 14, "w": 6, "h": 3 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum(aws_amazonmq_message_count_average)",
-          "legendFormat": "Messages Ready"
-        }
-      ],
-      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "color": { "mode": "thresholds" },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "value": null, "color": "green" }, { "value": 1000, "color": "yellow" }, { "value": 10000, "color": "red" }]
-          }
-        }
-      }
-    },
-
-    {
-      "id": 9,
-      "type": "stat",
-      "title": "Unacknowledged Messages",
-      "description": "Messages delivered to consumers but not yet acknowledged. High values indicate slow or stalled consumers.",
-      "gridPos": { "x": 6, "y": 14, "w": 6, "h": 3 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum(aws_amazonmq_message_unacknowledged_count_average)",
-          "legendFormat": "Unacknowledged"
-        }
-      ],
-      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "color": { "mode": "thresholds" },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{ "value": null, "color": "green" }, { "value": 500, "color": "yellow" }, { "value": 5000, "color": "red" }]
-          }
-        }
-      }
-    },
-
-    {
-      "id": 10,
-      "type": "stat",
-      "title": "Consumers",
-      "gridPos": { "x": 12, "y": 14, "w": 6, "h": 3 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum(aws_amazonmq_consumer_count_average)",
-          "legendFormat": "Consumers"
-        }
-      ],
-      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "fieldConfig": { "defaults": { "unit": "none" } }
-    },
-
-    {
-      "id": 11,
-      "type": "stat",
-      "title": "Queues",
-      "gridPos": { "x": 18, "y": 14, "w": 6, "h": 3 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "aws_amazonmq_queue_count_average",
-          "legendFormat": "Queues"
-        }
-      ],
-      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "fieldConfig": { "defaults": { "unit": "none" } }
-    },
-
-    {
-      "id": 12,
-      "type": "timeseries",
-      "title": "MQ – Message Counts",
-      "gridPos": { "x": 0, "y": 17, "w": 24, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (dimension_Broker, dimension_Queue) (aws_amazonmq_message_count_average)",
-          "legendFormat": "{{ dimension_Broker }} / {{ dimension_Queue }} Ready"
-        },
-        {
-          "refId": "B",
-          "expr": "sum by (dimension_Broker, dimension_Queue) (aws_amazonmq_message_unacknowledged_count_average)",
-          "legendFormat": "{{ dimension_Broker }} / {{ dimension_Queue }} Unacknowledged"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "none" } },
-      "options": { "tooltip": { "mode": "multi", "sort": "desc" } }
-    },
-
-    {
-      "id": 13,
-      "type": "timeseries",
-      "title": "MQ – Network Throughput",
-      "gridPos": { "x": 0, "y": 25, "w": 24, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "aws_amazonmq_network_in_average",
-          "legendFormat": "{{ dimension_Broker }} In"
-        },
-        {
-          "refId": "B",
-          "expr": "aws_amazonmq_network_out_average",
-          "legendFormat": "{{ dimension_Broker }} Out"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "Bps" } },
-      "options": { "tooltip": { "mode": "multi", "sort": "desc" } }
-    },
-
-    {
       "id": 14,
       "type": "row",
       "title": "ACM – Certificate Expiry",
       "collapsed": false,
-      "gridPos": { "x": 0, "y": 33, "w": 24, "h": 1 }
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }
     },
 
     {
@@ -327,7 +36,7 @@
       "type": "stat",
       "title": "Days to Expiry",
       "description": "ACM publishes this metric once per day. Widen the time range to 7d or 30d if no data appears. Alert threshold: yellow at 30 days, red at 7 days.",
-      "gridPos": { "x": 0, "y": 34, "w": 6, "h": 6 },
+      "gridPos": { "x": 0, "y": 1, "w": 6, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
         {
@@ -363,7 +72,7 @@
       "type": "timeseries",
       "title": "Certificate Days to Expiry – Trend",
       "description": "Should decrease by 1 per day. A flat line means ACM stopped publishing — check certificate status in the console.",
-      "gridPos": { "x": 6, "y": 34, "w": 18, "h": 6 },
+      "gridPos": { "x": 6, "y": 1, "w": 18, "h": 6 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
         {

@@ -126,17 +126,9 @@ applications:
       # @doc applications.regional-cluster.eksNodePool.instanceFamilies Instance families for the regional Karpenter NodePool.
       # @used-by applications.regional-cluster.eksNodePool.instanceFamilies _context
       instanceFamilies: "{{ regional_cluster.node_instance_families }}"
-    hyperfleetAdapter1Chart:
-      # @doc applications.regional-cluster.hyperfleetAdapter1Chart.baseDomain DNS base domain for HostedClusters. Currently hardcoded to zone shard 0; will be dynamically assigned per-cluster by CLM in a future phase.
-      # @used-by applications.regional-cluster.hyperfleetAdapter1Chart.baseDomain _context
-      baseDomain: "{% if dns.domain %}0.{{ deployment_name }}.{{ dns.domain }}{% endif %}"
-    maestro:
-      # @doc applications.regional-cluster.maestro.mqttEndpoint Maestro MQTT broker endpoint.
-      # @used-by applications.regional-cluster.maestro.mqttEndpoint _context
-      mqttEndpoint: "xxx.iot.{{ aws_region }}.amazonaws.com"
-      # @doc applications.regional-cluster.maestro.iotLogLevel AWS IoT Core default log level (DISABLED, ERROR, WARN, INFO, DEBUG).
-      # @used-by applications.regional-cluster.maestro.iotLogLevel pipeline-regional-cluster-inputs/terraform.json.j2
-      iotLogLevel: "WARN"
+    # @doc applications.regional-cluster.baseDomain DNS base domain for HostedClusters (deployment_name.dns.domain).
+    # @used-by applications.regional-cluster.baseDomain _context
+    baseDomain: "{% if dns.domain %}{{ deployment_name }}.{{ dns.domain }}{% endif %}"
     pagerduty:
       # @doc applications.regional-cluster.pagerduty.enabled Enable PagerDuty alerting in the monitoring stack.
       # @used-by applications.regional-cluster.pagerduty.enabled _context

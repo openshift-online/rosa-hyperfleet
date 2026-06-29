@@ -64,6 +64,7 @@ module "ecs_bootstrap" {
   eks_cluster_security_group_id = module.vpc.cluster_security_group_id
   cluster_id                    = var.management_id
   container_image               = var.container_image
+  rc_aws_account_id             = var.regional_aws_account_id
 
   repository_url    = var.repository_url
   repository_branch = var.repository_branch
@@ -84,17 +85,6 @@ module "bastion" {
   vpc_id                    = module.vpc.vpc_id
   private_subnet_ids        = module.vpc.private_subnet_ids
   container_image           = var.container_image
-}
-
-module "maestro_agent" {
-  source = "../../modules/maestro-agent"
-
-  management_id           = var.management_id
-  regional_aws_account_id = var.regional_aws_account_id
-  eks_cluster_name        = module.management_cluster.cluster_name
-
-  maestro_agent_cert_json   = file(var.maestro_agent_cert_file)
-  maestro_agent_config_json = file(var.maestro_agent_config_file)
 }
 
 # =============================================================================
@@ -183,4 +173,17 @@ module "grafana_cloudwatch_logs" {
   cluster_name            = module.management_cluster.cluster_name
   regional_id             = var.management_id
   grafana_role_account_id = var.regional_aws_account_id
+}
+
+# =============================================================================
+# kube-applier (DynamoDB-backed GitOps controller)
+# =============================================================================
+
+module "kube_applier" {
+  source = "../../modules/kube-applier"
+
+  management_id     = var.management_id
+  eks_cluster_name  = module.management_cluster.cluster_name
+  rc_aws_account_id = var.regional_aws_account_id
+  aws_region        = var.region
 }

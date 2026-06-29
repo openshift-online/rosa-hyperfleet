@@ -84,20 +84,29 @@ data:
       fi
     fi
 
-    LOG_B64=$(base64 -w0 "$EXEC_LOG")
+    LOG_B64=$(base64 -w0 "$EXEC_LOG" 2>/dev/null || base64 "$EXEC_LOG" | tr -d '\n')
     PATCH="{\"binaryData\":{\"execution.log\":\"${LOG_B64}\""
 
     if [ -f /artifacts/output.json ]; then
-      OUTPUT_B64=$(base64 -w0 /artifacts/output.json)
+      OUTPUT_B64=$(base64 -w0 /artifacts/output.json 2>/dev/null || base64 /artifacts/output.json | tr -d '\n')
       PATCH="${PATCH},\"output.json\":\"${OUTPUT_B64}\""
     fi
 
     PATCH="${PATCH}},\"data\":{\"exit-code\":\"${EXIT_CODE}\"}}"
 
-    if kubectl patch configmap "${OUTPUT_CM}" -n "${JOB_NAMESPACE}" --type=merge -p "${PATCH}" 2>&1; then
-      echo "[$(ts)] configmap patched"
-    else
-      echo "[$(ts)] ERROR: failed to patch ConfigMap"
+    PATCH_OK=false
+    for attempt in 1 2 3 4 5; do
+      if kubectl patch configmap "${OUTPUT_CM}" -n "${JOB_NAMESPACE}" --type=merge -p "${PATCH}" 2>&1; then
+        echo "[$(ts)] configmap patched"
+        PATCH_OK=true
+        break
+      fi
+      echo "[$(ts)] configmap patch failed (attempt ${attempt}/5), retrying in 3s..."
+      sleep 3
+    done
+
+    if [ "$PATCH_OK" != "true" ]; then
+      echo "[$(ts)] ERROR: failed to patch ConfigMap after 5 attempts"
     fi
 
     exit ${EXIT_CODE}

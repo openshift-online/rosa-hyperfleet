@@ -20,48 +20,6 @@ set -uo pipefail
 
 echo "--- Importing existing CloudWatch log groups (Regional Cluster) ---"
 
-# =============================================================================
-# Static imports — IDs are deterministic from environment variables
-# =============================================================================
-
-import_if_needed \
-    'module.maestro_infrastructure.aws_cloudwatch_log_group.rds_postgresql' \
-    "/aws/rds/instance/${TF_VAR_regional_id}-maestro/postgresql"
-
-import_if_needed \
-    'module.maestro_infrastructure.aws_cloudwatch_log_group.rds_upgrade' \
-    "/aws/rds/instance/${TF_VAR_regional_id}-maestro/upgrade"
-
-import_if_needed \
-    'module.maestro_infrastructure.aws_cloudwatch_log_group.iot_core' \
-    "AWSIotLogsV2"
-
-import_if_needed \
-    'module.hyperfleet_infrastructure.aws_cloudwatch_log_group.rds_postgresql' \
-    "/aws/rds/instance/${TF_VAR_regional_id}-hyperfleet/postgresql"
-
-import_if_needed \
-    'module.hyperfleet_infrastructure.aws_cloudwatch_log_group.rds_upgrade' \
-    "/aws/rds/instance/${TF_VAR_regional_id}-hyperfleet/upgrade"
-
-# =============================================================================
-# Dynamic imports — IDs depend on resources already in state
-# =============================================================================
-
-BROKER_ID=$(tf_state_value \
-    'module.hyperfleet_infrastructure.aws_mq_broker.hyperfleet' '.values.id')
-echo "  [debug] BROKER_ID=${BROKER_ID:-<empty>}"
-if [ -n "$BROKER_ID" ]; then
-    import_if_needed \
-        'module.hyperfleet_infrastructure.aws_cloudwatch_log_group.mq_general' \
-        "/aws/amazonmq/broker/${BROKER_ID}/general"
-    import_if_needed \
-        'module.hyperfleet_infrastructure.aws_cloudwatch_log_group.mq_connection' \
-        "/aws/amazonmq/broker/${BROKER_ID}/connection"
-else
-    echo "  [skip] AmazonMQ log groups — broker not yet provisioned"
-fi
-
 API_ID=$(tf_state_value \
     'module.api_gateway.aws_api_gateway_rest_api.main' '.values.id')
 STAGE_NAME=$(tf_state_value \

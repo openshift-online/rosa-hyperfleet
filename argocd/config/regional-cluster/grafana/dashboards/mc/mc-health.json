@@ -769,7 +769,7 @@
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "description": "Number of pods in Running phase across MC platform namespaces (HyperShift, Maestro Agent, cert-manager, etc.).",
+      "description": "Number of pods in Running phase across MC platform namespaces (HyperShift, kube-applier, cert-manager, etc.).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3028,14 +3028,14 @@
       },
       {
         "current": {
-          "text": "hypershift|maestro-agent|cert-manager|external-secrets|vector",
-          "value": "hypershift|maestro-agent|cert-manager|external-secrets|vector"
+          "text": "hypershift|kube-applier|cert-manager|external-secrets|vector",
+          "value": "hypershift|kube-applier|cert-manager|external-secrets|vector"
         },
         "hide": 2,
         "includeAll": false,
         "label": "MC Namespaces",
         "name": "mc_namespaces",
-        "query": "hypershift|maestro-agent|cert-manager|external-secrets|vector",
+        "query": "hypershift|kube-applier|cert-manager|external-secrets|vector",
         "type": "custom"
       }
     ]

@@ -1,6 +1,0 @@
-apiVersion: v2
-name: regional-hyperfleet-sentinel
-description: A Helm chart that deploys an ArgoCD Application for hyperfleet-sentinel
-type: application
-version: 0.1.1
-appVersion: "v0.2.1"

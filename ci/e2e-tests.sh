@@ -187,8 +187,8 @@ fi
 # (before HCP deletion). Only collect here for non-HCP failures.
 if [[ $platform_rc -ne 0 ]] || [[ $zoa_rc -ne 0 ]] || [[ $monitoring_rc -ne 0 ]]; then
     # Logs are left in S3 rather than added to public CI artifacts because
-    # they may contain sensitive data (e.g. maestro secrets) that cannot be
-    # reliably redacted. The S3 URIs are printed below for manual retrieval.
+    # they may contain sensitive data that cannot be reliably redacted.
+    # The S3 URIs are printed below for manual retrieval.
     if [[ -n "${CLUSTER_PREFIX+set}" ]]; then
         S3_ONLY=true \
             "${REPO_ROOT}/scripts/dev/collect-cluster-logs.sh" || true
