@@ -29,6 +29,7 @@ import hashlib
 import logging
 import os
 import re
+import subprocess
 import sys
 import uuid
 from pathlib import Path
@@ -222,6 +223,26 @@ def main():
         log.exception("Ephemeral environment %s failed",
                        "resync" if args.resync else "teardown" if is_teardown else "provision")
         sys.exit(1)
+    finally:
+        _generate_timing_report()
+
+
+def _generate_timing_report():
+    shared_dir = os.environ.get("SHARED_DIR", "")
+    artifact_dir = os.environ.get("ARTIFACT_DIR", "")
+    timing_file = Path(shared_dir) / "timing.jsonl" if shared_dir else None
+    if not timing_file or not timing_file.exists() or not artifact_dir:
+        return
+    report_script = Path(__file__).parent.parent / "timing-report.py"
+    output = Path(artifact_dir) / "timing-report.html"
+    try:
+        subprocess.run(
+            [sys.executable, str(report_script), str(timing_file), str(output)],
+            check=False,
+            timeout=30,
+        )
+    except Exception as e:
+        logging.getLogger(__name__).warning("Timing report generation failed: %s", e)
 
 
 if __name__ == "__main__":
