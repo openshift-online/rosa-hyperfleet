@@ -15,6 +15,7 @@
   "enable_api_custom_domain": true,
   "zone_shard_count": 1,
   "enable_sns_alerting": true,
+  "enable_grafana_ingress": true,
   "regional_id": "regional",
   "eph_prefix": "",
   "iot_log_level": "WARN",

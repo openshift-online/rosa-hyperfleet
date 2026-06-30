@@ -94,6 +94,12 @@ observability:
     # @used-by observability.pagerduty.escalation_policy_id pipeline-regional-cluster-inputs/terraform.json.j2
     escalation_policy_id: "P5KE444"
 
+  grafana_ingress:
+    # @doc observability.grafana_ingress.enabled Enable internet-facing Grafana ingress (ALB + ACM cert + DNS record).
+    # @used-by observability.grafana_ingress.enabled _context
+    # @used-by observability.grafana_ingress.enabled pipeline-regional-cluster-inputs/terraform.json.j2
+    enabled: false
+
   sns_alerting:
     # @doc observability.sns_alerting.enabled Enable SNS alerting for regional cluster alert consumption by automated/external services.
     # @used-by observability.sns_alerting.enabled _context

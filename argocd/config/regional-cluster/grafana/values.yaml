@@ -36,40 +36,14 @@ grafana:
     create: true
     name: grafana
 
-  "grafana.ini":
-    server:
-      root_url: "%(protocol)s://%(domain)s:%(http_port)s/"
+  createConfigmap: false
 
-    security:
-      disable_gravatar: true
+  envFromSecrets:
+    - name: grafana-sso
+      optional: true
 
-    database:
-      type: sqlite3
-      path: /var/lib/grafana/grafana.db
-      wal: true
-
-    auth:
-      disable_login_form: true
-
-    "auth.anonymous":
-      enabled: true
-      org_role: Admin
-
-    "auth.basic":
-      enabled: false
-
-    users:
-      allow_sign_up: false
-      auto_assign_org_role: Admin
-
-    analytics:
-      reporting_enabled: false
-      check_for_updates: false
-      check_for_plugin_updates: false
-
-    log:
-      mode: console
-      level: info
+  envFromConfigMaps:
+    - name: grafana-region-env
 
   service:
     type: ClusterIP
@@ -78,9 +52,6 @@ grafana:
 
   persistence:
     enabled: false
-
-  envFromConfigMaps:
-    - name: grafana-region-env
 
   datasources:
     datasources.yaml:
@@ -179,3 +150,10 @@ grafana:
       provider:
         foldersFromFilesStructure: true
         allowUiUpdates: false
+
+  # Injected at runtime by ApplicationSet from cluster annotations.
+  # Empty defaults for helm lint.
+  targetGroup:
+    arn: ""
+  sso:
+    secretArn: ""

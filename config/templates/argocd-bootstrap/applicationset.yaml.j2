@@ -80,6 +80,11 @@ spec:
                 tableName: '{{ '{{ .metadata.annotations.zoa_table_name }}' }}'
                 auditTableName: '{{ '{{ .metadata.annotations.zoa_audit_table_name }}' }}'
                 bucketName: '{{ '{{ .metadata.annotations.zoa_bucket_name }}' }}'
+            grafana:
+              targetGroup:
+                arn: '{{ '{{ .metadata.annotations.grafana_target_group_arn }}' }}'
+              sso:
+                secretArn: '{{ '{{ .metadata.annotations.grafana_sso_secret_arn }}' }}'
             # Thanos Operator values (keys must match chart's values.yaml structure)
             thanos:
               kmsKeyArn: '{{ '{{ .metadata.annotations.thanos_kms_key_arn }}' }}'

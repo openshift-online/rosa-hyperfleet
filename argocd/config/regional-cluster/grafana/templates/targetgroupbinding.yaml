@@ -1,0 +1,14 @@
+{{- if .Values.grafana.targetGroup.arn }}
+---
+apiVersion: eks.amazonaws.com/v1
+kind: TargetGroupBinding
+metadata:
+  name: grafana
+  namespace: {{ .Release.Namespace }}
+spec:
+  serviceRef:
+    name: grafana
+    port: 80
+  targetGroupARN: {{ .Values.grafana.targetGroup.arn }}
+  targetType: ip
+{{- end }}

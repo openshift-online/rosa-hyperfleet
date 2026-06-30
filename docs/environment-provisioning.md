@@ -46,6 +46,16 @@ aws iam update-assume-role-policy \
 # Repeat for the Management account (switch credentials first)
 ```
 
+### 1.3 Request SSO client registration
+
+Open a request with Red Hat IT to register a new OIDC client for Grafana in Red Hat SSO. You will need:
+
+- **Redirect URI**: `https://grafana.<deployment_name>.<environment_domain>/login/generic_oauth` (one per region)
+- **Grant type**: Authorization Code
+- **Scopes**: `openid`, `email`, `profile`, `offline_access`
+
+Red Hat IT will provide a `client_id`, `client_secret`, and the OIDC realm URL. These are stored in the central account in [step 2.3](#23-store-sso-credentials-in-the-central-account).
+
 ## 2. Configure the Region
 
 > **Skip this step** if reusing an existing environment/region configuration.
@@ -80,7 +90,51 @@ aws ssm put-parameter --name "/infra/region-ou-path" \
   --value "o-xxxxx/r-xxxx/ou-xxxx-xxxxxxxx/ou-xxxx-xxxxxxxx/" --type SecureString
 ```
 
-### 2.3 Add the environment configuration
+### 2.3 Store SSO credentials in the central account
+
+Create a Secrets Manager secret in the central account containing the Red Hat SSO credentials from [step 1.3](#13-request-sso-client-registration). The secret must be a JSON object with the following keys:
+
+```bash
+export AWS_PROFILE=<central-profile>
+
+aws secretsmanager create-secret \
+  --name "sso/rh-internal" \
+  --secret-string '{
+    "client_id": "<from Red Hat IT>",
+    "client_secret": "<from Red Hat IT>",
+    "oidc_url": "<realm URL from Red Hat IT>"
+  }'
+```
+
+Then attach a resource policy that allows the External Secrets Operator role in any regional account (scoped by OU path) to read the secret:
+
+```bash
+aws secretsmanager put-resource-policy \
+  --secret-id "sso/rh-internal" \
+  --resource-policy '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"],
+      "Resource": "*",
+      "Condition": {
+        "StringLike": {
+          "aws:PrincipalArn": "arn:aws:iam::*:role/*-external-secrets-operator"
+        },
+        "ForAnyValue:StringLike": {
+          "aws:PrincipalOrgPaths": "<your-ou-path>/*"
+        }
+      }
+    }]
+  }'
+```
+
+Replace `<your-ou-path>` with the OU path for regional accounts (e.g. `o-xxxxx/r-xxxx/ou-xxxx-xxxxxxxx`). New regions automatically get access without updating this policy.
+
+> **Note:** This step is only required once per environment. The identity policy on the ESO role (granting cross-account access to this secret) is provisioned automatically by Terraform when `enable_grafana_ingress` is enabled.
+
+### 2.4 Add the environment configuration
 
 Create a new region config file at `config/<environment>/<region>.yaml`. This inherits defaults from `config/defaults.yaml` — override only what differs. Environment-level defaults can be set in `config/<environment>/defaults.yaml`.
 
@@ -100,7 +154,7 @@ management_clusters:
   mc01: {}
 ```
 
-### 2.4 Render and commit
+### 2.5 Render and commit
 
 ```bash
 uv run scripts/render.py
