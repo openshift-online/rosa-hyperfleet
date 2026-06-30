@@ -24,8 +24,11 @@ spec:
           type: rabbitmq
           create: true
           rabbitmq:
-            enabled: false
+            # enabled: false
             url: "amqps://placeholder@localhost:5671/"
+            queue: "clusters"
+            exchange: "clusters"
+            routingKey: "#"
 
         # Environment variables - BROKER_RABBITMQ_URL overrides broker.yaml config
         env:

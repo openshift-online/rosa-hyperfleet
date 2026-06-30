@@ -17,7 +17,7 @@ hyperfleet-api-chart:
     repoURL: https://github.com/openshift-hyperfleet/hyperfleet-api.git
     # Target revision (branch, tag, or commit)
     # targetRevision: cdoan/ROSAENG-130-v0.1.1
-    targetRevision: v0.2.1
+    targetRevision: v0.3.0
     # Path to the chart within the repository
     path: charts
 
@@ -36,9 +36,9 @@ hyperfleet-api-chart:
   helmValues:
 
     image:
-      registry: quay.io/cdoan0
+      registry: quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet
       repository: hyperfleet-api
-      tag: v0.2.1-1-g153ec89-dirty
+      tag: latest
       pullPolicy: Always
     replicaCount: 2
 

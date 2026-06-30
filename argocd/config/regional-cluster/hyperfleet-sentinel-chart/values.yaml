@@ -16,11 +16,11 @@ hyperfleetSentinelChart:
   # Source configuration
   source:
     # Repository URL for the hyperfleet-sentinel chart
-    repoURL: https://github.com/cdoan1/hyperfleet-sentinel.git
+    repoURL: https://github.com/openshift-hyperfleet/hyperfleet-sentinel.git
     # Chart path within the repository
     path: charts
     # Target revision/tag
-    targetRevision: ROSAENG-v0.2.1
+    targetRevision: v0.3.0
 
   # Sync policy configuration
   syncPolicy:
@@ -39,9 +39,9 @@ hyperfleetSentinelChart:
   values:
 
     image:
-      registry: quay.io/openshift-hyperfleet
+      registry: quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet
       repository: hyperfleet-sentinel
-      tag: v0.2.1
+      tag: latest
       pullPolicy: Always
     replicaCount: 1
 
@@ -57,6 +57,7 @@ hyperfleetSentinelChart:
         # AWS MQ requires TLS (amqps://)
         url: "amqps://placeholder:placeholder@localhost:5671/"
         exchangeType: topic
+        queue: "clusters"
         exchange: "hyperfleet"
         routingKey: "clusters"
         # Prefetch settings for performance tuning

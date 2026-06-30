@@ -20,7 +20,7 @@ hyperfleetAdapter1Chart:
     # Chart path within the repository
     path: charts
     # Target revision/tag
-    targetRevision: v0.2.1
+    targetRevision: v0.3.0
 
   # Helm values passed to the upstream hyperfleet-adapter chart via ArgoCD
   helmValues:
