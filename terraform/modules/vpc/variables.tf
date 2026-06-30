@@ -69,6 +69,18 @@ variable "public_subnet_cidrs" {
   }
 }
 
+variable "enable_vpc_flow_logs" {
+  description = "Enable VPC flow logs to CloudWatch (FedRAMP AU-12). Disable for ephemeral/CI to reduce cost."
+  type        = bool
+  default     = false
+}
+
+variable "flow_log_retention_days" {
+  description = "CloudWatch log group retention in days for VPC flow logs"
+  type        = number
+  default     = 365
+}
+
 # Ensure private and public subnet counts match
 locals {
   subnet_count_validation = length(var.private_subnet_cidrs) == length(var.public_subnet_cidrs) ? true : tobool("Private and public subnet counts must match")

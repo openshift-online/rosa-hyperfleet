@@ -1,0 +1,48 @@
+{{- if .Values.platformApi.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: platform-api
+  namespace: {{ .Values.platformApi.namespace }}
+  labels:
+    {{- include "platform-api.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ .Values.platformApi.app.name }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # ALB / TargetGroupBinding → Envoy sidecar (HTTP)
+    - ports:
+        - protocol: TCP
+          port: {{ .Values.platformApi.service.ports.http }}
+    # Health checks (kubelet)
+    - ports:
+        - protocol: TCP
+          port: {{ .Values.platformApi.app.args.healthPort }}
+    # Metrics scraping
+    - ports:
+        - protocol: TCP
+          port: {{ .Values.platformApi.app.args.metricsPort }}
+  egress:
+    # DNS
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # maestro-server HTTP API
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: maestro-server
+      ports:
+        - protocol: TCP
+          port: 8080
+    # HTTPS (AWS APIs — DynamoDB, Secrets Manager, S3)
+    - ports:
+        - protocol: TCP
+          port: 443
+{{- end }}

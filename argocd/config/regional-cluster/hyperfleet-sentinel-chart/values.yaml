@@ -189,6 +189,10 @@ hyperfleetSentinelChart:
             # -- Duration before the alert fires
             for: 1m
 
+  # Network policy
+  networkPolicy:
+    enabled: false
+
 # SecretProviderClass configuration for AWS Secrets Manager
 secretProvider:
   # Enable SecretProviderClass creation

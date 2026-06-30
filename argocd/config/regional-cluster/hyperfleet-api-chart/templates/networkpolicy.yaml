@@ -1,0 +1,46 @@
+{{- if index .Values "hyperfleet-api-chart" "networkPolicy" "enabled" }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hyperfleet-api
+  namespace: {{ index .Values "hyperfleet-api-chart" "targetNamespace" }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: hyperfleet-api
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # hyperfleet-sentinel → hyperfleet-api
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: hyperfleet-sentinel
+      ports:
+        - protocol: TCP
+          port: 8000
+    # Health checks (kubelet)
+    - ports:
+        - protocol: TCP
+          port: 8081
+    # Metrics scraping
+    - ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # DNS
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # RDS (PostgreSQL)
+    - ports:
+        - protocol: TCP
+          port: 5432
+    # HTTPS (AWS APIs, secrets store)
+    - ports:
+        - protocol: TCP
+          port: 443
+{{- end }}

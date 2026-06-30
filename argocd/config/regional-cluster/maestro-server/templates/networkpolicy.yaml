@@ -1,0 +1,60 @@
+{{- if .Values.maestroServer.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: maestro-server
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "maestro-server.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "maestro-server.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # platform-api → maestro HTTP API
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: platform-api
+      ports:
+        - protocol: TCP
+          port: {{ .Values.maestroServer.maestro.httpBindPort }}
+    # gRPC clients
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: platform-api
+      ports:
+        - protocol: TCP
+          port: {{ .Values.maestroServer.maestro.grpcBindPort }}
+    # Health checks (kubelet)
+    - ports:
+        - protocol: TCP
+          port: {{ .Values.maestroServer.maestro.healthCheckBindPort }}
+    # Metrics scraping
+    - ports:
+        - protocol: TCP
+          port: 9090
+  egress:
+    # DNS
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # RDS (PostgreSQL)
+    - ports:
+        - protocol: TCP
+          port: 5432
+    # MQTT (AWS IoT Core via TLS)
+    - ports:
+        - protocol: TCP
+          port: 8883
+    # HTTPS (AWS APIs, secrets store)
+    - ports:
+        - protocol: TCP
+          port: 443
+{{- end }}

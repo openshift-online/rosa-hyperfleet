@@ -95,6 +95,10 @@ platformApi:
         cpu: "250m"
         memory: "256Mi"
 
+  # Network policy
+  networkPolicy:
+    enabled: false
+
   # Health probe configuration
   probes:
     liveness:
