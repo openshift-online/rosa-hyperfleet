@@ -101,17 +101,20 @@ presets:
       ResourceExplorer2View: *glob-name-all
       ResourceExplorer2Index: *glob-name-all
 
-  # Preserve CI identity: IAM users "e2e" and "ci"
+  # Preserve CI identity: IAM users "e2e", "ci", and "chai-bot-s3-reader"
   ci:
     filters:
       IAMUser:
         - "e2e"
         - "ci"
+        - "chai-bot-s3-reader"
       IAMUserAccessKey: &ci-user-filters
         - property: UserName
           value: "e2e"
         - property: UserName
           value: "ci"
+        - property: UserName
+          value: "chai-bot-s3-reader"
       IAMUserPolicyAttachment: *ci-user-filters
       IAMUserPolicy: *glob-all
       IAMUserGroupAttachment: *ci-user-filters
