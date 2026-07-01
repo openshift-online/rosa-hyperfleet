@@ -81,7 +81,7 @@ platformApi:
     tableName: ""
     auditTableName: ""
     bucketName: ""
-    jobImage: "quay.io/slopezz/zoa-tools:10b4efd"
+    jobImage: "quay.io/slopezz/zoa-tools:e777d69"
     ttlSeconds: "3600"
     executionTimeoutSeconds: "1800"
     writeCooldownSeconds: "300"

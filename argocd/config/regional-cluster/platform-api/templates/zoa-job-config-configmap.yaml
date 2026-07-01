@@ -22,23 +22,26 @@ data:
   dynamodb_ttl_days: {{ .Values.platformApi.zoa.dynamodbTTLDays | default "365" | quote }}
   entrypoint.sh: |
     #!/bin/bash
-    set -uo pipefail
+    set -euo pipefail
 
     ts() { date -u '+%H:%M:%S'; }
     EXEC_LOG="/artifacts/execution.log"
 
+    set +o pipefail
     {
       echo "[$(ts)] runner starting"
       echo "[zoa] execution_id=${RUN_ID} action=${ACTION_NAME} target=${CLUSTER_ID}"
       echo "[zoa] operator=${OPERATOR} scope=${SCOPE} type=${TYPE}"
       echo "[zoa] revision=${REVISION}"
-      PARAMS=$(env | grep "^PARAM_" | sed 's/^PARAM_//' | tr '\n' ' ')
+      PARAMS=$(env | grep "^PARAM_" | sed 's/^PARAM_//' | tr '\n' ' ') || true
       [ -n "$PARAMS" ] && echo "[zoa] params=${PARAMS}"
       echo "[zoa] started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
       echo "---"
       /zoa/run.sh
+      exit $?
     } 2>&1 | tee "$EXEC_LOG"
     EXIT_CODE=${PIPESTATUS[0]}
+    set -o pipefail
 
     {
       echo "---"
@@ -85,25 +88,28 @@ data:
     fi
 
     LOG_B64=$(base64 -w0 "$EXEC_LOG")
-    PATCH="{\"binaryData\":{\"execution.log\":\"${LOG_B64}\""
+    PATCH_FILE="/tmp/patch.json"
 
-    if [ -f /artifacts/output.json ]; then
-      OUTPUT_B64=$(base64 -w0 /artifacts/output.json)
-      PATCH="${PATCH},\"output.json\":\"${OUTPUT_B64}\""
-    fi
+    {
+      printf '{"binaryData":{"execution.log":"%s"' "$LOG_B64"
+      if [ -f /artifacts/output.json ]; then
+        OUTPUT_B64=$(base64 -w0 /artifacts/output.json)
+        printf ',"output.json":"%s"' "$OUTPUT_B64"
+      fi
+      printf '},"data":{"exit-code":"%s"}}' "${EXIT_CODE}"
+    } > "$PATCH_FILE"
 
-    PATCH="${PATCH}},\"data\":{\"exit-code\":\"${EXIT_CODE}\"}}"
-
-    if kubectl patch configmap "${OUTPUT_CM}" -n "${JOB_NAMESPACE}" --type=merge -p "${PATCH}" 2>&1; then
+    if kubectl patch configmap "${OUTPUT_CM}" -n "${JOB_NAMESPACE}" --type=merge --patch-file "$PATCH_FILE" 2>&1; then
       echo "[$(ts)] configmap patched"
     else
       echo "[$(ts)] ERROR: failed to patch ConfigMap"
     fi
+    rm -f "$PATCH_FILE"
 
     exit ${EXIT_CODE}
   upload_entrypoint.sh: |
     #!/bin/bash
-    set -uo pipefail
+    set -euo pipefail
 
     ts() { date -u '+%H:%M:%S'; }
     ts_at() { date -u -d "@$1" '+%H:%M:%S'; }
@@ -120,7 +126,7 @@ data:
 
     while true; do
       STATUS=$(kubectl get job "${RUNNER_JOB}" -n "${NS}" \
-        -o jsonpath='{.status.conditions[?(@.status=="True")].type}' 2>/dev/null)
+        -o jsonpath='{.status.conditions[?(@.status=="True")].type}' 2>/dev/null) || true
       case "$STATUS" in
         *Complete*|*Failed*) break ;;
       esac
@@ -136,7 +142,7 @@ data:
     WAIT_S=$((T1 - T0))
     echo "[$(ts_at $T1)] runner done (${WAIT_S}s), reading configmap"
 
-    CM_JSON=$(kubectl get configmap "${OUTPUT_CM}" -n "${NS}" -o json 2>/dev/null)
+    CM_JSON=$(kubectl get configmap "${OUTPUT_CM}" -n "${NS}" -o json 2>/dev/null) || true
     LOG_B64=$(printf '%s' "$CM_JSON" | jq -r '.binaryData["execution.log"] // empty')
     OUTPUT_B64=$(printf '%s' "$CM_JSON" | jq -r '.binaryData["output.json"] // empty')
     EXIT_CODE=$(printf '%s' "$CM_JSON" | jq -r '.data["exit-code"] // "1"')
@@ -151,8 +157,8 @@ data:
     fi
 
     mkdir -p /tmp/upload
-    [ -n "${LOG_B64}" ] && printf '%s' "${LOG_B64}" | base64 -d > /tmp/upload/execution.log
-    [ -n "${OUTPUT_B64}" ] && printf '%s' "${OUTPUT_B64}" | base64 -d > /tmp/upload/output.json
+    if [ -n "${LOG_B64}" ]; then printf '%s' "${LOG_B64}" | base64 -d > /tmp/upload/execution.log; fi
+    if [ -n "${OUTPUT_B64}" ]; then printf '%s' "${OUTPUT_B64}" | base64 -d > /tmp/upload/output.json; fi
 
     T3=$(date +%s)
     DECODE_S=$((T3 - T2))
