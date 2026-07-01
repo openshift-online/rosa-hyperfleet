@@ -16,6 +16,7 @@ REPOS=(
   openshift-online/rosa-hyperfleet-api
   openshift-online/rosa-hyperfleet-cli
   openshift-online/rosa-hyperfleet-internal
+  openshift-online/rosa-hyperfleet-zoa
 )
 
 JSON_FIELDS="number,title,author,labels,reviewRequests,createdAt,updatedAt,url"
