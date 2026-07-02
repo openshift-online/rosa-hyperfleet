@@ -538,14 +538,23 @@ Each YAML file defines one TA. Use `zoa actions` (CLI) or `GET /trusted-actions`
 ### CLI Design
 
 Designed around SRE muscle memory — mirrors `kubectl`/`oc` patterns with familiar flags.
-Implementation: `hack/zoa.sh` (source in `.zshrc`). This is a temporary shell wrapper used for rapid API design iteration — a proper Go CLI will follow in a dedicated repository.
+Implementation: [`rosa-hyperfleet-zoa`](https://github.com/openshift-online/rosa-hyperfleet-zoa) — a standalone Go CLI (`zoa`) with built-in SigV4 authentication, polling, and formatted output.
 
 #### Setup
 
 ```bash
-# Add to .zshrc
-source /path/to/rosa-hyperfleet/hack/zoa.sh
-export ZOA_API="https://<api-gateway-id>.execute-api.<region>.amazonaws.com/prod"
+# Install (requires Go 1.25+)
+go install github.com/openshift-online/rosa-hyperfleet-zoa/cmd/zoa@latest
+
+# Or build from source
+git clone https://github.com/openshift-online/rosa-hyperfleet-zoa.git
+cd rosa-hyperfleet-zoa && make build   # binary at ./bin/zoa
+
+# Load AWS credentials for your environment
+eval "$(aws configure export-credentials --format env --profile <your-profile>)"
+
+# Set the API Gateway URL for your region
+export API_URL="https://<api-gateway-id>.execute-api.<region>.amazonaws.com/prod"
 ```
 
 #### Command Structure
@@ -722,7 +731,7 @@ $ zoa audit -o json | jq '.items[] | select(.status_code != 202)'
   copy-paste from `zoa runs` output.
 - **Compact by default**: Read TAs return kubectl-wide-equivalent fields; pass `-v` for full objects.
 - **Time-scoped history**: `--since` prevents information overload during incidents.
-- **`ZOA_API` env var**: No hardcoded URLs. Set once per session/profile.
+- **`API_URL` env var**: No hardcoded URLs. Set once per session/profile.
 - **Bare verbs for TAs, prefixed for breakglass**: TAs are the hot path; `breakglass` is the escalation
   path and deliberately requires more typing (see breakglass section).
 
@@ -876,8 +885,8 @@ Platform API Reconciler (5s loop):                                              
 ### Operability:
 
 - Adding a new TA: create YAML in `argocd/config/regional-cluster/platform-api/ta-templates/`, push, ArgoCD syncs ConfigMap
-- Updating the image/wrapper: change `zoa-job-config` values, ArgoCD syncs, Platform API hot-reloads
-- The `zoa-tools` container image lives in [`rosa-hyperfleet-zoa`](https://github.com/openshift-online/rosa-hyperfleet-zoa); Go CLI and TA templates will follow
+- Updating the image: change `zoa-job-config` values, ArgoCD syncs, Platform API hot-reloads
+- The `zoa-tools` container image and Go CLI live in [`rosa-hyperfleet-zoa`](https://github.com/openshift-online/rosa-hyperfleet-zoa); TA templates will follow
 - Adding a new static SA profile: update `zoa-jobs` chart, Terraform (IAM role + Pod Identity), and Platform API (scope mapping)
 - Debugging: `zoa logs <id>` → full execution log from S3 (available even after Job/Pod GC, including when the runner Job failed)
 
