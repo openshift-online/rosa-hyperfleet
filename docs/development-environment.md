@@ -200,7 +200,7 @@ This resolves AWS credentials, starts a bastion ECS task if none is running, wai
 
 bash-5.2# kubectl get nodes
 NAME                          STATUS   ROLES    AGE   VERSION
-ip-10-0-1-42.ec2.internal    Ready    <none>   2h    v1.31.4-eks-aeac579
+<node-hostname>.ec2.internal  Ready    <none>   2h    v1.31.4-eks-aeac579
 ```
 
 The bastion task stays running until explicitly stopped or until the environment is torn down (teardown automatically cleans up running bastion tasks).
