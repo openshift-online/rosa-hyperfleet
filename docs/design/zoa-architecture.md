@@ -4,7 +4,7 @@
 
 ## Summary
 
-Zero Operator Access (ZOA) is the operational access framework for ROSA HCP v2 Regional Platform. It eliminates persistent operator access to managed clusters by routing all operational tasks through mediated, auditable channels. Operators never SSH, kubectl, or assume roles into customer infrastructure — they execute pre-approved Trusted Actions via an API.
+Zero Operator Access (ZOA) is the operational access framework for ROSA HyperFleet. It eliminates persistent operator access to managed clusters by routing all operational tasks through mediated, auditable channels. Operators never SSH, kubectl, or assume roles into customer infrastructure — they execute pre-approved Trusted Actions via an API.
 
 ## Problem Statement
 

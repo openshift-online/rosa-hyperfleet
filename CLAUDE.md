@@ -45,7 +45,7 @@ The **ROSA HyperFleet** is a strategic redesign of Red Hat OpenShift Service on 
 
 Work for the ROSA HyperFleet is tracked in Jira under two parent Outcomes:
 
-- **[HPSTRAT-62](https://redhat.atlassian.net/browse/HPSTRAT-62)** ("Red Hat Cloud Data Sovereignty"): Feature-driven work covering the regional platform build-out (architecture, infrastructure, services, tooling).
+- **[HPSTRAT-62](https://redhat.atlassian.net/browse/HPSTRAT-62)** ("Red Hat Cloud Data Sovereignty"): Feature-driven work covering HyperFleet platform build-out (architecture, infrastructure, services, tooling).
 - **[HPSTRAT-11](https://redhat.atlassian.net/browse/HPSTRAT-11)** ("FedRAMP Moderate Technical Delivery"): Compliance work covering FedRAMP security controls, audit requirements, and certification readiness.
 
 Day-to-day engineering tasks (epics, stories, bugs) live in the **ROSAENG** project under the **[ROSA] HyperFleet** team (`customfield_10001`, id `0c538cd9-152b-49f6-ad7c-e2fa2f865809`).
@@ -102,6 +102,12 @@ argocd/
 ├── rosa_hyperfleet_ci_daily_health_report.md   # Daily CI health report
 ├── rosa_hyperfleet_ci_weekly_status.md          # Weekly Jira epic progress + PR stats
 └── rosa_hyperfleet_docs_update.md               # Weekly doc staleness detection & update PRs
+
+.spec/                        # Technical specifications
+dashboard/                    # PR dashboard (HTML/JS)
+deploy/                       # Per-environment deployment configs
+hack/                         # Developer utility scripts
+scripts/                      # Render and automation scripts
 
 docs/
 ├── README.md                 # Architecture overview
