@@ -74,6 +74,13 @@ if [[ "$CLUSTER_TYPE" == "regional-cluster" ]]; then
     ZOA_TABLE_NAME=$(echo "$OUTPUTS" | jq -r '.zoa_table_name.value // ""')
     ZOA_AUDIT_TABLE_NAME=$(echo "$OUTPUTS" | jq -r '.zoa_audit_table_name.value // ""')
     ZOA_BUCKET_NAME=$(echo "$OUTPUTS" | jq -r '.zoa_bucket_name.value // ""')
+    _REDIS_HOST=$(echo "$OUTPUTS" | jq -r '.hyperfleet_redis_endpoint.value // ""')
+    _REDIS_PORT=$(echo "$OUTPUTS" | jq -r '.hyperfleet_redis_port.value // ""')
+    if [[ -n "$_REDIS_HOST" && -n "$_REDIS_PORT" ]]; then
+        REDIS_ENDPOINT="${_REDIS_HOST}:${_REDIS_PORT}"
+    else
+        REDIS_ENDPOINT=""
+    fi
 else
     API_TARGET_GROUP_ARN=""
     THANOS_TARGET_GROUP_ARN=""
@@ -84,6 +91,7 @@ else
     ZOA_TABLE_NAME=""
     ZOA_AUDIT_TABLE_NAME=""
     ZOA_BUCKET_NAME=""
+    REDIS_ENDPOINT=""
 fi
 
 RHOBS_API_URL="${RHOBS_API_URL:-}"
@@ -119,7 +127,8 @@ RUN_TASK_OUTPUT=$(aws ecs run-task \
         {\"name\": \"DNS_ZONE_OPERATOR_ROLE_ARN\", \"value\": \"$DNS_ZONE_OPERATOR_ROLE_ARN\"},
         {\"name\": \"ZOA_TABLE_NAME\", \"value\": \"$ZOA_TABLE_NAME\"},
         {\"name\": \"ZOA_AUDIT_TABLE_NAME\", \"value\": \"$ZOA_AUDIT_TABLE_NAME\"},
-        {\"name\": \"ZOA_BUCKET_NAME\", \"value\": \"$ZOA_BUCKET_NAME\"}
+        {\"name\": \"ZOA_BUCKET_NAME\", \"value\": \"$ZOA_BUCKET_NAME\"},
+        {\"name\": \"REDIS_ENDPOINT\", \"value\": \"$REDIS_ENDPOINT\"}
       ]
     }]
   }" 2>&1)

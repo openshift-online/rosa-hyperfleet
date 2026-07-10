@@ -117,6 +117,20 @@ output "adapter_role_name" {
 }
 
 # =============================================================================
+# ElastiCache Valkey Outputs
+# =============================================================================
+
+output "redis_endpoint" {
+  description = "ElastiCache Valkey endpoint for rate limiting"
+  value       = var.enable_rate_limit_redis ? aws_elasticache_replication_group.hyperfleet[0].primary_endpoint_address : null
+}
+
+output "redis_port" {
+  description = "ElastiCache Valkey port"
+  value       = var.enable_rate_limit_redis ? aws_elasticache_replication_group.hyperfleet[0].port : null
+}
+
+# =============================================================================
 # Configuration Summary (for easy reference)
 # =============================================================================
 
@@ -141,6 +155,11 @@ output "configuration_summary" {
       apiRoleArn      = aws_iam_role.hyperfleet_api.arn
       sentinelRoleArn = aws_iam_role.hyperfleet_sentinel.arn
       adapterRoleArn  = aws_iam_role.hyperfleet_adapter.arn
+    }
+    redis = {
+      enabled  = var.enable_rate_limit_redis
+      endpoint = var.enable_rate_limit_redis ? aws_elasticache_replication_group.hyperfleet[0].primary_endpoint_address : null
+      port     = var.enable_rate_limit_redis ? aws_elasticache_replication_group.hyperfleet[0].port : null
     }
   }
 }

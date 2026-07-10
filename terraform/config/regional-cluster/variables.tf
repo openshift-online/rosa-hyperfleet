@@ -111,6 +111,12 @@ variable "enable_sns_alerting" {
   default     = false
 }
 
+variable "enable_rate_limit_redis" {
+  description = "Enable ElastiCache Redis for Platform API rate limiting"
+  type        = bool
+  default     = true
+}
+
 
 
 # =============================================================================

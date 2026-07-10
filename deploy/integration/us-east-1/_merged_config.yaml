@@ -70,6 +70,9 @@ regional_cluster:
   # @doc regional_cluster.enable_api_custom_domain Enable API Gateway custom domain and ACM certificate. Off by default; adds ~20 minutes for certificate validation.
   # @used-by regional_cluster.enable_api_custom_domain pipeline-regional-cluster-inputs/terraform.json.j2
   enable_api_custom_domain: true
+  # @doc regional_cluster.enable_rate_limit_redis Enable ElastiCache Redis for Platform API rate limiting.
+  # @used-by regional_cluster.enable_rate_limit_redis pipeline-regional-cluster-inputs/terraform.json.j2
+  enable_rate_limit_redis: true
   # @doc regional_cluster.zone_shard_count Number of DNS zone shards under the regional zone. Each shard supports ~10k records.
   # @used-by regional_cluster.zone_shard_count pipeline-regional-cluster-inputs/terraform.json.j2
   zone_shard_count: 1

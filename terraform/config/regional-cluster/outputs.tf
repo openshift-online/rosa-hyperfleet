@@ -371,6 +371,17 @@ output "hyperfleet_adapter_role_arn" {
   value       = module.hyperfleet_infrastructure.adapter_role_arn
 }
 
+# ElastiCache Redis
+output "hyperfleet_redis_endpoint" {
+  description = "ElastiCache Redis endpoint for rate limiting (null if disabled)"
+  value       = module.hyperfleet_infrastructure.redis_endpoint
+}
+
+output "hyperfleet_redis_port" {
+  description = "ElastiCache Redis port (null if disabled)"
+  value       = module.hyperfleet_infrastructure.redis_port
+}
+
 # Configuration Summary
 output "hyperfleet_configuration_summary" {
   description = "Complete HyperFleet infrastructure configuration for use in Helm values"
