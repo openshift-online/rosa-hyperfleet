@@ -102,3 +102,49 @@ tests:
       - eval_time: 8m
         alertname: RateLimitHighDenialRatio
         exp_alerts: []
+
+  # RateLimitPodHighDenialRatio fires when a single pod exceeds 70% denial for > 5m
+  # Pod api-0: 8 denied + 2 ok = 80% denial ratio
+  - interval: 1m
+    input_series:
+      - series: 'ratelimit_requests_total{result="over_limit", method="GET", path="/api/v0/clusters", pod="api-0"}'
+        values: "0+8x15"
+      - series: 'ratelimit_requests_total{result="ok", method="GET", path="/api/v0/clusters", pod="api-0"}'
+        values: "0+2x15"
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: RateLimitPodHighDenialRatio
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              method: GET
+              path: /api/v0/clusters
+              pod: api-0
+            exp_annotations:
+              summary: "Single pod denying over 70% of rate-limited requests"
+              description: "Pod api-0 is denying over 70% of requests on method=GET, path=/api/v0/clusters for over 5 minutes. This may indicate a pod-level issue rather than a global rate limit problem."
+
+  # RateLimitPodHighDenialRatio does NOT fire when pod denial ratio is below 70%
+  # Pod api-0: 6 denied + 4 ok = 60% denial ratio
+  - interval: 1m
+    input_series:
+      - series: 'ratelimit_requests_total{result="over_limit", method="GET", path="/api/v0/clusters", pod="api-0"}'
+        values: "0+6x15"
+      - series: 'ratelimit_requests_total{result="ok", method="GET", path="/api/v0/clusters", pod="api-0"}'
+        values: "0+4x15"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: RateLimitPodHighDenialRatio
+        exp_alerts: []
+
+  # RateLimitPodHighDenialRatio does NOT fire before 5m even with high denial ratio
+  - interval: 1m
+    input_series:
+      - series: 'ratelimit_requests_total{result="over_limit", method="GET", path="/api/v0/clusters", pod="api-0"}'
+        values: "0+9x4"
+      - series: 'ratelimit_requests_total{result="ok", method="GET", path="/api/v0/clusters", pod="api-0"}'
+        values: "0+1x4"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: RateLimitPodHighDenialRatio
+        exp_alerts: []

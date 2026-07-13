@@ -33,3 +33,17 @@ spec:
           annotations:
             summary: "Over 50% of requests are being rate limited"
             description: "More than 50% of rate-limited requests on method={{ "{{" }} $labels.method {{ "}}" }}, path={{ "{{" }} $labels.path {{ "}}" }} have been denied for over 10 minutes. This may indicate a misbehaving client or rate limits that need tuning."
+
+        - alert: RateLimitPodHighDenialRatio
+          expr: |
+            (
+              sum by(method, path, pod) (rate(ratelimit_requests_total{result="over_limit"}[5m]))
+              /
+              sum by(method, path, pod) (rate(ratelimit_requests_total[5m]))
+            ) > 0.7
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Single pod denying over 70% of rate-limited requests"
+            description: "Pod {{ "{{" }} $labels.pod {{ "}}" }} is denying over 70% of requests on method={{ "{{" }} $labels.method {{ "}}" }}, path={{ "{{" }} $labels.path {{ "}}" }} for over 5 minutes. This may indicate a pod-level issue rather than a global rate limit problem."
