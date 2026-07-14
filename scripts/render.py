@@ -330,6 +330,12 @@ def build_context(
     ctx["management_cluster_defaults"] = resolve_templates(ctx.get("management_cluster_defaults", {}), ctx)
     ctx["dns"] = resolve_templates(ctx.get("dns", {}), ctx)
 
+    if ctx["regional_cluster"].get("enable_write_sre_tools") and env_name != "ephemeral":
+        raise ValueError(
+            f"regional_cluster.enable_write_sre_tools can only be true for ephemeral "
+            f"environments, got environment '{env_name}'"
+        )
+
     return ctx
 
 

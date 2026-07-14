@@ -67,6 +67,9 @@ regional_cluster:
   # @doc regional_cluster.enable_api_custom_domain Enable API Gateway custom domain and ACM certificate. Off by default; adds ~20 minutes for certificate validation.
   # @used-by regional_cluster.enable_api_custom_domain pipeline-regional-cluster-inputs/terraform.json.j2
   enable_api_custom_domain: false
+  # @doc regional_cluster.enable_write_sre_tools Enable write/admin access to SRE tools (Grafana, ArgoCD). Off by default. Can only be set to true for ephemeral environments — render.py enforces this.
+  # @used-by regional_cluster.enable_write_sre_tools _context
+  enable_write_sre_tools: false
   # @doc regional_cluster.zone_shard_count Number of DNS zone shards under the regional zone. Each shard supports ~10k records.
   # @used-by regional_cluster.zone_shard_count pipeline-regional-cluster-inputs/terraform.json.j2
   zone_shard_count: 1
@@ -138,6 +141,23 @@ applications:
       # @doc applications.regional-cluster.pagerduty.enabled Enable PagerDuty alerting in the monitoring stack.
       # @used-by applications.regional-cluster.pagerduty.enabled _context
       enabled: "{{ observability.pagerduty.enabled | default(false) }}"
+    grafana:
+      # @doc applications.regional-cluster.grafana Grafana auth mode driven by enable_write_sre_tools. Viewer when false (default), Admin when true (ephemeral only).
+      # @used-by applications.regional-cluster.grafana _context
+      "grafana.ini":
+        "auth.anonymous":
+          org_role: "{% if regional_cluster.enable_write_sre_tools %}Admin{% else %}Viewer{% endif %}"
+        users:
+          auto_assign_org_role: "{% if regional_cluster.enable_write_sre_tools %}Admin{% else %}Viewer{% endif %}"
+    argo-cd:
+      # @doc applications.regional-cluster.argo-cd ArgoCD RBAC mode driven by enable_write_sre_tools. Anonymous read-only when false (default); admin enabled with no restrictions when true (ephemeral only).
+      # @used-by applications.regional-cluster.argo-cd _context
+      configs:
+        cm:
+          admin.enabled: "{% if regional_cluster.enable_write_sre_tools %}true{% else %}false{% endif %}"
+          users.anonymous.enabled: "{% if regional_cluster.enable_write_sre_tools %}false{% else %}true{% endif %}"
+        rbac:
+          policy.default: "{% if regional_cluster.enable_write_sre_tools %}{% else %}role:readonly{% endif %}"
 
 # provision_mcs: MC topology, defined per-region. Keys are MC IDs.
 # Fields below are injected into templates as mc.* by render.py.

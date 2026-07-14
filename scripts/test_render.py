@@ -749,6 +749,27 @@ class TestBuildContext:
         ctx = build_context(merged, "prod", "eu-west-1", "")
         assert ctx["terraform_tags"]["region"] == "eu-west-1"
 
+    def test_write_sre_tools_true_raises_for_non_ephemeral(self):
+        merged = {"regional_cluster": {"enable_write_sre_tools": True}}
+        with pytest.raises(ValueError, match="can only be true for ephemeral"):
+            build_context(merged, "integration", "us-east-1", "")
+
+    def test_write_sre_tools_true_raises_for_production(self):
+        merged = {"regional_cluster": {"enable_write_sre_tools": True}}
+        with pytest.raises(ValueError, match="can only be true for ephemeral"):
+            build_context(merged, "production", "us-east-1", "")
+
+    def test_write_sre_tools_true_allowed_for_ephemeral(self):
+        merged = {"regional_cluster": {"enable_write_sre_tools": True}}
+        ctx = build_context(merged, "ephemeral", "us-east-1", "xg4y")
+        assert ctx["regional_cluster"]["enable_write_sre_tools"] is True
+
+    def test_write_sre_tools_false_allowed_for_any_environment(self):
+        for env in ["integration", "production", "ephemeral"]:
+            merged = {"regional_cluster": {"enable_write_sre_tools": False}}
+            ctx = build_context(merged, env, "us-east-1", "")
+            assert ctx["regional_cluster"]["enable_write_sre_tools"] is False
+
 
 # =============================================================================
 # build_mc_list
@@ -1994,6 +2015,124 @@ class TestMainIntegration:
         assert config_file.exists()
         data = yaml.safe_load(config_file.read_text())
         assert data["terraform_tags"]["app_code"] == "test"
+
+    def test_write_sre_tools_false_renders_readonly_overlay(self, tmp_path):
+        """When false, overlay sets Grafana Viewer role and ArgoCD read-only."""
+        sre_tools_applications = {
+            "applications": {
+                "regional-cluster": {
+                    "grafana": {
+                        "grafana.ini": {
+                            "auth.anonymous": {
+                                "org_role": "{% if regional_cluster.enable_write_sre_tools %}Admin{% else %}Viewer{% endif %}",
+                            },
+                            "users": {
+                                "auto_assign_org_role": "{% if regional_cluster.enable_write_sre_tools %}Admin{% else %}Viewer{% endif %}",
+                            },
+                        },
+                    },
+                    "argo-cd": {
+                        "configs": {
+                            "cm": {
+                                "admin.enabled": "{% if regional_cluster.enable_write_sre_tools %}true{% else %}false{% endif %}",
+                                "users.anonymous.enabled": "{% if regional_cluster.enable_write_sre_tools %}false{% else %}true{% endif %}",
+                            },
+                            "rbac": {
+                                "policy.default": "{% if regional_cluster.enable_write_sre_tools %}{% else %}role:readonly{% endif %}",
+                            },
+                        },
+                    },
+                },
+            },
+        }
+        deploy_dir = self._run_main(
+            tmp_path,
+            global_defaults={
+                "regional_cluster": {"enable_write_sre_tools": False},
+                **sre_tools_applications,
+            },
+            environments={
+                "staging": {
+                    "defaults": {},
+                    "regions": {"us-east-1": {"provision_mcs": {}}},
+                }
+            },
+        )
+        values = yaml.safe_load(
+            (deploy_dir / "staging" / "us-east-1" / "argocd-values-regional-cluster.yaml").read_text()
+        )
+        assert values["grafana"]["grafana.ini"]["auth.anonymous"]["org_role"] == "Viewer"
+        assert values["grafana"]["grafana.ini"]["users"]["auto_assign_org_role"] == "Viewer"
+        assert values["argo-cd"]["configs"]["cm"]["admin.enabled"] == "false"
+        assert values["argo-cd"]["configs"]["cm"]["users.anonymous.enabled"] == "true"
+        assert values["argo-cd"]["configs"]["rbac"]["policy.default"] == "role:readonly"
+
+    def test_write_sre_tools_true_renders_admin_overlay_for_ephemeral(self, tmp_path):
+        """When true (ephemeral only), overlay sets Grafana Admin and ArgoCD admin enabled."""
+        sre_tools_applications = {
+            "applications": {
+                "regional-cluster": {
+                    "grafana": {
+                        "grafana.ini": {
+                            "auth.anonymous": {
+                                "org_role": "{% if regional_cluster.enable_write_sre_tools %}Admin{% else %}Viewer{% endif %}",
+                            },
+                            "users": {
+                                "auto_assign_org_role": "{% if regional_cluster.enable_write_sre_tools %}Admin{% else %}Viewer{% endif %}",
+                            },
+                        },
+                    },
+                    "argo-cd": {
+                        "configs": {
+                            "cm": {
+                                "admin.enabled": "{% if regional_cluster.enable_write_sre_tools %}true{% else %}false{% endif %}",
+                                "users.anonymous.enabled": "{% if regional_cluster.enable_write_sre_tools %}false{% else %}true{% endif %}",
+                            },
+                            "rbac": {
+                                "policy.default": "{% if regional_cluster.enable_write_sre_tools %}{% else %}role:readonly{% endif %}",
+                            },
+                        },
+                    },
+                },
+            },
+        }
+        deploy_dir = self._run_main(
+            tmp_path,
+            global_defaults={
+                "regional_cluster": {"enable_write_sre_tools": True},
+                **sre_tools_applications,
+            },
+            environments={
+                "ephemeral": {
+                    "defaults": {},
+                    "regions": {"us-east-1": {"provision_mcs": {}}},
+                }
+            },
+        )
+        values = yaml.safe_load(
+            (deploy_dir / "ephemeral" / "us-east-1" / "argocd-values-regional-cluster.yaml").read_text()
+        )
+        assert values["grafana"]["grafana.ini"]["auth.anonymous"]["org_role"] == "Admin"
+        assert values["grafana"]["grafana.ini"]["users"]["auto_assign_org_role"] == "Admin"
+        assert values["argo-cd"]["configs"]["cm"]["admin.enabled"] == "true"
+        assert values["argo-cd"]["configs"]["cm"]["users.anonymous.enabled"] == "false"
+        assert values["argo-cd"]["configs"]["rbac"]["policy.default"] == ""
+
+    def test_write_sre_tools_true_rejected_for_non_ephemeral(self, tmp_path):
+        """render.py must fail if flag is true for a non-ephemeral environment."""
+        with pytest.raises(ValueError, match="can only be true for ephemeral"):
+            self._run_main(
+                tmp_path,
+                global_defaults={
+                    "regional_cluster": {"enable_write_sre_tools": True},
+                },
+                environments={
+                    "integration": {
+                        "defaults": {},
+                        "regions": {"us-east-1": {"provision_mcs": {}}},
+                    }
+                },
+            )
 
 
 # =============================================================================

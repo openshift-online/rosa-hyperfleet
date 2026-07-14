@@ -112,6 +112,25 @@ provision_mcs:
   mc01: {}
 ```
 
+Enable write access to SRE tools (Grafana, ArgoCD):
+
+```yaml
+# .ephemeral-env/defaults.yaml
+regional_cluster:
+  enable_write_sre_tools: true
+```
+
+```yaml
+# .ephemeral-env/us-east-1.yaml
+provision_mcs:
+  mc01: {}
+```
+
+By default (`enable_write_sre_tools: false`) Grafana is provisioned with anonymous
+Viewer access and ArgoCD disables the admin account with anonymous read-only access.
+Setting this flag to `true` restores admin access to both. This flag can only be set
+to `true` for ephemeral environments — `render.py` enforces this at render time.
+
 ### Applying Changes
 
 Overrides are applied during `provision` and `resync`. To update a running environment after editing `.ephemeral-env/`:

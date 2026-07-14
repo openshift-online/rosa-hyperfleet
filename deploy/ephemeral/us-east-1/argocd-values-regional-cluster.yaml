@@ -16,3 +16,16 @@ maestro:
   iotLogLevel: WARN
 pagerduty:
   enabled: false
+grafana:
+  grafana.ini:
+    auth.anonymous:
+      org_role: Admin
+    users:
+      auto_assign_org_role: Admin
+argo-cd:
+  configs:
+    cm:
+      admin.enabled: 'true'
+      users.anonymous.enabled: 'false'
+    rbac:
+      policy.default: ''

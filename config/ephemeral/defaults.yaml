@@ -21,6 +21,7 @@ dns:
 
 regional_cluster:
   enable_bastion: true
+  enable_write_sre_tools: true
   node_instance_families: ["m8i-flex", "m7i-flex"]
 
 management_cluster_defaults:
