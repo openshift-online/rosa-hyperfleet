@@ -1027,6 +1027,7 @@ cmd_e2e() {
         $_CONTAINER_AWS_FLAGS \
         -v "${REPO_ROOT}:/workspace:ro,z" \
         -w /workspace \
+        -e "CLUSTER_PREFIX=eph-${BUILD_ID}-" \
         -e "BUILD_ID=$BUILD_ID" \
         -e "BASE_URL=$api_url" \
         -e "RHOBS_API_URL=${rhobs_api_url:-}" \
