@@ -264,7 +264,7 @@ resource "aws_ecs_task_definition" "bootstrap" {
       environment = [
         {
           name  = "AWS_DEFAULT_REGION"
-          value = data.aws_region.current.id
+          value = data.aws_region.current.name
         },
         {
           name  = "THANOS_KMS_KEY_ARN"
@@ -288,7 +288,7 @@ resource "aws_ecs_task_definition" "bootstrap" {
         logDriver = "awslogs"
         options = {
           awslogs-group         = aws_cloudwatch_log_group.bootstrap.name
-          awslogs-region        = data.aws_region.current.id
+          awslogs-region        = data.aws_region.current.name
           awslogs-stream-prefix = "ecs"
         }
       }

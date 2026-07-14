@@ -25,7 +25,7 @@ resource "aws_api_gateway_rest_api_policy" "rhobs" {
           AWS = "*"
         }
         Action   = "execute-api:Invoke"
-        Resource = "arn:aws:execute-api:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.rhobs.id}/*/POST/api/v1/receive"
+        Resource = "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.rhobs.id}/*/POST/api/v1/receive"
         Condition = {
           StringEquals = {
             "aws:PrincipalOrgID" = data.aws_organizations_organization.current.id
@@ -39,7 +39,7 @@ resource "aws_api_gateway_rest_api_policy" "rhobs" {
           AWS = "*"
         }
         Action   = "execute-api:Invoke"
-        Resource = "arn:aws:execute-api:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.rhobs.id}/*/POST/loki/api/v1/push"
+        Resource = "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.rhobs.id}/*/POST/loki/api/v1/push"
         Condition = {
           StringEquals = {
             "aws:PrincipalOrgID" = data.aws_organizations_organization.current.id
@@ -54,11 +54,11 @@ resource "aws_api_gateway_rest_api_policy" "rhobs" {
         }
         Action = "execute-api:Invoke"
         Resource = [
-          "arn:aws:execute-api:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.rhobs.id}/*/GET/api/v1/query",
-          "arn:aws:execute-api:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.rhobs.id}/*/GET/api/v1/query_range",
-          "arn:aws:execute-api:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.rhobs.id}/*/GET/api/v1/rules",
-          "arn:aws:execute-api:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.rhobs.id}/*/GET/loki/api/v1/query",
-          "arn:aws:execute-api:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.rhobs.id}/*/GET/loki/api/v1/query_range"
+          "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.rhobs.id}/*/GET/api/v1/query",
+          "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.rhobs.id}/*/GET/api/v1/query_range",
+          "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.rhobs.id}/*/GET/api/v1/rules",
+          "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.rhobs.id}/*/GET/loki/api/v1/query",
+          "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.rhobs.id}/*/GET/loki/api/v1/query_range"
         ]
         Condition = {
           StringEquals = {

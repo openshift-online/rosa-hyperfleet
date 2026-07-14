@@ -19,7 +19,7 @@ resource "aws_api_gateway_rest_api_policy" "main" {
           AWS = "*"
         }
         Action   = "execute-api:Invoke"
-        Resource = "arn:aws:execute-api:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.main.id}/*"
+        Resource = "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.main.id}/*"
       }
     ]
   })

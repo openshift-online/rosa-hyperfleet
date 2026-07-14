@@ -72,7 +72,7 @@ resource "aws_iam_role_policy" "task_bootstrap" {
           "eks:DescribeAddon",
           "eks:UpdateAddon"
         ]
-        Resource = "arn:aws:eks:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:addon/${var.eks_cluster_name}/*/*"
+        Resource = "arn:aws:eks:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:addon/${var.eks_cluster_name}/*/*"
       },
       {
         Effect = "Allow"
@@ -83,8 +83,8 @@ resource "aws_iam_role_policy" "task_bootstrap" {
           "ssm:GetParametersByPath"
         ]
         Resource = [
-          "arn:aws:ssm:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:parameter/${var.cluster_id}/*",
-          "arn:aws:ssm:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:parameter/argocd/*"
+          "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/${var.cluster_id}/*",
+          "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/argocd/*"
         ]
       },
       {
@@ -93,7 +93,7 @@ resource "aws_iam_role_policy" "task_bootstrap" {
           "secretsmanager:GetSecretValue",
           "secretsmanager:DescribeSecret"
         ]
-        Resource = "arn:aws:secretsmanager:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:secret:${var.cluster_id}/*"
+        Resource = "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:${var.cluster_id}/*"
       }
     ]
   })

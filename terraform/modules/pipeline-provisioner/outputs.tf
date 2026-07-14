@@ -38,6 +38,6 @@ output "central_account_id" {
 
 output "deployment_region" {
   description = "AWS Region where pipeline provisioner is deployed"
-  value       = data.aws_region.current.id
+  value       = data.aws_region.current.name
 }
 

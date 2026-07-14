@@ -59,28 +59,28 @@ resource "aws_iot_policy" "maestro_agent" {
         Effect = "Allow"
         Action = ["iot:Connect"]
         Resource = [
-          "arn:aws:iot:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:client/*"
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:client/*"
         ]
       },
       {
         Effect = "Allow"
         Action = ["iot:Subscribe"]
         Resource = [
-          "arn:aws:iot:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:topicfilter/${var.mqtt_topic_prefix}/${var.management_cluster_id}/sourceevents"
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topicfilter/${var.mqtt_topic_prefix}/${var.management_cluster_id}/sourceevents"
         ]
       },
       {
         Effect = "Allow"
         Action = ["iot:Receive"]
         Resource = [
-          "arn:aws:iot:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:topic/${var.mqtt_topic_prefix}/${var.management_cluster_id}/sourceevents"
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topic/${var.mqtt_topic_prefix}/${var.management_cluster_id}/sourceevents"
         ]
       },
       {
         Effect = "Allow"
         Action = ["iot:Publish"]
         Resource = [
-          "arn:aws:iot:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:topic/${var.mqtt_topic_prefix}/${var.management_cluster_id}/agentevents"
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topic/${var.mqtt_topic_prefix}/${var.management_cluster_id}/agentevents"
         ]
       }
     ]

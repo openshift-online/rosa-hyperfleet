@@ -43,7 +43,7 @@ resource "aws_iam_role_policy" "loki_api_gateway" {
     Statement = [{
       Effect   = "Allow"
       Action   = "execute-api:Invoke"
-      Resource = "arn:aws:execute-api:${data.aws_region.current.id}:${var.regional_aws_account_id}:*/POST/loki/api/v1/push"
+      Resource = "arn:aws:execute-api:${data.aws_region.current.name}:${var.regional_aws_account_id}:*/POST/loki/api/v1/push"
     }]
   })
 }

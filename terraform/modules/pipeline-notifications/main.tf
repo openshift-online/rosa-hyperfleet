@@ -198,7 +198,7 @@ resource "aws_iam_role_policy" "slack_notifier_logs" {
           "logs:CreateLogStream",
           "logs:PutLogEvents"
         ]
-        Resource = "arn:aws:logs:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${local.resource_prefix}pipeline-failure-notifier:*"
+        Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${local.resource_prefix}pipeline-failure-notifier:*"
       }
     ]
   })
@@ -217,17 +217,17 @@ resource "aws_iam_role_policy" "slack_notifier_ssm" {
           "ssm:GetParameter",
           "ssm:GetParameters"
         ]
-        Resource = "arn:aws:ssm:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:parameter${var.slack_webhook_ssm_param}"
+        Resource = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter${var.slack_webhook_ssm_param}"
       },
       {
         Effect = "Allow"
         Action = [
           "kms:Decrypt"
         ]
-        Resource = "arn:aws:kms:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:key/*"
+        Resource = "arn:aws:kms:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:key/*"
         Condition = {
           StringEquals = {
-            "kms:ViaService" = "ssm.${data.aws_region.current.id}.amazonaws.com"
+            "kms:ViaService" = "ssm.${data.aws_region.current.name}.amazonaws.com"
           }
         }
       }

@@ -84,7 +84,7 @@ resource "aws_ecs_task_definition" "bastion" {
         },
         {
           name  = "AWS_REGION"
-          value = data.aws_region.current.id
+          value = data.aws_region.current.name
         }
       ]
 
@@ -92,7 +92,7 @@ resource "aws_ecs_task_definition" "bastion" {
         logDriver = "awslogs"
         options = {
           awslogs-group         = aws_cloudwatch_log_group.bastion.name
-          awslogs-region        = data.aws_region.current.id
+          awslogs-region        = data.aws_region.current.name
           awslogs-stream-prefix = "bastion"
         }
       }
@@ -156,7 +156,7 @@ resource "aws_iam_role_policy" "task_eks" {
           "eks:DescribeUpdate",
           "eks:AccessKubernetesApi"
         ]
-        Resource = "arn:aws:eks:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:cluster/${var.cluster_name}"
+        Resource = "arn:aws:eks:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:cluster/${var.cluster_name}"
       }
     ]
   })

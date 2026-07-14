@@ -67,9 +67,9 @@ resource "aws_iam_role_policy" "maestro_agent_iot" {
       ]
       Resource = [
         # IoT Core resources are in the REGIONAL account
-        "arn:aws:iot:${data.aws_region.current.id}:${var.regional_aws_account_id}:client/*",
-        "arn:aws:iot:${data.aws_region.current.id}:${var.regional_aws_account_id}:topic/${var.mqtt_topic_prefix}/${var.management_id}/*",
-        "arn:aws:iot:${data.aws_region.current.id}:${var.regional_aws_account_id}:topicfilter/${var.mqtt_topic_prefix}/${var.management_id}/*"
+        "arn:aws:iot:${data.aws_region.current.name}:${var.regional_aws_account_id}:client/*",
+        "arn:aws:iot:${data.aws_region.current.name}:${var.regional_aws_account_id}:topic/${var.mqtt_topic_prefix}/${var.management_id}/*",
+        "arn:aws:iot:${data.aws_region.current.name}:${var.regional_aws_account_id}:topicfilter/${var.mqtt_topic_prefix}/${var.management_id}/*"
       ]
     }]
   })
