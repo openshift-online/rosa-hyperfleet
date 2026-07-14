@@ -1,7 +1,6 @@
 # Feature-Gated Write-Mode Control
 
 **Status**: Design Proposal  
-**Jira**: [ROSAENG-61570](https://redhat.atlassian.net/browse/ROSAENG-61570)  
 **Author**: Chris Doan  
 **Date**: 2026-07-09  
 **Reviewers**: Lucas (reach out for detailed requirements)  
@@ -422,7 +421,5 @@ Add more feature sets: `PremiumDefault`, `PremiumTechPreview`, etc.
 
 ## References
 
-- **Jira**: [ROSAENG-61570](https://redhat.atlassian.net/browse/ROSAENG-61570)
-- **Parent Epic**: [ROSAENG-61383](https://redhat.atlassian.net/browse/ROSAENG-61383)
 - **Current Implementation**: `pkg/featuregate/`, `pkg/validation/`, `pkg/markers/`
 - **OpenShift API Pattern**: [https://github.com/openshift/api/tree/master/tools/codegen](https://github.com/openshift/api/tree/master/tools/codegen)
