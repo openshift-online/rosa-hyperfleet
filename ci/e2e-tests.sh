@@ -60,7 +60,10 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Compute CLUSTER_PREFIX early so it's available for pre-cleanup hooks (log
 # collection while HCPs still exist), not just in the post-test failure handler.
-if [[ -r "${CREDS_DIR}/api_url" ]]; then
+# Callers (e.g. ephemeral-env.sh) may set CLUSTER_PREFIX directly; honour it.
+if [[ -n "${CLUSTER_PREFIX+set}" ]]; then
+    echo "Using caller-provided CLUSTER_PREFIX=${CLUSTER_PREFIX}"
+elif [[ -r "${CREDS_DIR}/api_url" ]]; then
     export CLUSTER_PREFIX=""
 elif [[ -n "${BUILD_ID:-}" ]]; then
     _hash="$(echo -n "${BUILD_ID}" | sha256sum | cut -c1-6)" \
