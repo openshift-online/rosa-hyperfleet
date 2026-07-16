@@ -376,6 +376,27 @@ resource "aws_ecs_task_definition" "bootstrap" {
                 - CreateNamespace=true
           APP_EOF
 
+          # For MC clusters, wait for hypershift to be Healthy before returning.
+          # The E2E test starts immediately after bootstrap exits; HyperShift must
+          # be fully installed before the work agent can apply HostedCluster manifests.
+          if [ "${CLUSTER_TYPE:-}" = "management-cluster" ]; then
+            echo "=== Waiting for hypershift Application to be Healthy (up to 30m) ==="
+            _HS_DEADLINE=$((SECONDS + 1800))
+            until [ "$(kubectl get application hypershift -n argocd \
+                -o jsonpath='{.status.health.status}' 2>/dev/null)" = "Healthy" ]; do
+              if [ $SECONDS -ge $_HS_DEADLINE ]; then
+                echo "ERROR: hypershift Application not Healthy after 30 minutes" >&2
+                kubectl get application hypershift -n argocd -o yaml 2>/dev/null || true
+                exit 1
+              fi
+              _HS_STATUS=$(kubectl get application hypershift -n argocd \
+                -o jsonpath='{.status.health.status}' 2>/dev/null || echo "NotFound")
+              echo "  hypershift health: ${_HS_STATUS} ($(( _HS_DEADLINE - SECONDS ))s remaining)"
+              sleep 15
+            done
+            echo "=== hypershift is Healthy ==="
+          fi
+
           echo "=== Bootstrap completed successfully ==="
         EOF
       ]
