@@ -71,3 +71,19 @@ variable "enable_pod_security_standards" {
   default     = true
 }
 
+# =============================================================================
+# Karpenter configuration
+# =============================================================================
+
+variable "enable_karpenter" {
+  description = "Enable OSS Karpenter instead of EKS Auto Mode. Disables Auto Mode compute, storage, and load balancing blocks. Mutually exclusive with Auto Mode."
+  type        = bool
+  default     = true
+}
+
+variable "ami_kms_key_arn" {
+  description = "ARN of the Red Hat KMS key used to encrypt RHEL FIPS AMI EBS snapshots. When set, IAM policies granting kms:Decrypt and kms:CreateGrant on this key are added to the Karpenter node and controller roles. Leave empty to skip KMS policy creation."
+  type        = string
+  default     = ""
+}
+

@@ -43,7 +43,7 @@ output "vpc_endpoints_security_group_id" {
 }
 
 output "node_security_group_id" {
-  description = "EKS node security group ID (Auto Mode primary SG - only available after EKS creation)"
+  description = "EKS cluster security group ID (primary node SG, available after cluster creation)"
   value       = aws_eks_cluster.main.vpc_config[0].cluster_security_group_id
 }
 
@@ -87,6 +87,21 @@ output "cluster_iam_role_arn" {
 }
 
 output "node_iam_role_arn" {
-  description = "IAM role ARN of the EKS Auto Mode nodes"
-  value       = aws_iam_role.eks_auto_mode_node.arn
+  description = "IAM role ARN for cluster nodes (Auto Mode node role or Karpenter node role, depending on enable_karpenter)"
+  value       = var.enable_karpenter ? aws_iam_role.karpenter_node[0].arn : aws_iam_role.eks_auto_mode_node.arn
+}
+
+output "karpenter_controller_role_arn" {
+  description = "IAM role ARN for the Karpenter controller (IRSA). Null when enable_karpenter = false."
+  value       = var.enable_karpenter ? aws_iam_role.karpenter_controller[0].arn : null
+}
+
+output "karpenter_queue_url" {
+  description = "SQS queue URL for Karpenter interruption handling. Null when enable_karpenter = false."
+  value       = var.enable_karpenter ? aws_sqs_queue.karpenter_interruption[0].url : null
+}
+
+output "karpenter_node_instance_profile_name" {
+  description = "Instance profile name for Karpenter-provisioned nodes (matches EC2NodeClass.spec.role). Null when enable_karpenter = false."
+  value       = var.enable_karpenter ? aws_iam_instance_profile.karpenter_node[0].name : null
 }
