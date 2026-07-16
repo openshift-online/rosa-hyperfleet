@@ -239,7 +239,7 @@ A Lambda function runs before the backend, extracts caller identity from SigV4 c
 **Limitations:**
 
 - **Cold start latency**: 50-500ms on first invocation (varies by runtime)
-- **Provisioned Concurrency** eliminates cold starts but adds cost. Note: one provisioned instance handles one **concurrent** request, not one per second — if each rate check takes ~5ms, a single instance can serve ~200 req/s. At current traffic levels (~200 req/s), 2-3 provisioned instances (~$30-45/month) would suffice.
+- **Provisioned Concurrency** eliminates cold starts but adds cost. Note: one provisioned instance handles one **concurrent** request, not one per second — if each rate check takes ~5ms, a single instance can serve ~200 req/s. At current traffic levels (~~200 req/s), 2-3 provisioned instances (~~$30-45/month) would suffice.
 - Authorizer response caching (TTL) conflicts with rate limiting — cached responses skip the Lambda, so counters aren't checked
 - Custom code to write and maintain
 

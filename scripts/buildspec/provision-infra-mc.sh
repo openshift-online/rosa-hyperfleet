@@ -142,7 +142,7 @@ if [ "${TERRAFORM_ACTION}" == "apply" ] && [ -f imports.sh ]; then
 fi
 
 set +e
-terraform "${TERRAFORM_ACTION}" -auto-approve
+terraform "${TERRAFORM_ACTION}" -auto-approve -parallelism=20
 TERRAFORM_STATUS=$?
 set -e
 

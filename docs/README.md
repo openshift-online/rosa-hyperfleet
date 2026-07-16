@@ -25,6 +25,7 @@ Detailed architecture and rationale for key technical decisions:
 | [DNS Architecture](design/dns-architecture.md)                                     | Hierarchical DNS with zone shards, `deployment_name`, DNSSEC chain |
 | [ECS Fargate Bootstrap](design/fully-private-eks-bootstrap.md)                     | How fully private EKS clusters are bootstrapped via ECS            |
 | [FIPS-Only EKS Compute](design/fips-eks-compute.md)                                | FIPS NodeClass/NodePool strategy for FedRAMP workload nodes        |
+| [Karpenter Node Provisioning](design/karpenter-node-provisioning.md)               | OSS Karpenter IAM roles, IRSA rationale, SQS interruption handling |
 | [GitOps Cluster Configuration](design/gitops-cluster-configuration.md)             | ApplicationSet pattern, progressive deployment, config modes       |
 | [Infrastructure Logging](design/infrastructure-logging.md)                         | AWS CloudWatch log groups, KMS encryption, Grafana access          |
 | [Logging Platform](design/logging-platform.md)                                     | Application-level log collection (Vector + Loki)                   |
@@ -72,6 +73,7 @@ Each module has its own README with usage, inputs, outputs, and architecture:
 - [`maestro-agent`](../terraform/modules/maestro-agent/README.md) - IAM and Pod Identity for Maestro Agent
 - [`grafana-cloudwatch-logs`](../terraform/modules/grafana-cloudwatch-logs/) - IAM + Pod Identity for Grafana CloudWatch Logs datasources (RC primary + MC reader)
 - [`hyperfleet-infrastructure`](../terraform/modules/hyperfleet-infrastructure/README.md) - RDS, Amazon MQ, IAM for HyperFleet (CLM)
+- [`aws-load-balancer-controller`](../terraform/modules/aws-load-balancer-controller/README.md) - IAM role and Pod Identity association for AWS Load Balancer Controller
 
 ### ArgoCD Helm Chart Documentation
 

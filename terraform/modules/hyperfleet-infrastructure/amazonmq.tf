@@ -142,7 +142,7 @@ resource "aws_security_group_rule" "hyperfleet_mq_eks_cluster" {
 # It does NOT block broker creation - only defines who can connect.
 resource "aws_security_group_rule" "hyperfleet_mq_eks_primary" {
   type                     = "ingress"
-  description              = "AMQPS from EKS cluster primary security group (Auto Mode)"
+  description              = "AMQPS from EKS cluster primary security group (Karpenter nodes)"
   from_port                = 5671
   to_port                  = 5671
   protocol                 = "tcp"
