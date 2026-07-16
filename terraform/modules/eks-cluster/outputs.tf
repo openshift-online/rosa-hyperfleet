@@ -102,6 +102,6 @@ output "karpenter_queue_url" {
 }
 
 output "karpenter_node_instance_profile_name" {
-  description = "Instance profile name for Karpenter-provisioned nodes (matches EC2NodeClass.spec.role). Null when enable_karpenter = false."
+  description = "Instance profile name for Karpenter-provisioned nodes (matches EC2NodeClass.spec.instanceProfile). Null when enable_karpenter = false."
   value       = var.enable_karpenter ? aws_iam_instance_profile.karpenter_node[0].name : null
 }
