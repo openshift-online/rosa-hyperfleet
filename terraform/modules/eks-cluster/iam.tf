@@ -87,7 +87,7 @@ resource "aws_iam_role_policy_attachment" "auto_node_managed" {
 # -----------------------------------------------------------------------------
 # Karpenter Node Role + Instance Profile
 #
-# Used by both Karpenter-provisioned RHEL FIPS nodes (via EC2NodeClass.spec.role)
+# Used by both Karpenter-provisioned FIPS nodes (via EC2NodeClass.spec.instanceProfile)
 # and the AL2023 bootstrap managed node group.
 # -----------------------------------------------------------------------------
 
@@ -114,25 +114,6 @@ resource "aws_iam_role_policy_attachment" "karpenter_node_managed" {
   ]) : toset([])
   policy_arn = each.value
   role       = aws_iam_role.karpenter_node[0].name
-}
-
-# Inline KMS policy for RHEL FIPS AMI EBS snapshot decryption.
-# EC2 calls kms:CreateGrant on the Red Hat key on behalf of the node role when
-# launching from an encrypted AMI.
-resource "aws_iam_role_policy" "karpenter_node_kms" {
-  count = var.enable_karpenter && var.ami_kms_key_arn != "" ? 1 : 0
-  name  = "rhel-ami-kms-decrypt"
-  role  = aws_iam_role.karpenter_node[0].id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid      = "RhelAmiKmsDecrypt"
-      Effect   = "Allow"
-      Action   = ["kms:Decrypt", "kms:DescribeKey", "kms:CreateGrant", "kms:GenerateDataKey*", "kms:ReEncrypt*"]
-      Resource = var.ami_kms_key_arn
-    }]
-  })
 }
 
 # Instance profile wrapping the node role. Referenced by EC2NodeClass.spec.instanceProfile.
@@ -363,19 +344,36 @@ resource "aws_iam_role_policy" "karpenter_controller" {
   })
 }
 
+# The controller (IRSA) calls RunInstances, which requires kms:CreateGrant so
+# EC2 can decrypt the RHEL FIPS AMI's encrypted EBS snapshot on instance launch.
+# kms:GrantIsForAWSResource restricts grant creation to AWS service principals,
+# preventing the controller from granting arbitrary IAM principals key access.
 resource "aws_iam_role_policy" "karpenter_controller_kms" {
   count = var.enable_karpenter && var.ami_kms_key_arn != "" ? 1 : 0
-  name  = "rhel-ami-kms-describe"
+  name  = "rhel-ami-kms"
   role  = aws_iam_role.karpenter_controller[0].id
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid      = "RhelAmiKmsGrant"
-      Effect   = "Allow"
-      Action   = ["kms:CreateGrant", "kms:DescribeKey"]
-      Resource = var.ami_kms_key_arn
-    }]
+    Statement = [
+      {
+        Sid      = "RhelAmiKmsGrant"
+        Effect   = "Allow"
+        Action   = ["kms:CreateGrant"]
+        Resource = var.ami_kms_key_arn
+        Condition = {
+          Bool = {
+            "kms:GrantIsForAWSResource" = "true"
+          }
+        }
+      },
+      {
+        Sid      = "RhelAmiKmsDescribe"
+        Effect   = "Allow"
+        Action   = ["kms:DescribeKey"]
+        Resource = var.ami_kms_key_arn
+      },
+    ]
   })
 }
 
