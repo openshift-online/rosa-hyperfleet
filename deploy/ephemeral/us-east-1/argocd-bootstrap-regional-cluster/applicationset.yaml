@@ -52,6 +52,28 @@ spec:
         syncOptions:
         - ServerSideApply=true
         - CreateNamespace=true
+        - RespectIgnoreDifferences=true
+      # Fields managed by controllers post-deployment that should not cause OutOfSync:
+      #   LBC rotates its own webhook TLS cert into caBundle and aws-load-balancer-tls.
+      #   LBC populates TargetGroupBinding status after reconciliation.
+      ignoreDifferences:
+      - group: admissionregistration.k8s.io
+        kind: MutatingWebhookConfiguration
+        jqPathExpressions:
+        - .webhooks[].clientConfig.caBundle
+      - group: admissionregistration.k8s.io
+        kind: ValidatingWebhookConfiguration
+        jqPathExpressions:
+        - .webhooks[].clientConfig.caBundle
+      - group: ""
+        kind: Secret
+        name: aws-load-balancer-tls
+        jqPathExpressions:
+        - .data
+      - group: elbv2.k8s.aws
+        kind: TargetGroupBinding
+        jqPathExpressions:
+        - .status
       sources:
       - helm:
           valueFiles:
@@ -128,6 +150,17 @@ spec:
               sre:
                 targetGroup:
                   arn: '{{ .metadata.annotations.sre_prometheus_target_group_arn }}'
+            aws-load-balancer-controller:
+              clusterName: '{{ .metadata.labels.cluster_name }}'
+            hyperfleetApi:
+              aws:
+                region: '{{ .metadata.labels.aws_region }}'
+            hyperfleetSentinel:
+              aws:
+                region: '{{ .metadata.labels.aws_region }}'
+            hyperfleetAdapter:
+              aws:
+                region: '{{ .metadata.labels.aws_region }}'
         path: '{{ .path.path }}'
         repoURL: '{{ .metadata.annotations.git_repo }}'
         targetRevision: '{{ .metadata.annotations.git_revision }}'

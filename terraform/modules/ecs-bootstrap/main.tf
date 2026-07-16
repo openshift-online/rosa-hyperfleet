@@ -103,29 +103,8 @@ resource "aws_ecs_task_definition" "bootstrap" {
           # Configure kubectl for EKS
           aws eks update-kubeconfig --name $CLUSTER_NAME
 
-          # Seed the FIPS NodePool only on first bootstrap. On subsequent
-          # runs (resync), ArgoCD owns this resource via the eks-nodepool
-          # chart — we must not re-apply it to avoid Server-Side Apply
-          # ownership conflicts. When creating, we pass the environment
-          # values file so the initial NodePool matches what ArgoCD will
-          # enforce, avoiding Karpenter provisioning nodes with default
-          # instance types before ArgoCD syncs.
-          if ! kubectl get nodepool workloads 2>/dev/null; then
-            echo "Applying FIPS NodeClass and workloads NodePool from chart..."
-            _NODEPOOL_VALUES="$REPO_DIR/deploy/$ENVIRONMENT/$REGION_DEPLOYMENT/argocd-values-$CLUSTER_TYPE.yaml"
-            _VALUES_FLAG=""
-            [ -f "$_NODEPOOL_VALUES" ] && _VALUES_FLAG="-f $_NODEPOOL_VALUES"
-            helm template eks-nodepool "$REPO_DIR/argocd/config/$CLUSTER_TYPE/eks-nodepool" \
-              --set global.cluster_name="$CLUSTER_NAME" \
-              $_VALUES_FLAG \
-              | kubectl apply --server-side -f -
-            echo "✓ FIPS NodePool applied"
-          else
-            echo "✓ FIPS NodePool already exists, skipping (managed by ArgoCD)"
-          fi
-
-          # Wait for coredns and metrics-server (managed by the built-in system pool)
-          # to be active before installing ArgoCD.
+          # Wait for coredns and metrics-server (on the bootstrap node group)
+          # before installing Karpenter and ArgoCD.
           for ADDON in coredns metrics-server; do
             echo "Waiting for $ADDON to be active..."
             aws eks wait addon-active \
@@ -135,45 +114,187 @@ resource "aws_ecs_task_definition" "bootstrap" {
             echo "✓ $ADDON active"
           done
 
-          # Check if ArgoCD already exists
-          if ! kubectl get deployment argocd-server -n argocd 2>/dev/null; then
-            echo "Installing ArgoCD from repo chart..."
+          if [ -n "$${KARPENTER_CONTROLLER_ROLE_ARN:-}" ]; then
+            # Install Karpenter before seeding the NodePool: the NodePool and
+            # EC2NodeClass CRDs (karpenter.sh/v1, karpenter.k8s.aws/v1) don't
+            # exist until Karpenter is installed. ArgoCD adopts this release
+            # via its self-managed Karpenter Application after bootstrap.
+            _KARPENTER_READY=$(kubectl get deployment karpenter -n kube-system \
+              -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)
+            if [ -z "$_KARPENTER_READY" ] || [ "$_KARPENTER_READY" -lt 1 ]; then
+              echo "Installing Karpenter $KARPENTER_VERSION..."
+              _KARPENTER_QUEUE_NAME=$(basename "$KARPENTER_QUEUE_URL")
+              helm upgrade --install karpenter \
+                oci://public.ecr.aws/karpenter/karpenter \
+                --version "$KARPENTER_VERSION" \
+                --namespace kube-system \
+                --set "settings.clusterName=$CLUSTER_NAME" \
+                --set "settings.interruptionQueue=$_KARPENTER_QUEUE_NAME" \
+                --set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=$KARPENTER_CONTROLLER_ROLE_ARN" \
+                --set 'tolerations[0].key=CriticalAddonsOnly' \
+                --set 'tolerations[0].operator=Exists' \
+                --set 'tolerations[0].effect=NoSchedule' \
+                --wait --timeout=5m
+              echo "✓ Karpenter installed"
+            else
+              echo "✓ Karpenter ready (readyReplicas=$_KARPENTER_READY), skipping"
+            fi
 
-            # Create argocd namespace
-            kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+            # Always apply the EC2NodeClass and NodePool from the current chart.
+            # kubectl apply --server-side is idempotent — it patches in-place.
+            # The original skip-if-exists guard caused a bootstrap bug: the first
+            # run seeded the EC2NodeClass with the wrong IAM role name, and all
+            # subsequent runs silently kept the broken spec, so Karpenter could
+            # never provision nodes. ArgoCD eventually owns these resources, but
+            # we must ensure the correct spec is present before ArgoCD is up.
+            echo "Applying FIPS EC2NodeClass and workloads NodePool from chart..."
+            _NODEPOOL_VALUES="$REPO_DIR/deploy/$ENVIRONMENT/$REGION_DEPLOYMENT/argocd-values-$CLUSTER_TYPE.yaml"
+            _VALUES_FLAG=""
+            [ -f "$_NODEPOOL_VALUES" ] && _VALUES_FLAG="-f $_NODEPOOL_VALUES"
+            helm template eks-nodepool "$REPO_DIR/argocd/config/$CLUSTER_TYPE/eks-nodepool" \
+              --set global.cluster_name="$CLUSTER_NAME" \
+              $_VALUES_FLAG \
+              | kubectl apply --server-side -f -
+            echo "✓ FIPS EC2NodeClass and NodePool applied"
 
-            # Fetch chart dependencies (charts/ is gitignored)
-            helm repo add argo https://argoproj.github.io/argo-helm
-            helm dependency build "$REPO_DIR/argocd/config/shared/argocd"
-
-            # Install using the same chart that the self-managed ArgoCD app
-            # uses (argocd/config/shared/argocd/), with tracking-id annotations
-            # so the self-managed ArgoCD app can adopt these resources.
-            # redisSecretInit is enabled here to create the Redis auth secret;
-            # the self-managed ArgoCD app has it disabled and prunes the
-            # completed Job on adoption.
-            helm upgrade --install argocd "$REPO_DIR/argocd/config/shared/argocd" \
-              --namespace argocd \
-              --set argo-cd.redisSecretInit.enabled=true \
-              --set 'argo-cd.redisSecretInit.tolerations[0].key=CriticalAddonsOnly' \
-              --set 'argo-cd.redisSecretInit.tolerations[0].operator=Exists' \
-              --set 'argo-cd.redisSecretInit.tolerations[0].effect=NoSchedule' \
-              --set-string 'argo-cd.controller.annotations.argocd\.argoproj\.io/tracking-id=argocd:argoproj.io/Application:argocd/argocd' \
-              --set-string 'argo-cd.server.annotations.argocd\.argoproj\.io/tracking-id=argocd:argoproj.io/Application:argocd/argocd' \
-              --set-string 'argo-cd.repoServer.annotations.argocd\.argoproj\.io/tracking-id=argocd:argoproj.io/Application:argocd/argocd' \
-              --wait --timeout=5m
-
-            echo "✓ ArgoCD installation complete"
-
-            # Wait for ArgoCD to be ready
-            kubectl wait --for=condition=available --timeout=600s deployment/argocd-server -n argocd
-            kubectl wait --for=condition=available --timeout=600s deployment/argocd-repo-server -n argocd
-            kubectl wait --for=condition=available --timeout=600s deployment/argocd-applicationset-controller -n argocd
-
-            echo "✓ ArgoCD is running and ready"
-          else
-            echo "✓ ArgoCD is already installed and running, skipping installation"
+            # Pre-warm: provision one node now so EC2 API rate limiting from
+            # Terraform surfaces as an ECS task failure (with automatic retry)
+            # rather than a silent cascade after ArgoCD is installed.
+            echo "Pre-warming Karpenter: provisioning one node before ArgoCD install..."
+            kubectl delete pod karpenter-prewarm -n kube-system --ignore-not-found=true
+            kubectl apply -f - <<-PREWARM_EOF
+            apiVersion: v1
+            kind: Pod
+            metadata:
+              name: karpenter-prewarm
+              namespace: kube-system
+              labels:
+                app: karpenter-prewarm
+            spec:
+              containers:
+              - name: pause
+                image: public.ecr.aws/eks-distro/kubernetes/pause:3.9
+                resources:
+                  requests:
+                    cpu: 100m
+                    memory: 128Mi
+              terminationGracePeriodSeconds: 0
+          PREWARM_EOF
+            if ! kubectl wait pod karpenter-prewarm -n kube-system --for=condition=Ready --timeout=8m; then
+              echo "=== PREWARM TIMEOUT — diagnostic dump ==="
+              echo "--- EC2NodeClass fips ---"
+              kubectl get ec2nodeclass fips -o yaml 2>/dev/null || true
+              echo "--- NodePools ---"
+              kubectl get nodepool -o yaml 2>/dev/null || true
+              echo "--- NodeClaims ---"
+              kubectl get nodeclaims -o yaml 2>/dev/null || true
+              echo "--- Karpenter controller logs (last 200 lines) ---"
+              kubectl logs -n kube-system -l app.kubernetes.io/name=karpenter --tail=200 --since=15m 2>/dev/null || true
+              echo "--- Prewarm pod events ---"
+              kubectl describe pod karpenter-prewarm -n kube-system 2>/dev/null || true
+              echo "--- All nodes ---"
+              kubectl get nodes -o wide 2>/dev/null || true
+              exit 1
+            fi
+            kubectl delete pod karpenter-prewarm -n kube-system --wait=false
+            echo "✓ Karpenter node provisioned, proceeding with ArgoCD install"
           fi
+
+          # If a previous bootstrap run failed mid-install, the Helm release is
+          # left in 'failed' state. Running helm upgrade on a failed HA ArgoCD
+          # install causes a StatefulSet rolling-update deadlock: redis-ha uses
+          # OrderedReady policy, so pod-0 must be Ready before pod-1 is created,
+          # but pod-0's Sentinel readiness probe requires quorum from pods 1 & 2.
+          # Fix: uninstall the broken release so the next helm upgrade --install
+          # does a clean initial install with all pods created from scratch.
+          if helm status argocd -n argocd 2>/dev/null | grep -q "^STATUS: failed\|^STATUS: pending"; then
+            echo "ArgoCD Helm release is in a broken state, uninstalling for clean reinstall..."
+            helm uninstall argocd -n argocd 2>/dev/null || true
+            kubectl wait --for=delete pod --all -n argocd --timeout=120s 2>/dev/null || true
+          fi
+
+          echo "Installing/upgrading ArgoCD from repo chart..."
+
+          # Create argocd namespace
+          kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+
+          # Re-stamp Helm release ownership annotations before upgrade.
+          # ArgoCD's default client-side apply strips meta.helm.sh/* annotations
+          # because they are not part of chart templates: the 3-way merge removes
+          # keys present in the last-applied-configuration but absent from the new
+          # desired state. Without these annotations helm upgrade refuses to manage
+          # the resource ("cannot be imported into the current release").
+          # This is a no-op on fresh clusters where no resources exist yet.
+          echo "Re-stamping Helm release ownership annotations on existing argocd resources..."
+          for _RT in \
+            deployments statefulsets services configmaps serviceaccounts \
+            roles rolebindings secrets \
+            poddisruptionbudgets horizontalpodautoscalers networkpolicies \
+            servicemonitors prometheusrules podmonitors; do
+            kubectl get "$_RT" -n argocd -o name 2>/dev/null | while read -r _RES; do
+              kubectl annotate -n argocd "$_RES" \
+                "meta.helm.sh/release-name=argocd" \
+                "meta.helm.sh/release-namespace=argocd" \
+                --overwrite 2>/dev/null || true
+            done || true
+          done
+
+          # Fetch chart dependencies (charts/ is gitignored)
+          helm repo add argo https://argoproj.github.io/argo-helm
+          helm dependency build "$REPO_DIR/argocd/config/shared/argocd"
+
+          # Install using the same chart that the self-managed ArgoCD app
+          # uses (argocd/config/shared/argocd/), with tracking-id annotations
+          # so the self-managed ArgoCD app can adopt these resources.
+          # redisSecretInit is enabled here to create the Redis auth secret;
+          # the self-managed ArgoCD app has it disabled and prunes the
+          # completed Job on adoption.
+          #
+          # CriticalAddonsOnly tolerations are set both here (via --set, for
+          # any git branch) and in values.yaml (for ArgoCD self-management).
+          helm upgrade --install argocd "$REPO_DIR/argocd/config/shared/argocd" \
+            --namespace argocd \
+            --set argo-cd.redisSecretInit.enabled=true \
+            --set 'argo-cd.redisSecretInit.tolerations[0].key=CriticalAddonsOnly' \
+            --set 'argo-cd.redisSecretInit.tolerations[0].operator=Exists' \
+            --set 'argo-cd.redisSecretInit.tolerations[0].effect=NoSchedule' \
+            --set 'argo-cd.server.tolerations[0].key=CriticalAddonsOnly' \
+            --set 'argo-cd.server.tolerations[0].operator=Exists' \
+            --set 'argo-cd.server.tolerations[0].effect=NoSchedule' \
+            --set 'argo-cd.controller.tolerations[0].key=CriticalAddonsOnly' \
+            --set 'argo-cd.controller.tolerations[0].operator=Exists' \
+            --set 'argo-cd.controller.tolerations[0].effect=NoSchedule' \
+            --set 'argo-cd.repoServer.tolerations[0].key=CriticalAddonsOnly' \
+            --set 'argo-cd.repoServer.tolerations[0].operator=Exists' \
+            --set 'argo-cd.repoServer.tolerations[0].effect=NoSchedule' \
+            --set 'argo-cd.applicationSet.tolerations[0].key=CriticalAddonsOnly' \
+            --set 'argo-cd.applicationSet.tolerations[0].operator=Exists' \
+            --set 'argo-cd.applicationSet.tolerations[0].effect=NoSchedule' \
+            --set 'argo-cd.dex.tolerations[0].key=CriticalAddonsOnly' \
+            --set 'argo-cd.dex.tolerations[0].operator=Exists' \
+            --set 'argo-cd.dex.tolerations[0].effect=NoSchedule' \
+            --set 'argo-cd.notifications.tolerations[0].key=CriticalAddonsOnly' \
+            --set 'argo-cd.notifications.tolerations[0].operator=Exists' \
+            --set 'argo-cd.notifications.tolerations[0].effect=NoSchedule' \
+            --set 'argo-cd.redis-ha.tolerations[0].key=CriticalAddonsOnly' \
+            --set 'argo-cd.redis-ha.tolerations[0].operator=Exists' \
+            --set 'argo-cd.redis-ha.tolerations[0].effect=NoSchedule' \
+            --set 'argo-cd.redis-ha.haproxy.tolerations[0].key=CriticalAddonsOnly' \
+            --set 'argo-cd.redis-ha.haproxy.tolerations[0].operator=Exists' \
+            --set 'argo-cd.redis-ha.haproxy.tolerations[0].effect=NoSchedule' \
+            --set-string 'argo-cd.controller.annotations.argocd\.argoproj\.io/tracking-id=argocd:argoproj.io/Application:argocd/argocd' \
+            --set-string 'argo-cd.server.annotations.argocd\.argoproj\.io/tracking-id=argocd:argoproj.io/Application:argocd/argocd' \
+            --set-string 'argo-cd.repoServer.annotations.argocd\.argoproj\.io/tracking-id=argocd:argoproj.io/Application:argocd/argocd' \
+            --wait --timeout=10m
+
+          echo "✓ ArgoCD installation complete"
+
+          # Wait for ArgoCD to be ready
+          kubectl wait --for=condition=available --timeout=600s deployment/argocd-server -n argocd
+          kubectl wait --for=condition=available --timeout=600s deployment/argocd-repo-server -n argocd
+          kubectl wait --for=condition=available --timeout=600s deployment/argocd-applicationset-controller -n argocd
+
+          echo "✓ ArgoCD is running and ready"
 
           echo "Creating/updating cluster identity secret with values:"
           echo "  ENVIRONMENT: $ENVIRONMENT"
@@ -294,6 +415,18 @@ resource "aws_ecs_task_definition" "bootstrap" {
         {
           name  = "RC_AWS_ACCOUNT_ID"
           value = var.rc_aws_account_id
+        },
+        {
+          name  = "KARPENTER_CONTROLLER_ROLE_ARN"
+          value = var.karpenter_controller_role_arn
+        },
+        {
+          name  = "KARPENTER_QUEUE_URL"
+          value = var.karpenter_queue_url
+        },
+        {
+          name  = "KARPENTER_VERSION"
+          value = var.karpenter_version
         }
       ]
 

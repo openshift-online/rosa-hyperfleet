@@ -272,7 +272,7 @@ resource "aws_codebuild_project" "regional_apply" {
 resource "aws_codebuild_project" "regional_bootstrap" {
   name          = local.bootstrap_project_name
   service_role  = aws_iam_role.codebuild_role.arn
-  build_timeout = 30
+  build_timeout = 75
 
   artifacts {
     type = "CODEPIPELINE"
