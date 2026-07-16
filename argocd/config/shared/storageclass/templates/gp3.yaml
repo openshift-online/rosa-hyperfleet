@@ -4,12 +4,7 @@ metadata:
   name: gp3
   annotations:
     storageclass.kubernetes.io/is-default-class: "true"
-allowedTopologies:
-- matchLabelExpressions:
-  - key: eks.amazonaws.com/compute-type
-    values:
-    - auto
-provisioner: ebs.csi.eks.amazonaws.com
+provisioner: ebs.csi.aws.com
 volumeBindingMode: WaitForFirstConsumer
 parameters:
   type: gp3

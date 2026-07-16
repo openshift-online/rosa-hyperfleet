@@ -64,9 +64,15 @@ if [ -z "$API_GATEWAY_URL" ]; then
     exit 1
 fi
 
-# Wait for API Gateway /live endpoint
+CLOUDFRONT_URL="https://${CLOUDFRONT_DOMAIN}"
+
+# Wait for API Gateway /live endpoint.
+# RC and MC pipelines run in parallel, so RC outputs become available as soon
+# as terraform apply finishes — before the ECS bootstrap (ArgoCD install,
+# ~15 min) and initial ArgoCD sync (~10 min) have completed. Allow 40 minutes
+# so the Platform API has time to be deployed and reach a healthy state.
 set +e
-MAX_RETRIES=10
+MAX_RETRIES=80
 RETRY_DELAY=30
 RETRY_COUNT=0
 LIVE_OK=false
@@ -97,7 +103,7 @@ done
 set -e
 
 if [ "$LIVE_OK" != "true" ]; then
-    echo "ERROR: /live did not return 200 after $MAX_RETRIES attempts" >&2
+    echo "ERROR: /live did not return 200 after $((MAX_RETRIES * RETRY_DELAY / 60)) minutes" >&2
     exit 1
 fi
 
