@@ -405,6 +405,14 @@ module "authz" {
 # ZOA (Zero Operator Access) Module
 # =============================================================================
 
+# Commit 79cc135 removed `count = var.enable_zoa ? 1 : 0` from this module
+# without a state migration. This moved block tells Terraform that the existing
+# module.zoa[0] instance is now at module.zoa, preventing a destroy/recreate.
+moved {
+  from = module.zoa[0]
+  to   = module.zoa
+}
+
 module "zoa" {
   source = "../../modules/zoa"
 
