@@ -63,25 +63,23 @@ spec:
                 cp /tmp/aws/private-creds /tmp/aws/oidc-creds
               fi
 
-              # Wait for the monitoring ArgoCD Application to be Healthy before running
-              # hypershift install. kube-prometheus-stack installs the CRDs
-              # (ServiceMonitor, PrometheusRule) that hypershift install applies.
-              # Waiting for Application health is more reliable than polling CRDs
-              # directly: it confirms the entire stack is up, not just the API surface.
-              _MON_DEADLINE=$((SECONDS + 1200))
-              echo "Waiting for monitoring Application to be Healthy..."
-              until [ "$(kubectl get application monitoring -n argocd \
-                  -o jsonpath='{.status.health.status}' 2>/dev/null)" = "Healthy" ]; do
-                if [ $SECONDS -ge $_MON_DEADLINE ]; then
-                  echo "ERROR: monitoring Application not Healthy after 20 minutes" >&2
+              # Prometheus Operator CRDs must exist before hypershift install applies
+              # ServiceMonitor/PrometheusRule. The CRDs are installed early in the
+              # monitoring sync (before any pods are ready), so polling for them is
+              # faster and more precisely scoped than waiting for Application health.
+              _CRD_DEADLINE=$((SECONDS + 1800))
+              echo "Waiting for Prometheus Operator CRDs..."
+              until kubectl get crd servicemonitors.monitoring.coreos.com \
+                  prometheusrules.monitoring.coreos.com &>/dev/null 2>&1; do
+                if [ $SECONDS -ge $_CRD_DEADLINE ]; then
+                  echo "ERROR: Prometheus Operator CRDs not available after 30 minutes" >&2
                   kubectl get application monitoring -n argocd -o yaml 2>/dev/null || true
                   exit 1
                 fi
-                echo "  monitoring: $(kubectl get application monitoring -n argocd \
-                  -o jsonpath='{.status.health.status}' 2>/dev/null || echo 'NotFound')"
+                echo "  Waiting for Prometheus Operator CRDs..."
                 sleep 15
               done
-              echo "=== monitoring is Healthy — Prometheus Operator CRDs available ==="
+              echo "=== Prometheus Operator CRDs present — proceeding with hypershift install ==="
 
               hypershift install \
                 --namespace hypershift \
