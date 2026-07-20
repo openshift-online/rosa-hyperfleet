@@ -65,7 +65,12 @@ spec:
 
               # Prometheus Operator CRDs must exist before hypershift install applies
               # ServiceMonitor/PrometheusRule. The monitoring chart may still be syncing.
+              _CRD_DEADLINE=$((SECONDS + 600))
               until kubectl get crd servicemonitors.monitoring.coreos.com prometheusrules.monitoring.coreos.com &>/dev/null 2>&1; do
+                if [ $SECONDS -ge $_CRD_DEADLINE ]; then
+                  echo "ERROR: Prometheus Operator CRDs not available after 10 minutes" >&2
+                  exit 1
+                fi
                 echo "Waiting for Prometheus Operator CRDs..."
                 sleep 10
               done
