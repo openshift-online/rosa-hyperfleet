@@ -2,7 +2,7 @@
 # Security Groups
 #
 # One security group for the SRE ALB:
-# - Ingress HTTPS (443) from VPC CIDR (internal) or allowed_source_cidrs (public)
+# - Ingress HTTPS (443) from VPC CIDR (internal) or allowed_source_cidrs (public; must be non-empty)
 # - Egress to node SG on container ports: 3000 (Grafana), 8080 (ArgoCD), 9090 (Prometheus/Thanos), 3100 (Loki)
 #
 # Node SG ingress rules allow the ALB to reach pods on each service port.
@@ -60,17 +60,6 @@ resource "aws_vpc_security_group_ingress_rule" "alb_https_from_cidr" {
   cidr_ipv4         = var.allowed_source_cidrs[count.index]
 }
 
-# Ingress: allow all HTTPS when public with no CIDR restrictions
-resource "aws_vpc_security_group_ingress_rule" "alb_https_public_open" {
-  count = !var.internal && length(var.allowed_source_cidrs) == 0 ? 1 : 0
-
-  security_group_id = aws_security_group.alb.id
-  description       = "Allow HTTPS from all (public, no CIDR restriction)"
-  ip_protocol       = "tcp"
-  from_port         = 443
-  to_port           = 443
-  cidr_ipv4         = "0.0.0.0/0"
-}
 
 # Egress: to Grafana pods (port 3000 — container port behind service port 80)
 resource "aws_vpc_security_group_egress_rule" "alb_to_http_services" {

@@ -79,7 +79,88 @@ variable "internal" {
 }
 
 variable "allowed_source_cidrs" {
-  description = "When ALB is internet-facing, security group allows HTTPS only from these CIDRs. Leave empty to allow all (not recommended)."
+  description = "When ALB is internet-facing, security group allows HTTPS only from these CIDRs. Required when internal = false."
   type        = list(string)
   default     = []
+}
+
+# =============================================================================
+# OIDC authentication (optional)
+# =============================================================================
+
+variable "oidc_enabled" {
+  description = "When true, listener rules prepend an authenticate-oidc action before forwarding to the target group."
+  type        = bool
+  default     = false
+}
+
+variable "oidc_issuer_url" {
+  description = "OIDC issuer base URL (e.g. https://auth.redhat.com/auth/realms/EmployeeIDP). The authorization, token, and userinfo endpoints are derived from this using standard OIDC paths."
+  type        = string
+  default     = "https://auth.redhat.com/auth/realms/EmployeeIDP"
+}
+
+variable "grafana_oidc_client_id" {
+  description = "OIDC client ID for Grafana. Required when oidc_enabled = true."
+  type        = string
+  default     = ""
+}
+
+variable "grafana_oidc_client_secret" {
+  description = "OIDC client secret for Grafana."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "argocd_oidc_client_id" {
+  description = "OIDC client ID for ArgoCD. Required when oidc_enabled = true."
+  type        = string
+  default     = ""
+}
+
+variable "argocd_oidc_client_secret" {
+  description = "OIDC client secret for ArgoCD."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "prometheus_oidc_client_id" {
+  description = "OIDC client ID for Prometheus. Required when oidc_enabled = true."
+  type        = string
+  default     = ""
+}
+
+variable "prometheus_oidc_client_secret" {
+  description = "OIDC client secret for Prometheus."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "thanos_oidc_client_id" {
+  description = "OIDC client ID for Thanos. Required when oidc_enabled = true."
+  type        = string
+  default     = ""
+}
+
+variable "thanos_oidc_client_secret" {
+  description = "OIDC client secret for Thanos."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "loki_oidc_client_id" {
+  description = "OIDC client ID for Loki. Required when oidc_enabled = true."
+  type        = string
+  default     = ""
+}
+
+variable "loki_oidc_client_secret" {
+  description = "OIDC client secret for Loki."
+  type        = string
+  default     = ""
+  sensitive   = true
 }

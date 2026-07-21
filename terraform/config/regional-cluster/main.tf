@@ -279,6 +279,19 @@ module "sre_ui_alb" {
   internal             = !var.enable_sre_public_access
   allowed_source_cidrs = var.sre_allowed_source_cidrs
 
+  oidc_enabled                  = var.enable_sre_oidc_auth
+  oidc_issuer_url               = var.sre_oidc_issuer_url
+  grafana_oidc_client_id        = var.sre_grafana_oidc_client_id
+  grafana_oidc_client_secret    = var.sre_grafana_oidc_client_secret
+  argocd_oidc_client_id         = var.sre_argocd_oidc_client_id
+  argocd_oidc_client_secret     = var.sre_argocd_oidc_client_secret
+  prometheus_oidc_client_id     = var.sre_prometheus_oidc_client_id
+  prometheus_oidc_client_secret = var.sre_prometheus_oidc_client_secret
+  thanos_oidc_client_id         = var.sre_thanos_oidc_client_id
+  thanos_oidc_client_secret     = var.sre_thanos_oidc_client_secret
+  loki_oidc_client_id           = var.sre_loki_oidc_client_id
+  loki_oidc_client_secret       = var.sre_loki_oidc_client_secret
+
 }
 
 module "rhobs_api_gateway" {
