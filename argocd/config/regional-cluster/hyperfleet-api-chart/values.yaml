@@ -118,6 +118,10 @@ hyperfleet-api-chart:
       # -- Namespace to create the ServiceMonitor in (defaults to release namespace)
       namespace: "hyperfleet-system"
 
+  # Network policy
+  networkPolicy:
+    enabled: false
+
 # SecretProviderClass configuration for AWS Pod Identity
 secretProviderClass:
   # Enable SecretProviderClass creation

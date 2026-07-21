@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Security Audit Report — 2026-06-25</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --critical: #f85149;
+    --high: #f0883e;
+    --medium: #d29922;
+    --low: #3fb950;
+    --accent: #58a6ff;
+    --green-bg: #0d1f0d;
+    --code-bg: #1c2128;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 1.8rem; margin-bottom: 0.25rem; }
+  h2 { font-size: 1.4rem; margin: 2rem 0 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+  h3 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; }
+  .meta { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 2rem; }
+  .meta span { margin-right: 1.5rem; }
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin: 1rem 0 2rem;
+  }
+  .summary-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+    text-align: center;
+  }
+  .summary-card .count {
+    font-size: 2.2rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .summary-card .label {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 0.25rem;
+  }
+  .sev-critical .count { color: var(--critical); }
+  .sev-high .count { color: var(--high); }
+  .sev-medium .count { color: var(--medium); }
+  .sev-low .count { color: var(--low); }
+  .finding {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1rem;
+  }
+  .finding-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    cursor: pointer;
+    user-select: none;
+  }
+  .finding-header:hover .finding-title { color: var(--accent); }
+  .badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .badge-critical { background: var(--critical); color: #fff; }
+  .badge-high { background: var(--high); color: #fff; }
+  .badge-medium { background: var(--medium); color: #000; }
+  .badge-low { background: var(--low); color: #000; }
+  .finding-title { font-weight: 600; font-size: 1rem; }
+  .finding-body { margin-top: 1rem; display: none; }
+  .finding.open .finding-body { display: block; }
+  .finding-body dt {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-top: 0.75rem;
+  }
+  .finding-body dd { margin-left: 0; margin-top: 0.15rem; }
+  code {
+    background: var(--code-bg);
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.9em;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    margin-top: 0.5rem;
+  }
+  pre code { background: none; padding: 0; }
+  ol.remediation { margin-top: 0.5rem; padding-left: 1.25rem; }
+  ol.remediation li { margin-bottom: 0.35rem; }
+  .chevron {
+    transition: transform 0.15s;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    flex-shrink: 0;
+  }
+  .finding.open .chevron { transform: rotate(90deg); }
+  .strengths {
+    background: var(--green-bg);
+    border: 1px solid #238636;
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    margin-top: 1rem;
+  }
+  .strengths ul { padding-left: 1.25rem; }
+  .strengths li { margin-bottom: 0.25rem; }
+  .quick-wins {
+    margin-top: 1rem;
+  }
+  .quick-wins table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.5rem;
+  }
+  .quick-wins th, .quick-wins td {
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+  }
+  .quick-wins th {
+    background: var(--surface);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-muted);
+  }
+  .expand-all {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--accent);
+    padding: 0.4rem 0.9rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    float: right;
+    margin-top: -2.5rem;
+  }
+  .expand-all:hover { background: var(--border); }
+  .toc { margin: 1rem 0 2rem; }
+  .toc a {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 0.9rem;
+  }
+  .toc a:hover { text-decoration: underline; }
+  .toc ol { padding-left: 1.25rem; }
+  .toc li { margin-bottom: 0.2rem; }
+  @media (max-width: 640px) {
+    body { padding: 1rem; }
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<h1>Security Audit Report</h1>
+<div class="meta">
+  <span>2026-06-25</span>
+  <span>Full Project Audit</span>
+  <span>~600 files reviewed</span>
+</div>
+
+<div class="meta">
+  <strong>Tech Stack:</strong> Terraform, EKS, Kubernetes/Helm, Shell, Python, ArgoCD, AWS (API Gateway, RDS, IoT, S3, KMS)<br>
+  <strong>Domains:</strong> Infrastructure/IaC, Containers, Kubernetes, CI/CD, Secrets, Cloud Native, Supply Chain, Git/GitHub
+</div>
+
+<h2>Summary</h2>
+<div class="summary-grid">
+  <div class="summary-card sev-critical"><div class="count">0</div><div class="label">Critical</div></div>
+  <div class="summary-card sev-high"><div class="count">3</div><div class="label">High</div></div>
+  <div class="summary-card sev-medium"><div class="count">8</div><div class="label">Medium</div></div>
+  <div class="summary-card sev-low"><div class="count">3</div><div class="label">Low</div></div>
+</div>
+
+<h2>Findings</h2>
+<button class="expand-all" onclick="toggleAll()">Expand All</button>
+
+<!-- HIGH 1 -->
+<div class="finding" id="f1">
+  <div class="finding-header" onclick="toggle('f1')">
+    <span class="chevron">&#9654;</span>
+    <span class="badge badge-high">HIGH</span>
+    <span class="finding-title">No VPC Flow Logs Enabled</span>
+  </div>
+  <div class="finding-body">
+    <dl>
+      <dt>File</dt><dd><code>terraform/modules/vpc/main.tf</code></dd>
+      <dt>Category</dt><dd>Infrastructure &mdash; Network Monitoring</dd>
+      <dt>Issue</dt>
+      <dd>The VPC module defines VPC endpoints and security groups but has no <code>aws_flow_log</code> resource. VPC flow logs are essential for network traffic visibility, intrusion detection, and incident investigation.</dd>
+      <dt>Impact</dt>
+      <dd>Without flow logs, there is no record of accepted/rejected network connections. An attacker performing lateral movement or data exfiltration within the VPC would leave no network-level audit trail. This is also a gap for FedRAMP AU-12 (Audit Generation) which requires capturing network traffic events.</dd>
+      <dt>Remediation</dt>
+      <dd>
+        <ol class="remediation">
+          <li>Add <code>aws_flow_log</code> resource to <code>terraform/modules/vpc/main.tf</code> sending to CloudWatch Logs (KMS-encrypted, matching the project&rsquo;s pattern for other log groups).</li>
+          <li>Verify flow logs appear in CloudWatch after apply.</li>
+          <li>Add a CI check or Terraform sentinel policy requiring <code>aws_flow_log</code> in VPC modules.</li>
+          <li>Consider enabling flow logs at the subnet level for finer-grained visibility. Gate behind <code>enable_vpc_flow_logs</code> flag defaulting to <code>true</code>.</li>
+        </ol>
+      </dd>
+    </dl>
+  </div>
+</div>
+
+<!-- HIGH 2 -->
+<div class="finding" id="f2">
+  <div class="finding-header" onclick="toggle('f2')">
+    <span class="chevron">&#9654;</span>
+    <span class="badge badge-high">HIGH</span>
+    <span class="finding-title">No Kubernetes NetworkPolicies</span>
+  </div>
+  <div class="finding-body">
+    <dl>
+      <dt>File</dt><dd><code>argocd/config/</code> (all charts)</dd>
+      <dt>Category</dt><dd>Kubernetes &mdash; Network Segmentation</dd>
+      <dt>Issue</dt>
+      <dd>Zero <code>NetworkPolicy</code> resources found across all ArgoCD Helm chart configurations for both Regional Clusters and Management Clusters. Without NetworkPolicies, any pod can communicate with any other pod unrestricted.</dd>
+      <dt>Impact</dt>
+      <dd>If any pod is compromised, the attacker has unrestricted network access to all other pods including control plane services (Maestro, CLM, ArgoCD), databases, and internal APIs. This violates the principle of least privilege at the network layer.</dd>
+      <dt>Remediation</dt>
+      <dd>
+        <ol class="remediation">
+          <li>Define default-deny NetworkPolicies for each namespace, then add allow rules for required traffic flows.</li>
+          <li>Start with monitoring/audit-only mode using Calico or Cilium network policy logging before enforcing.</li>
+          <li>Add NetworkPolicy templates to critical charts: <code>maestro-server</code>, <code>platform-api</code>, <code>hyperfleet-api-chart</code>, <code>hyperfleet-sentinel-chart</code>.</li>
+          <li>Test with <code>kubectl describe networkpolicy</code> and connectivity tests between pods.</li>
+        </ol>
+      </dd>
+    </dl>
+  </div>
+</div>
+
+<!-- HIGH 3 -->
+<div class="finding" id="f3">
+  <div class="finding-header" onclick="toggle('f3')">
+    <span class="chevron">&#9654;</span>
+    <span class="badge badge-high">HIGH</span>
+    <span class="finding-title">CI Container Image Runs as Root</span>
+  </div>
+  <div class="finding-body">
+    <dl>
+      <dt>File</dt><dd><code>ci/Containerfile</code></dd>
+      <dt>Category</dt><dd>Containers &mdash; Privilege</dd>
+      <dt>Issue</dt>
+      <dd>The CI build-root image has no <code>USER</code> instruction. All CI tasks (Terraform, Helm, tests) execute as UID 0 inside the container.</dd>
+      <dt>Impact</dt>
+      <dd>If a CI pipeline is compromised (e.g., through a malicious PR that escapes the build sandbox), the attacker has root inside the container, maximizing the blast radius. Combined with <code>awscurl</code> and AWS CLI tools, this could lead to credential theft.</dd>
+      <dt>Remediation</dt>
+      <dd>
+        <ol class="remediation">
+          <li>Add <code>USER 65534</code> at the end of the Containerfile (matching <code>platform-image/Dockerfile</code>).</li>
+          <li>Verify CI jobs still work &mdash; the existing <code>chmod 777</code> cache directories should accommodate this.</li>
+          <li>If root is required for specific operations, use a multi-stage build.</li>
+        </ol>
+      </dd>
+    </dl>
+  </div>
+</div>
+
+<!-- MEDIUM 4 -->
+<div class="finding" id="f4">
+  <div class="finding-header" onclick="toggle('f4')">
+    <span class="chevron">&#9654;</span>
+    <span class="badge badge-medium">MEDIUM</span>
+    <span class="finding-title">Unpinned Container Base Images</span>
+  </div>
+  <div class="finding-body">
+    <dl>
+      <dt>File</dt><dd><code>ci/Containerfile:5</code>, <code>images/zoa-tools/Dockerfile:1</code></dd>
+      <dt>Category</dt><dd>Supply Chain &mdash; Container Images</dd>
+      <dt>Issue</dt>
+      <dd>Two of three Dockerfiles use <code>:latest</code> tags for base images. The third (<code>platform-image/Dockerfile</code>) correctly pins to <code>ubi9/ubi-minimal:9.7-1770267347</code>.</dd>
+      <dt>Impact</dt>
+      <dd>A compromised or broken <code>:latest</code> tag could silently introduce vulnerabilities. For the CI image, this affects every PR check. For zoa-tools, this affects the Trusted Actions execution environment.</dd>
+      <dt>Remediation</dt>
+      <dd>
+        <ol class="remediation">
+          <li>Pin both images to specific digest or version tags.</li>
+          <li>Set up Dependabot or Renovate for automated update PRs.</li>
+        </ol>
+      </dd>
+    </dl>
+  </div>
+</div>
+
+<!-- MEDIUM 5 -->
+<div class="finding" id="f5">
+  <div class="finding-header" onclick="toggle('f5')">
+    <span class="chevron">&#9654;</span>
+    <span class="badge badge-medium">MEDIUM</span>
+    <span class="finding-title">Curl-Pipe-Bash for Helm Installation</span>
+  </div>
+  <div class="finding-body">
+    <dl>
+      <dt>File</dt><dd><code>ci/Containerfile:85-86</code></dd>
+      <dt>Category</dt><dd>Supply Chain &mdash; Build Pipeline</dd>
+      <dt>Issue</dt>
+      <dd>Helm is installed by piping a script from <code>raw.githubusercontent.com</code> directly to bash. While the version is pinned and <code>VERIFY_CHECKSUM=true</code> is set, the script itself is fetched from a tag reference, not a commit hash.</dd>
+      <dt>Impact</dt>
+      <dd>A supply chain attack on the Helm repository could inject malicious code into the CI build image. The checksum verification of the binary mitigates the binary itself, but the installer script runs before that verification.</dd>
+      <dt>Remediation</dt>
+      <dd>
+        <ol class="remediation">
+          <li>Pin the script URL to a commit hash instead of a version tag.</li>
+          <li>Alternatively, download the Helm tarball directly with explicit checksum verification.</li>
+        </ol>
+      </dd>
+    </dl>
+  </div>
+</div>
+
+<!-- MEDIUM 6 -->
+<div class="finding" id="f6">
+  <div class="finding-header" onclick="toggle('f6')">
+    <span class="chevron">&#9654;</span>
+    <span class="badge badge-medium">MEDIUM</span>
+    <span class="finding-title">Missing Pod Security Contexts (22+ Charts)</span>
+  </div>
+  <div class="finding-body">
+    <dl>
+      <dt>Files</dt><dd><code>argocd/config/regional-cluster/platform-api/values.yaml</code>, <code>maestro-server/values.yaml</code>, <code>hyperfleet-api-chart/values.yaml</code>, <code>shared/argocd/values.yaml</code>, and 18+ others</dd>
+      <dt>Category</dt><dd>Kubernetes &mdash; Pod Security</dd>
+      <dt>Issue</dt>
+      <dd>22+ Helm chart values.yaml files have no explicit <code>securityContext</code> settings. Only 4 charts (cloudwatch-exporter, grafana, vector, external-secrets) set proper contexts.</dd>
+      <dt>Impact</dt>
+      <dd>Pods may run as root, with writable root filesystems, with all Linux capabilities, and with privilege escalation allowed &mdash; depending on namespace PSS level.</dd>
+      <dt>Remediation</dt>
+      <dd>
+        <ol class="remediation">
+          <li>Add baseline security context to all charts:
+            <pre><code>securityContext:
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]</code></pre>
+          </li>
+          <li>Prioritize: <code>platform-api</code>, <code>maestro-server</code>, <code>hyperfleet-api-chart</code>, <code>hyperfleet-sentinel-chart</code>.</li>
+          <li>Enforce via namespace-level Pod Security Standards (Restricted).</li>
+        </ol>
+      </dd>
+    </dl>
+  </div>
+</div>
+
+<!-- MEDIUM 7 -->
+<div class="finding" id="f7">
+  <div class="finding-header" onclick="toggle('f7')">
+    <span class="chevron">&#9654;</span>
+    <span class="badge badge-medium">MEDIUM</span>
+    <span class="finding-title">Vector readOnlyRootFilesystem Disabled</span>
+  </div>
+  <div class="finding-body">
+    <dl>
+      <dt>File</dt><dd><code>argocd/config/regional-cluster/vector/values.yaml:34</code>, <code>argocd/config/management-cluster/vector/values.yaml:63</code></dd>
+      <dt>Category</dt><dd>Kubernetes &mdash; Pod Security</dd>
+      <dt>Issue</dt>
+      <dd>Vector DaemonSet containers run with <code>readOnlyRootFilesystem: false</code>. Vector runs on every node, amplifying the impact.</dd>
+      <dt>Impact</dt>
+      <dd>A writable root filesystem allows an attacker to persist malware, modify binaries, or install additional tools.</dd>
+      <dt>Remediation</dt>
+      <dd>
+        <ol class="remediation">
+          <li>Set <code>readOnlyRootFilesystem: true</code> and add <code>emptyDir</code> volume mounts for data/cache directories.</li>
+          <li>Test log collection still works.</li>
+          <li>Align RC and MC Vector configurations.</li>
+        </ol>
+      </dd>
+    </dl>
+  </div>
+</div>
+
+<!-- MEDIUM 8 -->
+<div class="finding" id="f8">
+  <div class="finding-header" onclick="toggle('f8')">
+    <span class="chevron">&#9654;</span>
+    <span class="badge badge-medium">MEDIUM</span>
+    <span class="finding-title">Terraform Provider Version Constraints Lack Upper Bounds</span>
+  </div>
+  <div class="finding-body">
+    <dl>
+      <dt>Files</dt><dd><code>terraform/config/pipeline-management-cluster/versions.tf</code>, <code>pipeline-regional-cluster/versions.tf</code>, <code>dns-environment-zone/versions.tf</code>, and others</dd>
+      <dt>Category</dt><dd>Supply Chain &mdash; Infrastructure</dd>
+      <dt>Issue</dt>
+      <dd>All provider constraints use <code>&gt;=</code> floor-only syntax (e.g., <code>version = "&gt;= 6.0"</code>). Lock files (<code>.terraform.lock.hcl</code>) are gitignored.</dd>
+      <dt>Impact</dt>
+      <dd>A compromised or breaking provider version could be silently adopted on next <code>terraform init</code>.</dd>
+      <dt>Remediation</dt>
+      <dd>
+        <ol class="remediation">
+          <li>Add upper-bound constraints: <code>version = "&gt;= 6.0, &lt; 7.0"</code>.</li>
+          <li>Alternatively, commit <code>.terraform.lock.hcl</code> files (remove from <code>.gitignore</code>).</li>
+          <li>Use Renovate or Dependabot for controlled upgrades.</li>
+        </ol>
+      </dd>
+    </dl>
+  </div>
+</div>
+
+<!-- MEDIUM 9 -->
+<div class="finding" id="f9">
+  <div class="finding-header" onclick="toggle('f9')">
+    <span class="chevron">&#9654;</span>
+    <span class="badge badge-medium">MEDIUM</span>
+    <span class="finding-title">Security Group Egress Unrestricted to 0.0.0.0/0</span>
+  </div>
+  <div class="finding-body">
+    <dl>
+      <dt>Files</dt><dd><code>terraform/modules/maestro-infrastructure/rds.tf:122-128</code>, <code>bastion/main.tf:89-94</code>, <code>ecs-bootstrap/security-groups.tf:11-18</code>, <code>hyperfleet-infrastructure/amazonmq.tf:113-116</code>, <code>hyperfleet-infrastructure/rds.tf:122-125</code></dd>
+      <dt>Category</dt><dd>Infrastructure &mdash; Network Security</dd>
+      <dt>Issue</dt>
+      <dd>Five security groups have egress rules allowing all protocols to <code>0.0.0.0/0</code>. While ingress rules are properly scoped, unrestricted egress allows compromised resources to communicate with arbitrary destinations.</dd>
+      <dt>Impact</dt>
+      <dd>A compromised RDS instance, bastion, or ECS task could exfiltrate data to attacker-controlled endpoints.</dd>
+      <dt>Remediation</dt>
+      <dd>
+        <ol class="remediation">
+          <li>For RDS: remove egress or restrict to VPC CIDR only.</li>
+          <li>For ECS/bastion: restrict egress to specific CIDR ranges or use VPC endpoints.</li>
+          <li>Consider VPC endpoint policies to further restrict egress.</li>
+        </ol>
+      </dd>
+    </dl>
+  </div>
+</div>
+
+<!-- MEDIUM 10 -->
+<div class="finding" id="f10">
+  <div class="finding-header" onclick="toggle('f10')">
+    <span class="chevron">&#9654;</span>
+    <span class="badge badge-medium">MEDIUM</span>
+    <span class="finding-title">Binary Downloads Without Checksum Verification</span>
+  </div>
+  <div class="finding-body">
+    <dl>
+      <dt>Files</dt><dd><code>images/zoa-tools/Dockerfile:28-45</code>, <code>terraform/modules/platform-image/Dockerfile:36-63</code></dd>
+      <dt>Category</dt><dd>Supply Chain &mdash; Container Build</dd>
+      <dt>Issue</dt>
+      <dd>Multiple binary tools (kubectl, oc, AWS CLI, yq, k9s, stern) are downloaded via <code>curl</code> without SHA256 checksum verification. The CI Containerfile correctly verifies Terraform, k6, and promtool.</dd>
+      <dt>Impact</dt>
+      <dd>MITM or compromised mirrors could serve malicious binaries. Especially concerning for <code>zoa-tools</code> (production Trusted Actions image).</dd>
+      <dt>Remediation</dt>
+      <dd>
+        <ol class="remediation">
+          <li>Add checksum verification for all binary downloads following the CI Containerfile pattern.</li>
+          <li>Prioritize <code>zoa-tools/Dockerfile</code>.</li>
+        </ol>
+      </dd>
+    </dl>
+  </div>
+</div>
+
+<!-- MEDIUM 11 -->
+<div class="finding" id="f11">
+  <div class="finding-header" onclick="toggle('f11')">
+    <span class="chevron">&#9654;</span>
+    <span class="badge badge-medium">MEDIUM</span>
+    <span class="finding-title">Unpinned Python Dependencies in CI</span>
+  </div>
+  <div class="finding-body">
+    <dl>
+      <dt>File</dt><dd><code>ci/Containerfile:196-198</code></dd>
+      <dt>Category</dt><dd>Supply Chain &mdash; Dependencies</dd>
+      <dt>Issue</dt>
+      <dd><code>awscurl</code> and <code>pyyaml</code> installed without version pins via <code>uv pip install --system awscurl pyyaml</code>.</dd>
+      <dt>Impact</dt>
+      <dd>A malicious or broken release could be silently pulled into the CI image.</dd>
+      <dt>Remediation</dt>
+      <dd>
+        <ol class="remediation">
+          <li>Pin versions: <code>uv pip install --system awscurl==0.33 pyyaml==6.0.2</code>.</li>
+          <li>Generate a <code>requirements.txt</code> with hashes for reproducibility.</li>
+        </ol>
+      </dd>
+    </dl>
+  </div>
+</div>
+
+<!-- LOW 12 -->
+<div class="finding" id="f12">
+  <div class="finding-header" onclick="toggle('f12')">
+    <span class="chevron">&#9654;</span>
+    <span class="badge badge-low">LOW</span>
+    <span class="finding-title">chmod 777 on CI Cache Directories</span>
+  </div>
+  <div class="finding-body">
+    <dl>
+      <dt>File</dt><dd><code>ci/Containerfile:186</code></dd>
+      <dt>Category</dt><dd>Containers &mdash; File Permissions</dd>
+      <dt>Issue</dt>
+      <dd>Cache directories created with <code>chmod -R 777</code> for OpenShift random-UID compatibility.</dd>
+      <dt>Impact</dt>
+      <dd>Any process in the container can read/write caches. Low risk given CI isolation.</dd>
+      <dt>Remediation</dt>
+      <dd>
+        <ol class="remediation">
+          <li>Use <code>chmod -R 775</code> with <code>chown :0</code> (group 0) instead &mdash; matching <code>zoa-tools/Dockerfile</code> pattern.</li>
+        </ol>
+      </dd>
+    </dl>
+  </div>
+</div>
+
+<!-- LOW 13 -->
+<div class="finding" id="f13">
+  <div class="finding-header" onclick="toggle('f13')">
+    <span class="chevron">&#9654;</span>
+    <span class="badge badge-low">LOW</span>
+    <span class="finding-title">Terraform Lock Files Gitignored</span>
+  </div>
+  <div class="finding-body">
+    <dl>
+      <dt>File</dt><dd><code>.gitignore:6</code></dd>
+      <dt>Category</dt><dd>Supply Chain &mdash; Infrastructure</dd>
+      <dt>Issue</dt>
+      <dd><code>.terraform.lock.hcl</code> in <code>.gitignore</code> prevents provider lock files from being committed. Combined with <code>&gt;=</code> constraints, each <code>terraform init</code> could resolve different versions.</dd>
+      <dt>Impact</dt>
+      <dd>Low in practice, but developers may run inconsistent provider versions.</dd>
+      <dt>Remediation</dt>
+      <dd>
+        <ol class="remediation">
+          <li>Remove from <code>.gitignore</code> and commit lock files.</li>
+          <li>Alternatively, use <code>-lockfile=readonly</code> in CI.</li>
+        </ol>
+      </dd>
+    </dl>
+  </div>
+</div>
+
+<h2>Security Posture</h2>
+
+<p><strong>Overall Risk: MEDIUM</strong></p>
+
+<div class="strengths">
+  <h3>Strengths</h3>
+  <ul>
+    <li>EKS fully private (<code>endpoint_public_access = false</code>) with all audit log types enabled</li>
+    <li>KMS encryption with automatic key rotation on all sensitive resources (RDS, CloudWatch, S3)</li>
+    <li>S3 buckets properly secured: public access blocked, versioning, server-side encryption, lifecycle policies</li>
+    <li>API Gateway uses AWS_IAM authorization (SigV4) &mdash; no anonymous access</li>
+    <li>External Secrets Operator for all secret management &mdash; zero hardcoded secrets found</li>
+    <li>No IAM wildcard <code>Action: *</code> policies</li>
+    <li>RDS instances: private, encrypted, multi-AZ, with deletion protection</li>
+    <li>GitHub Actions uses SHA-pinned actions (<code>@&lt;commit-hash&gt;</code>)</li>
+    <li>GPG-verified Terraform installation in CI</li>
+    <li>CloudTrail as configurable feature flag (FedRAMP AU-12)</li>
+    <li>zoa-tools image: FIPS crypto policy, non-root user</li>
+    <li>platform-image: non-root user (65534)</li>
+    <li>ArgoCD HA mode with topology spread constraints</li>
+  </ul>
+</div>
+
+<h3>Top Priority</h3>
+<p>Enable VPC Flow Logs and add Kubernetes NetworkPolicies &mdash; these are the largest gaps in visibility and lateral movement prevention.</p>
+
+<div class="quick-wins">
+  <h3>Quick Wins</h3>
+  <table>
+    <thead><tr><th>Fix</th><th>Effort</th></tr></thead>
+    <tbody>
+      <tr><td>Pin container base images from <code>:latest</code> to specific digests</td><td>30 min</td></tr>
+      <tr><td>Add <code>USER 65534</code> to <code>ci/Containerfile</code></td><td>5 min</td></tr>
+      <tr><td>Pin Python dependencies in CI Containerfile</td><td>5 min</td></tr>
+      <tr><td>Add checksum verification to <code>zoa-tools/Dockerfile</code> binary downloads</td><td>1 hr</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+function toggle(id) {
+  document.getElementById(id).classList.toggle('open');
+}
+function toggleAll() {
+  const findings = document.querySelectorAll('.finding');
+  const allOpen = [...findings].every(f => f.classList.contains('open'));
+  findings.forEach(f => {
+    if (allOpen) f.classList.remove('open');
+    else f.classList.add('open');
+  });
+  document.querySelector('.expand-all').textContent = allOpen ? 'Expand All' : 'Collapse All';
+}
+</script>
+
+</body>
+</html>

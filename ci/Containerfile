@@ -197,3 +197,7 @@ RUN if [ -n "${PROXY_CA_CERT}" ]; then \
     else \
         uv pip install --system awscurl pyyaml; \
     fi
+
+# Run as non-root (OpenShift assigns a random UID in group 0;
+# the chmod 777 cache dirs above handle this)
+USER 65534
