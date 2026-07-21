@@ -455,7 +455,7 @@ metadata:
     cluster_name: mc01
   annotations:
     git_repo: https://github.com/openshift-online/rosa-platform
-    git_revision: HEAD  # Allows changes for dev
+    git_revision: HEAD # Allows changes for dev
 type: Opaque
 
 # Application created by ECS task
@@ -483,12 +483,12 @@ spec:
           - git:
               directories:
                 - path: argocd/config/management-cluster/*
-              repoURL: '{{ .metadata.annotations.git_repo }}'
-              revision: '{{ .metadata.annotations.git_revision }}'
+              repoURL: "{{ .metadata.annotations.git_repo }}"
+              revision: "{{ .metadata.annotations.git_revision }}"
   template:
     spec:
       source:
-        path: '{{ .path.path }}'
+        path: "{{ .path.path }}"
         helm:
           valueFiles:
             - values.yaml

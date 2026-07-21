@@ -22,6 +22,8 @@ Detailed architecture and rationale for key technical decisions:
 
 | Document                                                                           | Topic                                                              |
 | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| [Alerting Architecture](design/alerting-architecture.md)                           | Fan-out alert routing (AlertManager, PagerDuty, SNS)               |
+| [AWS IAM Hosted Cluster Auth](design/aws-iam-hosted-cluster-authentication.md)     | AWS IAM authentication for hosted clusters (experimental)          |
 | [DNS Architecture](design/dns-architecture.md)                                     | Hierarchical DNS with zone shards, `deployment_name`, DNSSEC chain |
 | [ECS Fargate Bootstrap](design/fully-private-eks-bootstrap.md)                     | How fully private EKS clusters are bootstrapped via ECS            |
 | [FIPS-Only EKS Compute](design/fips-eks-compute.md)                                | FIPS NodeClass/NodePool strategy for FedRAMP workload nodes        |
@@ -32,7 +34,11 @@ Detailed architecture and rationale for key technical decisions:
 | [MC Metrics Remote Write](design/mc-metrics-remote-write.md)                       | MC-to-RC metrics forwarding via RHOBS API Gateway                  |
 | [Monitoring Platform](design/monitoring-platform.md)                               | Metrics pipeline (Prometheus + Thanos)                             |
 | [Pipeline-Based Lifecycle](design/pipeline-based-lifecycle.md)                     | CodePipeline hierarchy for cluster provisioning                    |
+| [Rate Limiting](design/rate-limiting-architecture.md)                              | Per-account rate limiting for Platform API                         |
 | [Regional Account Minting](design/regional-account-minting.md)                     | AWS account structure and minting pipelines                        |
+| [Regional OIDC Ownership](design/regional-oidc-ownership.md)                       | Shared OIDC bucket per region, cross-account MC writes             |
+| [Spec-to-PR Agent](design/spec-to-pr-agent.md)                                     | AI agent workflow for spec-driven implementation                   |
+| [SRE UI Access](design/sre-ui-access.md)                                           | ALB + OIDC access to SRE UIs replacing SSM port-forward            |
 | [Terraform Resource Adoption](design/terraform-resource-adoption.md)               | Idempotent import of auto-created AWS resources into Terraform     |
 | [Testing Strategy](design/testing-strategy.md)                                     | Ephemeral and long-lived test environments                         |
 | [Thanos Metrics Infrastructure](design/thanos-metrics-infrastructure.md)           | Thanos S3 storage, operator, and Pod Identity setup                |
@@ -81,13 +87,6 @@ Each module has its own README with usage, inputs, outputs, and architecture:
 - [`platform-api`](../argocd/config/regional-cluster/platform-api/README.md) - Platform API with Envoy sidecar
 - [`thanos`](../argocd/config/regional-cluster/thanos/) - Thanos platform resources (CRs, S3 secret, Pod Identity SA, ALB TargetGroupBinding) plus app-of-apps Application that installs the upstream operator
 - [`thanos-operator`](../argocd/config/regional-cluster/thanos-operator/) - Thin wrapper chart that delivers the Thanos operator via OCI-packaged Helm subchart
-
-### Presentations
-
-Slidev-based presentations for project overview and milestones:
-
-- [Project Overview](presentations/project/README.md) - ROSA HyperFleet project presentation
-- [Milestone 1](presentations/milestone-1/README.md) - Full region provisioning demonstration
 
 ## Scope
 

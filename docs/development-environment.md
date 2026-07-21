@@ -255,11 +255,16 @@ make ephemeral-port-forward-mc-all
 
 Available services per cluster type:
 
-| Service    | RC  | MC  | Local address                                       |
-| ---------- | --- | --- | --------------------------------------------------- |
-| ArgoCD     | yes | yes | https://localhost:8443                              |
-| Prometheus | yes | yes | http://localhost:9090                               |
-| Maestro    | yes | no  | http://localhost:8080 (HTTP), localhost:8090 (gRPC) |
+| Service      | RC  | MC  | Local address                                       |
+| ------------ | --- | --- | --------------------------------------------------- |
+| Maestro      | yes | no  | http://localhost:8080 (HTTP), localhost:8090 (gRPC) |
+| ArgoCD       | yes | yes | https://localhost:8443                              |
+| Prometheus   | yes | yes | http://localhost:9090                               |
+| Thanos Query | yes | no  | http://localhost:10902                              |
+| Thanos Ruler | yes | no  | http://localhost:10903                              |
+| Loki         | yes | no  | http://localhost:13100                              |
+| Alertmanager | yes | no  | http://localhost:9093                               |
+| Grafana      | yes | no  | http://localhost:3000                               |
 
 The command fetches the ArgoCD admin password automatically and prints it to the terminal. Port forwards remain active until you press `Ctrl+C`.
 
