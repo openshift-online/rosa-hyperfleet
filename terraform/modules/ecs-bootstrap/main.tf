@@ -217,6 +217,7 @@ resource "aws_ecs_task_definition" "bootstrap" {
               zoa_table_name: "$ZOA_TABLE_NAME"
               zoa_audit_table_name: "$ZOA_AUDIT_TABLE_NAME"
               zoa_bucket_name: "$ZOA_BUCKET_NAME"
+              redis_endpoint: "$REDIS_ENDPOINT"
           type: Opaque
           stringData:
             name: in-cluster
@@ -281,6 +282,10 @@ resource "aws_ecs_task_definition" "bootstrap" {
         {
           name  = "MANAGEMENT_CLUSTERS"
           value = var.management_clusters
+        },
+        {
+          name  = "REDIS_ENDPOINT"
+          value = var.redis_endpoint
         }
       ]
 

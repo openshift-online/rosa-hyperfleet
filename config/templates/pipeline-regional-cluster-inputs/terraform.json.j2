@@ -12,6 +12,7 @@
   "enable_cloudtrail": {{ regional_cluster.enable_cloudtrail | default(true) | tojson }},
   "enable_pagerduty": {{ observability.pagerduty.enabled | default(false) | tojson }},
   "pagerduty_escalation_policy_id": {{ observability.pagerduty.escalation_policy_id | default('') | tojson }},
+  "enable_rate_limit_redis": {{ regional_cluster.enable_rate_limit_redis | default(false) | tojson }},
   "enable_api_custom_domain": {{ regional_cluster.enable_api_custom_domain | default(false) | tojson }},
   "zone_shard_count": {{ regional_cluster.zone_shard_count | default(1) | tojson }},
   "enable_sns_alerting": {{ observability.sns_alerting.enabled | default(false) | tojson }},

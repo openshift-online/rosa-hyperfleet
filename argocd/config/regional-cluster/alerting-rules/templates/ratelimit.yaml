@@ -1,0 +1,49 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ratelimit
+  namespace: thanos
+  labels:
+    app.kubernetes.io/name: alerting-rules
+    app.kubernetes.io/managed-by: Helm
+    operator.thanos.io/prometheus-rule: "true"
+spec:
+  groups:
+    - name: ratelimit
+      rules:
+        - alert: RateLimitValkeyDown
+          expr: rate(ratelimit_requests_total{result="failure_mode_allowed"}[5m]) > 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Rate limiting is bypassed — Valkey unreachable"
+            description: "Platform API rate limiter is failing open because Valkey (ElastiCache) is unreachable. All requests are being allowed without rate limiting. Method={{ "{{" }} $labels.method {{ "}}" }}, path={{ "{{" }} $labels.path {{ "}}" }}."
+
+        - alert: RateLimitHighDenialRatio
+          expr: |
+            (
+              sum by(method, path) (rate(ratelimit_requests_total{result="over_limit"}[5m]))
+              /
+              sum by(method, path) (rate(ratelimit_requests_total[5m]))
+            ) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Over 50% of requests are being rate limited"
+            description: "More than 50% of rate-limited requests on method={{ "{{" }} $labels.method {{ "}}" }}, path={{ "{{" }} $labels.path {{ "}}" }} have been denied for over 10 minutes. This may indicate a misbehaving client or rate limits that need tuning."
+
+        - alert: RateLimitPodHighDenialRatio
+          expr: |
+            (
+              sum by(method, path, pod) (rate(ratelimit_requests_total{result="over_limit"}[5m]))
+              /
+              sum by(method, path, pod) (rate(ratelimit_requests_total[5m]))
+            ) > 0.7
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Single pod denying over 70% of rate-limited requests"
+            description: "Pod {{ "{{" }} $labels.pod {{ "}}" }} is denying over 70% of requests on method={{ "{{" }} $labels.method {{ "}}" }}, path={{ "{{" }} $labels.path {{ "}}" }} for over 5 minutes. This may indicate a pod-level issue rather than a global rate limit problem."

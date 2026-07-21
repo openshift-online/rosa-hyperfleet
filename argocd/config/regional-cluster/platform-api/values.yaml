@@ -17,8 +17,8 @@ platformApi:
   app:
     name: platform-api
     image:
-      repository: quay.io/slopezz/rosa-regional-platform-api
-      tag: "6f65042"
+      repository: quay.io/travi/rosa-hyperfleet-api
+      tag: "ratelimit"
       pullPolicy: Always
 
     # Application arguments
@@ -94,6 +94,65 @@ platformApi:
       limits:
         cpu: "250m"
         memory: "256Mi"
+
+  # ServiceMonitor for Prometheus scraping
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+
+  # Rate Limiting configuration
+  rateLimit:
+    enabled: true
+    redisEndpoint: ""
+    config: |
+      enabled: true
+      exemptAccounts: []
+      default:
+        rate: 20
+        burst: 40
+      routes:
+        - path: "/api/v0/clusters"
+          method: POST
+          rate: 5
+          burst: 10
+        - path: "/api/v0/clusters"
+          method: GET
+          rate: 20
+          burst: 40
+        - path: "/api/v0/clusters/*"
+          method: GET
+          rate: 30
+          burst: 60
+        - path: "/api/v0/clusters/*"
+          method: PATCH
+          rate: 10
+          burst: 20
+        - path: "/api/v0/clusters/*"
+          method: DELETE
+          rate: 5
+          burst: 10
+        - path: "/api/v0/nodepools"
+          method: POST
+          rate: 10
+          burst: 20
+        - path: "/api/v0/nodepools"
+          method: GET
+          rate: 20
+          burst: 40
+        - path: "/api/v0/nodepools/*"
+          method: GET
+          rate: 30
+          burst: 60
+        - path: "/api/v0/nodepools/*"
+          method: PATCH
+          rate: 10
+          burst: 20
+        - path: "/api/v0/trusted-actions/*/run"
+          method: POST
+          rate: 20
+          burst: 30
 
   # Health probe configuration
   probes:

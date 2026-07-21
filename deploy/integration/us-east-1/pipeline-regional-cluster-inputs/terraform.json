@@ -12,6 +12,7 @@
   "enable_cloudtrail": true,
   "enable_pagerduty": true,
   "pagerduty_escalation_policy_id": "P5KE444",
+  "enable_rate_limit_redis": true,
   "enable_api_custom_domain": true,
   "zone_shard_count": 1,
   "enable_sns_alerting": true,

@@ -190,6 +190,8 @@ module "ecs_bootstrap" {
   loki_kms_key_arn   = module.loki_infrastructure.kms_key_arn
 
   management_clusters = var.management_clusters
+
+  redis_endpoint = coalesce(module.hyperfleet_infrastructure.redis_endpoint, "")
 }
 
 # =============================================================================
@@ -441,6 +443,8 @@ module "hyperfleet_infrastructure" {
 
   mq_instance_type   = var.hyperfleet_mq_instance_type
   mq_deployment_mode = var.hyperfleet_mq_deployment_mode
+
+  enable_rate_limit_redis = var.enable_rate_limit_redis
 }
 
 # =============================================================================

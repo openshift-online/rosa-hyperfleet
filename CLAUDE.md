@@ -33,7 +33,7 @@ The **ROSA HyperFleet** is a strategic redesign of Red Hat OpenShift Service on 
 
 - **Compute**: Amazon EKS (Regional + Management Clusters)
 - **Networking**: VPC, API Gateway (regional), VPC Link v2, ALBs
-- **Storage**: Amazon RDS (CLM state), EBS volumes
+- **Storage**: Amazon RDS (CLM state), Amazon ElastiCache Valkey (rate limiting), EBS volumes
 - **Identity**: AWS IAM for authentication and authorization
 - **Infrastructure**: Terraform modules with GitOps patterns
 - **CI/CD**: ArgoCD (apps), Tekton (infrastructure pipelines)
@@ -82,6 +82,7 @@ When creating ROSAENG issues:
 - **Bootstrap Strategy**: Use ECS Fargate for private EKS cluster bootstrap (see `docs/design/fully-private-eks-bootstrap.md`)
 - **No Public APIs**: All EKS clusters are fully private with VPC-only access
 - **ArgoCD Self-Management**: Clusters manage their own ArgoCD installations via GitOps
+- **Rate Limiting**: Per-account rate limiting at the Platform API layer using GCRA algorithm with ElastiCache Valkey as shared counter store (see `docs/design/rate-limiting-architecture.md`)
 
 ### Repository Structure
 
@@ -175,6 +176,31 @@ See [`docs/development-environment.md`](docs/development-environment.md) for ful
 ### Alerting Rules
 
 Platform alerting and recording rules are defined as PrometheusRule CRs in the `alerting-rules` chart (`argocd/config/regional-cluster/alerting-rules/templates/`). Rules are evaluated by Thanos Ruler against Thanos Query. See [docs/adding-alerting-rules.md](docs/adding-alerting-rules.md) for a developer guide on adding new rules, including the error budget burn rate pattern used for SLA alerts.
+
+### Rate Limiting
+
+The Platform API implements per-account rate limiting using the GCRA (Generic Cell Rate Algorithm) via `go-redis/redis_rate`. Rate limit counters are stored in ElastiCache Valkey 9.1, chosen over Redis OSS for 20% lower cost, open-source licensing (BSD 3-Clause), and performance improvements.
+
+**Architecture**: API Gateway (global throttle) → Platform API middleware (per-account GCRA) → ElastiCache Valkey (shared counters). Rate limiting runs after identity extraction but before authorization, so over-limit requests are rejected cheaply. The system fails open — if Valkey is unavailable, requests pass through.
+
+**Key files (rosa-hyperfleet)**:
+
+| File                                                         | Purpose                                                                  |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| `terraform/modules/hyperfleet-infrastructure/elasticache.tf` | ElastiCache Valkey replication group, security groups, parameter group   |
+| `terraform/modules/hyperfleet-infrastructure/variables.tf`   | `enable_rate_limit_redis`, `valkey_node_type`, `valkey_engine_version`   |
+| `terraform/modules/hyperfleet-infrastructure/outputs.tf`     | Valkey endpoint and port outputs                                         |
+| `scripts/bootstrap-argocd.sh`                                | Threads Valkey endpoint from Terraform outputs to ECS bootstrap env vars |
+| `terraform/modules/ecs-bootstrap/main.tf`                    | Writes `redis_endpoint` annotation on the ArgoCD cluster secret          |
+| `config/templates/argocd-bootstrap/applicationset.yaml.j2`   | Reads `redis_endpoint` annotation into Helm valuesObject                 |
+| `argocd/config/regional-cluster/platform-api/values.yaml`    | Rate limit config (routes, rates, burst), Valkey endpoint                |
+| `argocd/config/regional-cluster/platform-api/templates/`     | Deployment, ratelimit-configmap, servicemonitor templates                |
+| `argocd/config/regional-cluster/alerting-rules/templates/`   | PrometheusRule CRs for rate limit alerts                                 |
+| `docs/design/rate-limiting-architecture.md`                  | ADR: rate limiting design decisions                                      |
+
+**Key files (rosa-hyperfleet-api)**: Rate limiting Go implementation lives in the API repo — `pkg/ratelimit/` (GCRA limiter, config loading), `pkg/middleware/ratelimit.go` (HTTP middleware), `cmd/rosa-regional-platform-api/main.go` (wiring).
+
+**Data flow for Valkey endpoint**: Terraform output → `bootstrap-argocd.sh` (combines host:port) → ECS task env var → cluster secret annotation → ApplicationSet valuesObject → Helm values → `REDIS_ENDPOINT` env var on platform-api pods.
 
 ### Chai Bot Scheduled Tasks
 

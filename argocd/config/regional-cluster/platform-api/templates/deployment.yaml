@@ -17,6 +17,9 @@ spec:
       annotations:
         checksum/zoa-job-config: {{ include (print $.Template.BasePath "/zoa-job-config-configmap.yaml") . | sha256sum }}
         checksum/zoa-ta-templates: {{ include (print $.Template.BasePath "/zoa-templates-configmap.yaml") . | sha256sum }}
+        {{- if .Values.platformApi.rateLimit.enabled }}
+        checksum/rate-limits: {{ include (print $.Template.BasePath "/ratelimit-configmap.yaml") . | sha256sum }}
+        {{- end }}
     spec:
       serviceAccountName: {{ .Values.platformApi.serviceAccount.name }}
       topologySpreadConstraints:
@@ -47,8 +50,9 @@ spec:
             - --metrics-port={{ .Values.platformApi.app.args.metricsPort }}
             - --dynamodb-region={{ .Values.platformApi.app.args.dynamodbRegion }}
             - --dynamodb-prefix={{ .Values.platformApi.app.args.dynamodbPrefix }}
-          {{- if .Values.platformApi.zoa.enabled }}
+          {{- if or .Values.platformApi.zoa.enabled .Values.platformApi.rateLimit.enabled }}
           env:
+          {{- if .Values.platformApi.zoa.enabled }}
             - name: ZOA_ENABLED
               value: "true"
             - name: ZOA_TABLE_NAME
@@ -61,13 +65,29 @@ spec:
               value: /etc/zoa/templates
             - name: ZOA_JOB_CONFIG_DIR
               value: /etc/zoa/job-config
+          {{- end }}
+          {{- if .Values.platformApi.rateLimit.enabled }}
+            - name: RATE_LIMIT_ENABLED
+              value: "true"
+            - name: RATE_LIMIT_CONFIG_FILE
+              value: /etc/platform-api/rate-limits/limits.yaml
+            - name: REDIS_ENDPOINT
+              value: {{ .Values.platformApi.rateLimit.redisEndpoint | quote }}
+          {{- end }}
           volumeMounts:
+          {{- if .Values.platformApi.zoa.enabled }}
             - name: zoa-templates
               mountPath: /etc/zoa/templates
               readOnly: true
             - name: zoa-job-config
               mountPath: /etc/zoa/job-config
               readOnly: true
+          {{- end }}
+          {{- if .Values.platformApi.rateLimit.enabled }}
+            - name: rate-limits
+              mountPath: /etc/platform-api/rate-limits
+              readOnly: true
+          {{- end }}
           {{- end }}
           ports:
             - name: api
@@ -148,4 +168,9 @@ spec:
         - name: zoa-job-config
           configMap:
             name: zoa-job-config
+        {{- end }}
+        {{- if .Values.platformApi.rateLimit.enabled }}
+        - name: rate-limits
+          configMap:
+            name: rate-limits
         {{- end }}

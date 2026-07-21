@@ -70,6 +70,9 @@ regional_cluster:
   # @doc regional_cluster.enable_api_custom_domain Enable API Gateway custom domain and ACM certificate. Off by default; adds ~20 minutes for certificate validation.
   # @used-by regional_cluster.enable_api_custom_domain pipeline-regional-cluster-inputs/terraform.json.j2
   enable_api_custom_domain: false
+  # @doc regional_cluster.enable_rate_limit_redis Enable ElastiCache Redis for Platform API rate limiting.
+  # @used-by regional_cluster.enable_rate_limit_redis pipeline-regional-cluster-inputs/terraform.json.j2
+  enable_rate_limit_redis: true
   # @doc regional_cluster.enable_write_sre_tools Enable write/admin access to SRE tools (Grafana, ArgoCD). Off by default. Can only be set to true for ephemeral environments — render.py enforces this.
   # @used-by regional_cluster.enable_write_sre_tools _context
   enable_write_sre_tools: true
