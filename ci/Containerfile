@@ -19,6 +19,7 @@ ARG UV_VERSION=0.6.0
 ARG AWS_CLI_VERSION=2.34.19
 ARG PRETTIER_VERSION=3.8.1
 ARG YQ_VERSION=v4.44.3
+ARG KUBECTL_VERSION=v1.36.2
 ARG K6_VERSION=0.55.0
 ARG PROMETHEUS_VERSION=3.4.1
 ARG LEAKTK_VERSION=0.3.3
@@ -121,6 +122,22 @@ RUN arch=$(uname -m) && \
     curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -fsSL "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${YQ_ARCH}" -o /usr/local/bin/yq && \
     chmod +x /usr/local/bin/yq && \
     yq --version
+
+# kubectl (Kubernetes CLI, checksum-verified)
+ARG CURL_RETRY
+ARG CURL_RETRY_DELAY
+ARG CURL_MAX_TIME
+RUN arch=$(uname -m) && \
+    case "${arch}" in \
+        x86_64)  KUBECTL_ARCH="amd64" ;; \
+        aarch64) KUBECTL_ARCH="arm64" ;; \
+    esac && \
+    curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -fsSLO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${KUBECTL_ARCH}/kubectl" && \
+    curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -fsSLO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${KUBECTL_ARCH}/kubectl.sha256" && \
+    echo "$(cat kubectl.sha256)  kubectl" | sha256sum -c - && \
+    install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && \
+    rm -f kubectl kubectl.sha256 && \
+    kubectl version --client
 
 # k6 (load testing, checksum-verified)
 ARG CURL_RETRY
