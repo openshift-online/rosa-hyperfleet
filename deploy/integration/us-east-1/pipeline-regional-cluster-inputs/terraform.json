@@ -17,6 +17,10 @@
   "enable_sns_alerting": true,
   "regional_id": "regional",
   "eph_prefix": "",
-  "iot_log_level": "WARN",
+  "hyperfleet_db_instance_class": "db.r6g.large",
+  "hyperfleet_db_deletion_protection": true,
+  "hyperfleet_db_skip_final_snapshot": false,
+  "hyperfleet_db_performance_insights_enabled": true,
+  "hyperfleet_db_monitoring_interval": 60,
   "management_clusters_info": [{"account_id": "ssm:///infra/integration/us-east-1/mc01/account_id", "id": "mc01"}]
 }

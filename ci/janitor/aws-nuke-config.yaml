@@ -223,5 +223,7 @@ settings:
   # from failed terraform runs, so aws-nuke can delete them.
   RDSInstance:
     DisableDeletionProtection: true
+  RDSDBCluster:
+    DisableDeletionProtection: true
   DynamoDBTable:
     DisableDeletionProtection: true

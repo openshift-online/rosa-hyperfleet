@@ -1,0 +1,39 @@
+hyperfleet:
+  applicationName: hyperfleet-operator
+
+  namespace: argocd
+
+  targetNamespace: hyperfleet
+
+  project: default
+
+  source:
+    repoURL: https://github.com/typeid/hyperfleet-operator.git
+    targetRevision: main
+    path: charts/hyperfleet-operator
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+
+  helmValues:
+    image:
+      repository: quay.io/cbusse_openshift/hyperfleet-operator
+      tag: "pgruntimev2"
+      pullPolicy: Always
+
+    replicaCount: 2
+
+    serviceAccount:
+      create: true
+      name: hyperfleet-operator
+      annotations: {}
+
+    resources:
+      limits:
+        cpu: 500m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi

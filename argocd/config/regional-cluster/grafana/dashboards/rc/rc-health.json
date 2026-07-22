@@ -23,10 +23,10 @@
         "name": "hyperfleet_namespaces",
         "type": "custom",
         "label": "Hyperfleet Namespaces",
-        "query": "maestro|clm|argocd|tekton-pipelines|hyperfleet-.*",
+        "query": "clm|argocd|tekton-pipelines|hyperfleet",
         "current": {
-          "text": "maestro|clm|argocd|tekton-pipelines|hyperfleet-.*",
-          "value": "maestro|clm|argocd|tekton-pipelines|hyperfleet-.*"
+          "text": "clm|argocd|tekton-pipelines|hyperfleet",
+          "value": "clm|argocd|tekton-pipelines|hyperfleet"
         },
         "hide": 2,
         "includeAll": false,

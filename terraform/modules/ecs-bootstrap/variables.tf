@@ -83,3 +83,14 @@ variable "karpenter_version" {
   default     = "1.13.0"
 }
 
+variable "rc_aws_account_id" {
+  description = "AWS account ID of the regional cluster where DynamoDB tables reside. Injected into the ArgoCD cluster secret so charts can build cross-account resource ARNs."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.rc_aws_account_id == "" || can(regex("^[0-9]{12}$", var.rc_aws_account_id))
+    error_message = "rc_aws_account_id must be empty or a 12-digit AWS account ID."
+  }
+}
+

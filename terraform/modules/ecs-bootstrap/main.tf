@@ -332,12 +332,14 @@ resource "aws_ecs_task_definition" "bootstrap" {
               loki_distributor_target_group_arn: "$LOKI_DISTRIBUTOR_TARGET_GROUP_ARN"
               loki_query_frontend_target_group_arn: "$LOKI_QUERY_FRONTEND_TARGET_GROUP_ARN"
               aws_account_id: "$AWS_ACCOUNT_ID"
+              rc_aws_account_id: "$RC_AWS_ACCOUNT_ID"
               management_clusters: "$MANAGEMENT_CLUSTERS"
               rhobs_api_url: "$RHOBS_API_URL"
               dns_zone_operator_role_arn: "$DNS_ZONE_OPERATOR_ROLE_ARN"
               zoa_table_name: "$ZOA_TABLE_NAME"
               zoa_audit_table_name: "$ZOA_AUDIT_TABLE_NAME"
               zoa_bucket_name: "$ZOA_BUCKET_NAME"
+              oidc_cloudfront_domain: "$OIDC_CLOUDFRONT_DOMAIN"
           type: Opaque
           stringData:
             name: in-cluster
@@ -437,6 +439,10 @@ resource "aws_ecs_task_definition" "bootstrap" {
         {
           name  = "KARPENTER_VERSION"
           value = var.karpenter_version
+        },
+        {
+          name  = "RC_AWS_ACCOUNT_ID"
+          value = var.rc_aws_account_id
         }
       ]
 

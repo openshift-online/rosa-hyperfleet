@@ -111,7 +111,51 @@ variable "enable_sns_alerting" {
   default     = false
 }
 
+# =============================================================================
+# HyperFleet DB Variables
+# =============================================================================
 
+variable "hyperfleet_db_instance_class" {
+  description = "Aurora instance class for HyperFleet DB"
+  type        = string
+  default     = "db.r6g.large"
+}
+
+variable "hyperfleet_db_engine_version" {
+  description = "Aurora PostgreSQL engine version for HyperFleet DB"
+  type        = string
+  default     = "16.13"
+}
+
+variable "hyperfleet_db_backup_retention_period" {
+  description = "Days to retain automated backups (PITR window)"
+  type        = number
+  default     = 14
+}
+
+variable "hyperfleet_db_deletion_protection" {
+  description = "Enable deletion protection for HyperFleet DB Aurora"
+  type        = bool
+  default     = true
+}
+
+variable "hyperfleet_db_skip_final_snapshot" {
+  description = "Skip final snapshot when destroying (ephemeral only)"
+  type        = bool
+  default     = false
+}
+
+variable "hyperfleet_db_performance_insights_enabled" {
+  description = "Enable Performance Insights for HyperFleet DB Aurora"
+  type        = bool
+  default     = true
+}
+
+variable "hyperfleet_db_monitoring_interval" {
+  description = "Enhanced Monitoring interval in seconds for HyperFleet DB Aurora (0 to disable)"
+  type        = number
+  default     = 60
+}
 
 # =============================================================================
 # Platform API Variables
@@ -185,44 +229,6 @@ variable "rhobs_apigw_metrics_enabled" {
   default     = true
 }
 
-# Maestro Configuration Variables
-# =============================================================================
-
-variable "maestro_db_instance_class" {
-  description = "RDS instance class for Maestro PostgreSQL database"
-  type        = string
-  default     = "db.t4g.micro"
-}
-
-variable "maestro_db_multi_az" {
-  description = "Enable Multi-AZ deployment for Maestro RDS (recommended for production)"
-  type        = bool
-  default     = false
-}
-
-variable "maestro_db_deletion_protection" {
-  description = "Enable deletion protection for Maestro RDS instance (recommended for production)"
-  type        = bool
-  default     = false
-}
-
-variable "maestro_mqtt_topic_prefix" {
-  description = "Prefix for MQTT topics used by Maestro"
-  type        = string
-  default     = "maestro/consumers"
-}
-
-variable "iot_log_level" {
-  description = "AWS IoT Core default log level (DISABLED, ERROR, WARN, INFO, DEBUG)"
-  type        = string
-  default     = "WARN"
-
-  validation {
-    condition     = contains(["DISABLED", "ERROR", "WARN", "INFO", "DEBUG"], var.iot_log_level)
-    error_message = "iot_log_level must be one of: DISABLED, ERROR, WARN, INFO, DEBUG"
-  }
-}
-
 # =============================================================================
 # Authorization Configuration Variables
 # =============================================================================
@@ -257,44 +263,6 @@ variable "authz_frontend_api_service_account" {
   default     = "platform-api-sa"
 }
 
-# =============================================================================
-# HyperFleet Configuration Variables
-# =============================================================================
-
-variable "hyperfleet_db_instance_class" {
-  description = "RDS instance class for HyperFleet PostgreSQL database"
-  type        = string
-  default     = "db.t4g.micro"
-}
-
-variable "hyperfleet_db_multi_az" {
-  description = "Enable Multi-AZ deployment for HyperFleet RDS (recommended for production)"
-  type        = bool
-  default     = false
-}
-
-variable "hyperfleet_db_deletion_protection" {
-  description = "Enable deletion protection for HyperFleet RDS instance (recommended for production)"
-  type        = bool
-  default     = false
-}
-
-variable "hyperfleet_mq_instance_type" {
-  description = "Amazon MQ instance type for HyperFleet RabbitMQ broker"
-  type        = string
-  default     = "mq.m5.large"
-}
-
-variable "hyperfleet_mq_deployment_mode" {
-  description = "Amazon MQ deployment mode (SINGLE_INSTANCE or CLUSTER_MULTI_AZ)"
-  type        = string
-  default     = "SINGLE_INSTANCE"
-
-  validation {
-    condition     = contains(["SINGLE_INSTANCE", "CLUSTER_MULTI_AZ"], var.hyperfleet_mq_deployment_mode)
-    error_message = "Deployment mode must be SINGLE_INSTANCE or CLUSTER_MULTI_AZ"
-  }
-}
 
 # =============================================================================
 # Regional OIDC Configuration Variables

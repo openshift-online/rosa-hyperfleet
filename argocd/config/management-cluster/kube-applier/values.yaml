@@ -1,0 +1,55 @@
+# kube-applier-aws Helm Chart Values
+# Runs one controller per Management Cluster, reading desires from DynamoDB
+# and applying them to the local Kubernetes cluster.
+
+kubeApplier:
+  # Container image configuration
+  image:
+    registry: "quay.io"
+    repository: "psav/kube-applier-aws"
+    tag: "remove-delete-desire-18d87ca"
+    pullPolicy: IfNotPresent
+
+  # Deployment configuration
+  deployment:
+    replicas: 1
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "256Mi"
+
+  # Controller configuration
+  # managementCluster and awsRegion are injected at runtime from global.cluster_name
+  # and global.aws_region via the ArgoCD ApplicationSet valuesObject.
+  config:
+    # Optional: override DynamoDB endpoint (e.g. for LocalStack in dev)
+    awsEndpointUrl: ""
+    metricsListenAddress: ":8081"
+    healthzListenAddress: ":8083"
+    leaderElectionId: "kube-applier"
+    logVerbosity: 4
+    exitOnPanic: true
+
+  serviceAccount:
+    name: kube-applier
+
+  # Metrics configuration
+  metrics:
+    serviceMonitor:
+      # Set to true when Prometheus Operator is deployed in the cluster
+      enabled: false
+      interval: "30s"
+      scrapeTimeout: "10s"
+
+# Global values injected by the ArgoCD ApplicationSet valuesObject.
+# These are not set here — they are always provided at runtime.
+global:
+  cluster_name: ""
+  aws_region: ""
+  aws_account_id: ""
+  rc_aws_account_id: ""
+  environment: ""
+  cluster_type: ""

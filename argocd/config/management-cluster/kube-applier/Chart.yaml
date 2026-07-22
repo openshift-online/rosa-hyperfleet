@@ -1,0 +1,16 @@
+apiVersion: v2
+name: kube-applier
+description: kube-applier-aws controller for Management Cluster - DynamoDB-backed GitOps applier
+type: application
+version: 0.1.0
+appVersion: "latest"
+keywords:
+  - kube-applier
+  - dynamodb
+  - rosa
+  - gitops
+  - management-cluster
+maintainers:
+  - name: ROSA Regional Platform Team
+sources:
+  - https://github.com/openshift-online/rosa-regional-platform

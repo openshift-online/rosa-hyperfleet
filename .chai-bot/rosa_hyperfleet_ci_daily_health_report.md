@@ -121,21 +121,20 @@ After your top-level summary (Step 4), emit `---THREAD_DETAILS---` on its own li
 
 For each job whose **latest run failed**, produce a **separate threaded reply** with investigation. Follow the investigation procedure in `.claude/agents/ci-troubleshooter.md` to diagnose the failure. The source is `main` — read files directly with the Read tool.
 
-**For every failure, follow this two-phase approach:**
+**For every failure, perform ALL THREE analysis steps before classifying. Do not classify as Flake without completing all three.** Unclear is permitted when S3 logs cannot be obtained, but only with a documented error and evidence gap.
 
-1. **Prow artifact analysis first** — fetch and analyze the build logs and artifacts from GCS (Step 5 in ci-troubleshooter). Use the Prow logs to determine the failure scope: is it RC-only, MC-related, or unclear?
-2. **Selective S3 log analysis** — based on the failure scope from step 1, fetch only the S3 logs needed:
-   - **RC-only failure** (provision error, platform-api, ArgoCD sync on RC): fetch RC logs only
-   - **MC failure or RC↔MC interaction** (maestro-agent, HyperShift, hosted cluster): fetch both RC and MC logs
-   - **Unclear scope**: fetch both RC and MC logs
+1. **Prow artifact analysis** (Step 5 in ci-troubleshooter) — fetch and analyze the build logs and artifacts from GCS. Identify the failing step, error messages, and failure scope.
 
-   Use the AWS profiles matching the failing job:
-   - Ephemeral jobs (`nightly-ephemeral`): `chai-rc-ci` for RC, `chai-mc-ci` for MC
-   - Integration jobs (`nightly-integration`): `chai-rc-int` for RC, `chai-mc-int` for MC
+2. **S3 log extraction and analysis** (Step 5b in ci-troubleshooter) — **MANDATORY.** Always download and extract tar.gz archives to a local workspace directory. Perform broad grep-based analysis across all namespaces, not just the suspected ones. Follow the broad S3 log analysis procedure in the ci-troubleshooter agent.
+   - Use the AWS profiles matching the failing job:
+     - Ephemeral jobs (`nightly-ephemeral`): `chai-rc-ci` for RC, `chai-mc-ci` for MC
+     - Integration jobs (`nightly-integration`): `chai-rc-int` for RC, `chai-mc-int` for MC
+   - Fetch scope based on Prow analysis: RC-only, MC + RC, or both if unclear
+   - If S3 logs are inaccessible, report the specific error — classification ceiling becomes Unclear
 
-If S3 logs are inaccessible (credentials, expired, etc.), report the access issue but continue with the Prow-based analysis — never skip the Prow investigation because S3 failed.
+3. **Git commit correlation** (Step 5c in ci-troubleshooter) — **MANDATORY.** Identify the last passing run, find all commits between last-good and current-bad, and examine commits touching the failing component. Also check `rosa-hyperfleet-api` for API/CLM failures.
 
-**S3 log handling:** Prefer streaming logs directly from S3 over downloading them locally. If local download is necessary for broader analysis, always clean up the downloaded files immediately after the analysis is complete — never leave S3 logs on disk between runs. See Step 5b in `.claude/agents/ci-troubleshooter.md` for the full procedure.
+**S3 log handling:** Always extract tar.gz locally for full analysis. Clean up downloaded files immediately after analysis is complete — never leave S3 logs on disk between runs. See Step 5b in `.claude/agents/ci-troubleshooter.md` for the full procedure.
 
 Format each threaded reply like:
 
@@ -143,7 +142,10 @@ Format each threaded reply like:
 %EMOJI% *%JOB_NAME% -- %PASS%/10 (%RATE%%)*
 
 %CLASSIFICATION%: %SHORT_SUMMARY%
+Evidence: Prow ✅ | S3 Logs ✅/❌ | Git History ✅/❌ | Trend ✅
 %ROOT_CAUSE_ANALYSIS%
+S3 Log Evidence: %KEY_FINDINGS_FROM_S3_LOGS%
+Suspect Commits: %COMMITS_BETWEEN_LAST_GOOD_AND_CURRENT_BAD% (or "None — no relevant changes")
 %CROSS_DAY_ANALYSIS% (if consecutive failures)
 
 Most recent failure: <%JOB_RUN_URL%|Build #%NUMBER%> (%DATE%)
@@ -153,15 +155,23 @@ Most recent failure: <%JOB_RUN_URL%|Build #%NUMBER%> (%DATE%)
 
 Use concise job names: "ephemeral" or "integration".
 
-### 5a. Classify failure — flake vs genuine
+### 5a. Classify failure — genuine first
 
-For each failing job, classify the failure following Step 7 in `.claude/agents/ci-troubleshooter.md`:
+For each failing job, classify the failure following Step 7 in `.claude/agents/ci-troubleshooter.md`. **The default assumption is Genuine until evidence proves otherwise.** Aim for Genuine classification wherever evidence supports it.
 
-- **🔀 Flake** — transient/intermittent, no code fix needed
-- **🔧 Genuine** — configuration or code issue, fix PR required
-- **⚠️ Unclear** — first occurrence, monitor on next run
+- **🔧 Genuine** (default) — configuration or code issue, fix PR required
+- **🔀 Flake** — transient/intermittent, no code fix needed. **Requires strong justification.**
+- **⚠️ Unclear** — last resort when evidence is genuinely contradictory or S3 logs could not be obtained
 
-Use the 10-run trend table and consecutive failure streak to inform the classification. A single isolated failure surrounded by passes is likely a flake. Two or more consecutive failures with the same error signature is almost certainly genuine.
+**Evidence requirements:** Every classification MUST cite evidence from all three sources:
+
+1. **Prow artifacts** — what error was found in the build logs
+2. **S3 logs** — what the extracted cluster logs show (healthy pods, error patterns, restarts)
+3. **Git history** — whether suspect commits exist between last-good and current-bad runs
+
+If any source was not analyzed, the classification must explain why and acknowledge the evidence gap. A classification of Flake without S3 log and git history evidence is not valid. Unclear is permitted when S3 or git evidence could not be obtained, provided the specific access error and resulting evidence gap are documented.
+
+Use the 10-run trend table and consecutive failure streak as additional signal. Two or more consecutive failures with the same error signature is almost certainly genuine. A single isolated failure with S3 logs showing healthy state AND no suspect commits AND a known transient error pattern may be a flake.
 
 ### 5b. Consecutive failure analysis
 
@@ -236,7 +246,10 @@ integration:   ✅    ✅    ❌    ✅    ✅    ✅    ✅    ✅    ❌    �
 :red_circle: *integration -- 7/10 (70%)*
 
 🔧 *Genuine* — E2E test `TestClusterCreation` timed out waiting for hosted cluster to become ready.
+Evidence: Prow ✅ | S3 Logs ✅ | Git History ✅ | Trend ✅
 Root cause: MC maestro-agent pod in CrashLoopBackOff due to MQTT connection failure — incorrect broker endpoint in ArgoCD values.
+S3 Log Evidence: `maestro-agent/pods/agent-xyz/agent/logs/current.log` — 47x `CONNACK refused: not authorized`; pod status: CrashLoopBackOff
+Suspect Commits: `a1b2c3d` — `feat(argocd): update maestro broker endpoint` — touches `argocd/config/management-cluster/maestro/`
 Consecutive failures (2 days): same root cause as Jun 29 — maestro CONNACK failure with identical error signature.
 
 Most recent failure: <url|Build #1234> (Jun 30)
@@ -250,7 +263,10 @@ Fix PR: <https://github.com/openshift-online/rosa-hyperfleet/pull/700|#700> (upd
 :red_circle: *ephemeral -- 9/10 (90%)*
 
 🔀 *Flake* — provision-ephemeral timed out waiting for EKS API response.
+Evidence: Prow ✅ | S3 Logs ✅ | Git History ✅ | Trend ✅
 Single occurrence; Jun 29 and prior runs all passed. Error: `i/o timeout` during Terraform apply — consistent with transient AWS API throttling.
+S3 Log Evidence: All pods healthy, no CrashLoopBackOff, no persistent errors. RC logs show clean state after provision timeout.
+Suspect Commits: None — no commits between last passing run (Jun 29, `f4e5d6c`) and current run touch `terraform/` or `scripts/buildspec/`.
 Proposed fix: add retry with backoff to `scripts/buildspec/provision-infra-rc.sh` Terraform apply step.
 
 Most recent failure: <url|Build #5678> (Jun 30)
@@ -265,27 +281,16 @@ Should I raise a PR for this? Reply in this thread to confirm.
 :red_circle: *integration -- 8/10 (80%)*
 
 ⚠️ *Unclear* — E2E test `TestClusterScaling` failed with unexpected 500 response from platform-api.
-Checked: Prow build log (500 error, no stack trace), RC S3 logs (platform-api pod healthy, no errors in logs), MC S3 logs (not fetched — RC-only scope based on error).
-Likely cause: possible race condition in scaling handler, but no reproducing evidence in logs. First occurrence — no matching pattern in recent runs.
+Evidence: Prow ✅ | S3 Logs ✅ | Git History ✅ | Trend ✅
+Checked: Prow build log (500 error, no stack trace), RC S3 logs (platform-api pod healthy, no errors in application logs, no restarts), MC S3 logs (all pods healthy).
+S3 Log Evidence: Broad namespace scan clean — no CrashLoopBackOff, no OOMKilled, no persistent errors across any namespace. platform-api logs show normal request patterns up to failure timestamp.
+Suspect Commits: `b2c3d4e` — `refactor(api): restructure scaling handler` — touches `rosa-hyperfleet-api` scaling path, but change appears cosmetic (rename only).
+Why Unclear: Evidence is contradictory — S3 logs show fully healthy cluster state, yet platform-api returned 500. Suspect commit exists but change is cosmetic. First occurrence with no matching pattern. Could be a transient race condition not captured in logs.
 
 Most recent failure: <url|Build #9012> (Jun 30)
 
 ⚠️ Unable to determine root cause with confidence. Likely cause: race condition in platform-api scaling handler.
 This needs manual investigation. Please share findings in this thread — if root cause is identified, I can raise a PR to update the CI troubleshooter to recognize this pattern in future runs.
-```
-
-**Example — root cause shift (old PR closed, new PR opened):**
-
-```text
-:red_circle: *integration -- 6/10 (60%)*
-
-🔧 *Genuine (root cause changed)* — E2E test `TestClusterDeletion` failed with permission denied on S3 bucket cleanup.
-Previous root cause (Jun 28–29): maestro-agent CONNACK failure — that issue was fixed by <#700|PR #700> merged today.
-New root cause: IAM policy for teardown role missing `s3:DeleteObject` permission on log collection bucket.
-
-Most recent failure: <url|Build #1235> (Jun 30)
-Closed PR: <#700|#700> (root cause changed)
-New fix PR: <https://github.com/openshift-online/rosa-hyperfleet/pull/705|#705>
 ```
 
 ## Constraints

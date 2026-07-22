@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ index .Values "hyperfleet" "applicationName" }}
+  namespace: {{ index .Values "hyperfleet" "namespace" }}
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: {{ index .Values "hyperfleet" "project" }}
+
+  source:
+    repoURL: {{ index .Values "hyperfleet" "source" "repoURL" }}
+    targetRevision: {{ index .Values "hyperfleet" "source" "targetRevision" }}
+    path: {{ index .Values "hyperfleet" "source" "path" }}
+    helm:
+      values: |
+        {{- if index .Values "hyperfleet" "helmValues" }}
+        {{- toYaml (index .Values "hyperfleet" "helmValues") | nindent 8 }}
+        {{- end }}
+        awsRegion: {{ .Values.global.aws_region }}
+        baseDomain: {{ .Values.baseDomain }}
+        postgres:
+          secretName: {{ .Values.global.postgres_secret_name | default "hyperfleet-db-dsn" }}
+          secretKey: {{ .Values.global.postgres_secret_key | default "dsn" }}
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ index .Values "hyperfleet" "targetNamespace" }}
+
+  syncPolicy:
+    {{- if index .Values "hyperfleet" "syncPolicy" "automated" }}
+    automated:
+      prune: {{ index .Values "hyperfleet" "syncPolicy" "automated" "prune" }}
+      selfHeal: {{ index .Values "hyperfleet" "syncPolicy" "automated" "selfHeal" }}
+    {{- end }}
+    retry:
+      limit: -1
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 1m
+    syncOptions:
+    - ServerSideApply=true
+    - CreateNamespace=true
+    - SkipDryRunOnMissingResource=true

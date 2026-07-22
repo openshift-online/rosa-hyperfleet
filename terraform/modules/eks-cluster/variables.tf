@@ -7,8 +7,8 @@ variable "cluster_type" {
   type        = string
 
   validation {
-    condition     = contains(["regional-cluster", "management-cluster"], var.cluster_type)
-    error_message = "Cluster type must be either 'regional-cluster' or 'management-cluster'."
+    condition     = contains(["regional-cluster", "management-cluster", "fleet-db"], var.cluster_type)
+    error_message = "Cluster type must be 'regional-cluster', 'management-cluster', or 'fleet-db'."
   }
 }
 

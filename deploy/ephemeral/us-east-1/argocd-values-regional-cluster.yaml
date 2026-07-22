@@ -9,11 +9,7 @@ eksNodePool:
   instanceFamilies:
   - m8i-flex
   - m7i-flex
-hyperfleetAdapter1Chart:
-  baseDomain: 0.us-east-1.dev0.rosa.devshift.net
-maestro:
-  mqttEndpoint: xxx.iot.us-east-1.amazonaws.com
-  iotLogLevel: WARN
+baseDomain: us-east-1.dev0.rosa.devshift.net
 pagerduty:
   enabled: false
 grafana:

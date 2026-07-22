@@ -19,18 +19,15 @@ TERRAFORM_ACTION="apply"
 
 echo "MC ${MANAGEMENT_ID}: terraform ${TERRAFORM_ACTION} in ${TARGET_ACCOUNT_ID}/${TARGET_REGION}"
 
-# ── Phase 1: Read IoT cert/config and OIDC outputs from RC account ───────────
+# ── Phase 1: Read OIDC outputs from RC account ─────────────────────────────
 if [ "${DELETE_FLAG}" == "true" ]; then
     # Provide placeholders so terraform destroy can pass the planning phase.
-    export TF_VAR_maestro_agent_cert_file=$(mktemp)
-    export TF_VAR_maestro_agent_config_file=$(mktemp)
     export TF_VAR_oidc_cloudfront_domain="placeholder"
     export TF_VAR_oidc_bucket_name="placeholder"
     export TF_VAR_oidc_bucket_arn="arn:aws:s3:::placeholder"
     export TF_VAR_oidc_bucket_region="us-east-1"
 else
     use_rc_account
-    read_iot_state "$RESOLVED_REGIONAL_ACCOUNT_ID" "$CLUSTER_ID" "$TARGET_REGION"
 
     _RC_REGIONAL_ID=$(jq -r '.regional_id // "regional"' "deploy/${ENVIRONMENT}/${TARGET_REGION}/pipeline-regional-cluster-inputs/terraform.json" 2>/dev/null || echo "regional")
     export DNS_ZONE_OPERATOR_ROLE_ARN="arn:aws:iam::${RESOLVED_REGIONAL_ACCOUNT_ID}:role/${_RC_REGIONAL_ID}-dns-zone-operator"
@@ -105,9 +102,6 @@ export TF_VAR_management_id="${CLUSTER_ID:-mgmt-cluster-01}"
 export TF_VAR_environment="${ENVIRONMENT:-staging}"
 export TF_VAR_regional_aws_account_id="${RESOLVED_REGIONAL_ACCOUNT_ID}"
 
-# TF_VAR_maestro_agent_cert_file and TF_VAR_maestro_agent_config_file
-# are already exported by read_iot_state()
-
 _REPO_BRANCH="${REPOSITORY_BRANCH:-main}"
 export TF_VAR_repository_url="${REPOSITORY_URL}"
 export TF_VAR_repository_branch="${_REPO_BRANCH}"
@@ -150,4 +144,3 @@ if [ $TERRAFORM_STATUS -ne 0 ]; then
     exit $TERRAFORM_STATUS
 fi
 
-rm -f "${TF_VAR_maestro_agent_cert_file:-}" "${TF_VAR_maestro_agent_config_file:-}"

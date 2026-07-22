@@ -24,8 +24,8 @@ The IC is responsible for the following tasks:
   - [On-demand E2E](https://prow.ci.openshift.org/job-history/gs/test-platform-results/pr-logs/directory/pull-ci-openshift-online-rosa-hyperfleet-main-on-demand-e2e)
     - Note that only consistent, platform-level failures are the IC's responsibility, as opposed to one-off failures caused by the PRs being tested
 - Monitor the PR queue via the [PR Dashboard](https://openshift-online.github.io/rosa-hyperfleet/pr-dashboard):
-  - Ensure all review-ready PRs have assigned reviewers
-  - Run `/ok-to-test` on bot PRs (dependabot, rosa-hyperfleet-ci, rrp-bot) after verifying they are safe
+  - For human PRs: ensure they have an appropriate reviewer assigned — the IC is not expected to review these themselves
+  - For bot/agent PRs (dependabot, Konflux/MintMaker, chai-bot): run `/ok-to-test` after verifying they are safe, then merge or delegate to an appropriate reviewer
 - Work on items in the [ROSA HyperFleet IC Queue](https://redhat.atlassian.net/issues?filter=112523).
   - Items on this queue should always be down to zero.
 

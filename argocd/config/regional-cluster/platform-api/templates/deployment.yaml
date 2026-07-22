@@ -40,15 +40,22 @@ spec:
             - serve
             - --log-level={{ .Values.platformApi.app.args.logLevel }}
             - --log-format={{ .Values.platformApi.app.args.logFormat }}
-            - --maestro-url={{ .Values.platformApi.app.args.maestroUrl }}
             - --allowed-accounts={{ .Values.platformApi.app.args.allowedAccounts }}
             - --api-port={{ .Values.platformApi.app.args.apiPort }}
             - --health-port={{ .Values.platformApi.app.args.healthPort }}
             - --metrics-port={{ .Values.platformApi.app.args.metricsPort }}
             - --dynamodb-region={{ .Values.platformApi.app.args.dynamodbRegion }}
             - --dynamodb-prefix={{ .Values.platformApi.app.args.dynamodbPrefix }}
-          {{- if .Values.platformApi.zoa.enabled }}
+            {{- if .Values.platformApi.app.args.oidcIssuerBaseURL }}
+            - --oidc-issuer-base-url={{ .Values.platformApi.app.args.oidcIssuerBaseURL }}
+            {{- end }}
           env:
+            - name: POSTGRES_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.platformApi.hyperfleetdb.secretName | default "hyperfleet-db-dsn" }}
+                  key: {{ .Values.platformApi.hyperfleetdb.secretKey | default "dsn" }}
+            {{- if .Values.platformApi.zoa.enabled }}
             - name: ZOA_ENABLED
               value: "true"
             - name: ZOA_TABLE_NAME
@@ -61,6 +68,8 @@ spec:
               value: /etc/zoa/templates
             - name: ZOA_JOB_CONFIG_DIR
               value: /etc/zoa/job-config
+            {{- end }}
+          {{- if .Values.platformApi.zoa.enabled }}
           volumeMounts:
             - name: zoa-templates
               mountPath: /etc/zoa/templates

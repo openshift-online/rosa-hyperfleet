@@ -745,7 +745,6 @@ cmd_bastion_port_forward() {
       *) echo "Error: invalid cluster type '$cluster_type'"; echo ""; usage_port_forward; exit 1 ;;
     esac
 
-    local maestro="maestro       - Maestro HTTP + gRPC"
     local argocd="argocd        - ArgoCD server HTTPS"
     local prometheus="prometheus    - Prometheus Monitoring Dashboard"
     local thanos="thanos        - Thanos Query + Ruler (aggregated RC+MC metrics and alerting)"
@@ -755,7 +754,7 @@ cmd_bastion_port_forward() {
     local custom="custom        - Custom service / ports"
 
     # custom services are added only for interactive
-    local regional_svc_list=("$maestro" "$argocd" "$prometheus" "$thanos" "$loki" "$alertmanager" "$grafana")
+    local regional_svc_list=("$argocd" "$prometheus" "$thanos" "$loki" "$alertmanager" "$grafana")
     local management_svc_list=("$argocd" "$prometheus")
 
     local services
@@ -779,21 +778,10 @@ cmd_bastion_port_forward() {
     local forwards=()
     for service in $services
     do
-        if [ "$service" = "maestro" ] && [ "$cluster_type" != "regional" ]; then
-            echo "Error: maestro is only available on regional clusters."
-            exit 1
-        fi
-
         # ── Build port-forward definitions ───────────────────────────────────────────
         # Each entry: "label remote_port local_port k8s_svc k8s_namespace k8s_svc_port"
 
         case "$service" in
-        maestro)
-            forwards+=(
-            "Maestro-HTTP 8080 8080 maestro-http maestro-server 8080"
-            "Maestro-gRPC 8090 8090 maestro-grpc maestro-server 8090"
-            )
-            ;;
         argocd)
             forwards+=(
             "ArgoCD-Server 8443 8443 argocd-server argocd 443"
@@ -1035,6 +1023,8 @@ cmd_e2e() {
         -e "AWS_REGION=$region" \
         -e "E2E_REF=$e2e_ref" \
         -e "E2E_REPO=$e2e_repo" \
+        -e "CLI_REF=${CLI_REF:-main}" \
+        -e "CLI_REPO=${CLI_REPO:-}" \
         -e "E2E_SKIP_CLEANUP=${E2E_SKIP_CLEANUP:-}" \
         "$CI_IMAGE" \
         bash ci/e2e-tests.sh

@@ -59,7 +59,7 @@ usage_port_forward() {
     echo ""
     echo "Flags:"
     echo "  --all              Automatically open all port forwards"
-    echo "  --service <name>   Forward a specific service (maestro, argocd, prometheus)"
+    echo "  --service <name>   Forward a specific service (argocd, prometheus, loki, grafana)"
     echo "  --cluster-type     Cluster type: \"regional\" or \"management\""
 }
 
@@ -251,13 +251,12 @@ cmd_port_forward() {
       *) echo "Error: invalid cluster type '${cluster_type:-}'"; echo ""; usage_port_forward; exit 1 ;;
     esac
 
-    local maestro="maestro   - Maestro HTTP + gRPC"
     local argocd="argocd    - ArgoCD server HTTPS"
     local prometheus="prometheus  - Prometheus Monitoring Dashboard"
     local loki="loki      - Loki Query Frontend (platform logs)"
     local grafana="grafana   - Grafana Dashboard"
 
-    local regional_svc_list=("$maestro" "$argocd" "$prometheus" "$loki" "$grafana")
+    local regional_svc_list=("$argocd" "$prometheus" "$loki" "$grafana")
     local management_svc_list=("$argocd" "$prometheus")
 
     local services
@@ -286,18 +285,7 @@ cmd_port_forward() {
     local forwards=()
     for service in $services
     do
-        if [ "$service" = "maestro" ] && [ "$cluster_type" != "regional" ]; then
-            echo "Error: maestro is only available on regional clusters."
-            exit 1
-        fi
-
         case "$service" in
-        maestro)
-            forwards+=(
-            "Maestro-HTTP 8080 8080 maestro-http maestro-server 8080"
-            "Maestro-gRPC 8090 8090 maestro-grpc maestro-server 8090"
-            )
-            ;;
         argocd)
             forwards+=(
             "ArgoCD-Server 8443 8443 argocd-server argocd 443"

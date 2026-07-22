@@ -52,28 +52,6 @@ spec:
         syncOptions:
         - ServerSideApply=true
         - CreateNamespace=true
-        - RespectIgnoreDifferences=true
-      # Fields managed by controllers post-deployment that should not cause OutOfSync:
-      #   LBC rotates its own webhook TLS cert into caBundle and aws-load-balancer-tls.
-      #   LBC populates TargetGroupBinding status after reconciliation.
-      ignoreDifferences:
-      - group: admissionregistration.k8s.io
-        kind: MutatingWebhookConfiguration
-        jqPathExpressions:
-        - .webhooks[].clientConfig.caBundle
-      - group: admissionregistration.k8s.io
-        kind: ValidatingWebhookConfiguration
-        jqPathExpressions:
-        - .webhooks[].clientConfig.caBundle
-      - group: ""
-        kind: Secret
-        name: aws-load-balancer-tls
-        jqPathExpressions:
-        - .data
-      - group: elbv2.k8s.aws
-        kind: TargetGroupBinding
-        jqPathExpressions:
-        - .status
       sources:
       - helm:
           valueFiles:
@@ -86,6 +64,9 @@ spec:
               aws_region: '{{ .metadata.labels.aws_region }}'
               cluster_name: '{{ .metadata.labels.cluster_name }}'
               aws_account_id: '{{ .metadata.annotations.aws_account_id }}'
+
+              rc_aws_account_id: '{{ .metadata.annotations.rc_aws_account_id }}'
+
               management_clusters: '{{ .metadata.annotations.management_clusters }}'
               rhobs_api_url: '{{ .metadata.annotations.rhobs_api_url }}'
               dns_zone_operator_role_arn: '{{ .metadata.annotations.dns_zone_operator_role_arn }}'
@@ -97,6 +78,7 @@ spec:
                 args:
                   dynamodbRegion: '{{ .metadata.annotations.dynamodb_region }}'
                   dynamodbPrefix: '{{ .metadata.annotations.dynamodb_prefix }}'
+                  oidcIssuerBaseURL: 'https://{{ .metadata.annotations.oidc_cloudfront_domain }}'
               zoa:
                 tableName: '{{ .metadata.annotations.zoa_table_name }}'
                 auditTableName: '{{ .metadata.annotations.zoa_audit_table_name }}'
@@ -127,17 +109,6 @@ spec:
                   bucketNames:
                     chunks: '{{ .metadata.labels.cluster_name }}-loki-logs-{{ .metadata.annotations.aws_account_id }}'
                     ruler: '{{ .metadata.labels.cluster_name }}-loki-logs-{{ .metadata.annotations.aws_account_id }}'
-            aws-load-balancer-controller:
-              clusterName: '{{ .metadata.labels.cluster_name }}'
-            hyperfleetApi:
-              aws:
-                region: '{{ .metadata.labels.aws_region }}'
-            hyperfleetSentinel:
-              aws:
-                region: '{{ .metadata.labels.aws_region }}'
-            hyperfleetAdapter:
-              aws:
-                region: '{{ .metadata.labels.aws_region }}'
         path: '{{ .path.path }}'
         repoURL: '{{ .metadata.annotations.git_repo }}'
         targetRevision: '{{ .metadata.annotations.git_revision }}'

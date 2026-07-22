@@ -48,33 +48,25 @@ _REG_MAX_RETRIES=90
 _REG_RETRY_DELAY=30
 _REG_RETRY_COUNT=0
 API_GATEWAY_URL=""
-CLOUDFRONT_DOMAIN=""
 
 while [ $_REG_RETRY_COUNT -lt $_REG_MAX_RETRIES ]; do
     _REG_RETRY_COUNT=$((_REG_RETRY_COUNT + 1))
     API_GATEWAY_URL=$(cd terraform/config/regional-cluster && terraform output -raw api_gateway_invoke_url 2>/dev/null || true)
-    CLOUDFRONT_DOMAIN=$(cd terraform/config/regional-cluster && terraform output -raw oidc_cloudfront_domain 2>/dev/null || true)
-    if [ -n "$API_GATEWAY_URL" ] && [ -n "$CLOUDFRONT_DOMAIN" ]; then
+    if [ -n "$API_GATEWAY_URL" ]; then
         break
     fi
     echo "RC outputs not ready (attempt ${_REG_RETRY_COUNT}/${_REG_MAX_RETRIES}), retrying in ${_REG_RETRY_DELAY}s..."
     sleep "$_REG_RETRY_DELAY"
 done
 
-if [ -z "$API_GATEWAY_URL" ] || [ -z "$CLOUDFRONT_DOMAIN" ]; then
-    echo "ERROR: RC outputs missing after $((_REG_MAX_RETRIES * _REG_RETRY_DELAY / 60))+ minutes" >&2
+if [ -z "$API_GATEWAY_URL" ]; then
+    echo "ERROR: api_gateway_invoke_url not available after $((_REG_MAX_RETRIES * _REG_RETRY_DELAY / 60))+ minutes" >&2
     exit 1
 fi
 
-CLOUDFRONT_URL="https://${CLOUDFRONT_DOMAIN}"
-
-# Wait for API Gateway /live endpoint.
-# RC and MC pipelines run in parallel, so RC outputs become available as soon
-# as terraform apply finishes — before the ECS bootstrap (ArgoCD install,
-# ~15 min) and initial ArgoCD sync (~10 min) have completed. Allow 40 minutes
-# so the Platform API has time to be deployed and reach a healthy state.
+# Wait for API Gateway /live endpoint
 set +e
-MAX_RETRIES=80
+MAX_RETRIES=10
 RETRY_DELAY=30
 RETRY_COUNT=0
 LIVE_OK=false
@@ -105,7 +97,7 @@ done
 set -e
 
 if [ "$LIVE_OK" != "true" ]; then
-    echo "ERROR: /live did not return 200 after $((MAX_RETRIES * RETRY_DELAY / 60)) minutes" >&2
+    echo "ERROR: /live did not return 200 after $MAX_RETRIES attempts" >&2
     exit 1
 fi
 
@@ -113,14 +105,9 @@ fi
 REGISTER_URL="${API_GATEWAY_URL}/api/v0/management_clusters"
 PAYLOAD=$(cat <<EOJSON
 {
-  "name": "${CLUSTER_ID}",
-  "labels": {
-    "cluster_type": "management",
-    "management_id": "${CLUSTER_ID}",
-    "region": "${TARGET_REGION}",
-    "alias": "${MANAGEMENT_ID}",
-    "cloudfront_url": "${CLOUDFRONT_URL}"
-  }
+  "id": "${CLUSTER_ID}",
+  "region": "${TARGET_REGION}",
+  "accountId": "${TARGET_ACCOUNT_ID}"
 }
 EOJSON
 )

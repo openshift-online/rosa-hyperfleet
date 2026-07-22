@@ -17,6 +17,8 @@ REPOS=(
   openshift-online/rosa-hyperfleet-cli
   openshift-online/rosa-hyperfleet-internal
   openshift-online/rosa-hyperfleet-zoa
+  openshift-online/rosa-hyperfleet-kube-applier
+  openshift-online/aws-nuke-cf
 )
 
 JSON_FIELDS="number,title,author,labels,reviewRequests,createdAt,updatedAt,url"
@@ -49,7 +51,7 @@ fetch_label "review-ready" > /tmp/rr.json
 echo "Fetching discussion-needed PRs..."
 fetch_label "discussion-needed" > /tmp/dn.json
 
-BOT_AUTHORS="app/dependabot|rosa-hyperfleet-ci|rrp-bot"
+BOT_AUTHORS="app/dependabot|app/red-hat-konflux-kflux-prd-rh02|redhat-chai-bot"
 
 echo "Fetching needs-ok-to-test PRs (bot authors only)..."
 fetch_label "needs-ok-to-test" | jq --arg bots "$BOT_AUTHORS" \

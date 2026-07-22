@@ -22,12 +22,12 @@ reviews:
         Verify no hardcoded secrets or account IDs.
     - path: "argocd/config/regional-cluster/**"
       instructions: |
-        Review Helm values for regional cluster services (platform-api, maestro-server,
-        hyperfleet, thanos, grafana, monitoring). Ensure values follow existing patterns
-        and are properly scoped to the regional cluster context.
+        Review Helm values for regional cluster services (platform-api,
+        hyperfleet-operator, kube-applier, thanos, grafana, monitoring). Ensure values
+        follow existing patterns and are properly scoped to the regional cluster context.
     - path: "argocd/config/management-cluster/**"
       instructions: |
-        Review Helm values for management cluster services (hypershift, maestro-agent,
+        Review Helm values for management cluster services (hypershift, kube-applier,
         external-secrets, monitoring, cert-manager). Ensure proper namespace scoping
         and consistency with MC architecture patterns.
     - path: "argocd/config/shared/**"

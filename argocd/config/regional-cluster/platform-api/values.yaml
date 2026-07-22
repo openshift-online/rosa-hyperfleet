@@ -17,18 +17,18 @@ platformApi:
   app:
     name: platform-api
     image:
-      repository: quay.io/slopezz/rosa-regional-platform-api
-      tag: "6f65042"
+      repository: quay.io/cbusse_openshift/rosa-regional-platform-api
+      tag: "pgruntime"
       pullPolicy: Always
 
     # Application arguments
     args:
       logLevel: info
       logFormat: json
-      maestroUrl: http://maestro-http.maestro-server:8080
       allowedAccounts: "123456789012"
       dynamodbRegion: us-east-2
       dynamodbPrefix: rosa
+      oidcIssuerBaseURL: ""
       apiPort: 8000
       healthPort: 8081
       metricsPort: 9090
@@ -41,6 +41,11 @@ platformApi:
       limits:
         cpu: 500m
         memory: 512Mi
+
+  # HyperfleetDB connection (pgruntime-backed Postgres)
+  hyperfleetdb:
+    secretName: hyperfleet-db-dsn
+    secretKey: dsn
 
   # Envoy sidecar configuration
   envoy:

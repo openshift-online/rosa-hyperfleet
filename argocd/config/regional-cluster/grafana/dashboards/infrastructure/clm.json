@@ -1,7 +1,7 @@
 {
   "title": "CLM Observability",
   "uid": "clm-observability",
-  "description": "CLM (Cluster Lifecycle Manager) observability dashboard for the Regional Cluster deployment. Monitors Sentinel, API, HC Adapter, and end-to-end flow metrics in the hyperfleet-system namespace.",
+  "description": "CLM (Cluster Lifecycle Manager) observability dashboard for the Regional Cluster deployment. Monitors Sentinel, API, HC Adapter, and end-to-end flow metrics in the hyperfleet namespace.",
   "tags": ["clm", "hyperfleet", "sentinel", "infrastructure"],
   "timezone": "browser",
   "refresh": "30s",

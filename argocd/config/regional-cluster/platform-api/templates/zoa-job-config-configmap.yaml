@@ -99,10 +99,20 @@ data:
       printf '},"data":{"exit-code":"%s"}}' "${EXIT_CODE}"
     } > "$PATCH_FILE"
 
-    if kubectl patch configmap "${OUTPUT_CM}" -n "${JOB_NAMESPACE}" --type=merge --patch-file "$PATCH_FILE" 2>&1; then
-      echo "[$(ts)] configmap patched"
-    else
-      echo "[$(ts)] ERROR: failed to patch ConfigMap"
+    PATCH_OK=false
+    for attempt in 1 2 3 4 5; do
+      if kubectl patch configmap "${OUTPUT_CM}" -n "${JOB_NAMESPACE}" --type=merge --patch-file "$PATCH_FILE" 2>&1; then
+        echo "[$(ts)] configmap patched"
+        PATCH_OK=true
+        break
+      fi
+      echo "[$(ts)] configmap patch failed (attempt ${attempt}/5), retrying in 3s..."
+      sleep 3
+    done
+
+    if [ "$PATCH_OK" != "true" ]; then
+      echo "[$(ts)] ERROR: failed to patch ConfigMap after 5 attempts"
+      EXIT_CODE=1
     fi
     rm -f "$PATCH_FILE"
 

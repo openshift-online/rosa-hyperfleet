@@ -1,0 +1,21 @@
+# Service exposing the metrics port for Prometheus scraping via ServiceMonitor
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kube-applier.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kube-applier.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "kube-applier.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: metrics
+      port: 8081
+      targetPort: metrics
+      protocol: TCP
+    - name: healthz
+      port: 8083
+      targetPort: healthz
+      protocol: TCP

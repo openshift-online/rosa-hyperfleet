@@ -118,14 +118,24 @@ resource "aws_iam_role_policy" "eso_secretsmanager" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "secretsmanager:GetSecretValue",
-        "secretsmanager:DescribeSecret"
-      ]
-      Resource = "arn:aws:secretsmanager:${var.region}:${data.aws_caller_identity.current.account_id}:secret:${var.regional_id}-*"
-    }]
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret"
+        ]
+        Resource = "arn:aws:secretsmanager:${var.region}:${data.aws_caller_identity.current.account_id}:secret:${var.regional_id}-*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:DescribeKey"
+        ]
+        Resource = module.hyperfleet_db.kms_key_arn
+      }
+    ]
   })
 }
 
@@ -357,34 +367,6 @@ module "dns_zone_operator" {
 }
 
 # =============================================================================
-# Maestro Infrastructure Module - VPC from vpc module, node SG from EKS
-# =============================================================================
-
-module "maestro_infrastructure" {
-  source = "../../modules/maestro-infrastructure"
-
-  # Required variables from EKS cluster
-  regional_id                           = var.regional_id
-  vpc_id                                = module.vpc.vpc_id
-  private_subnets                       = module.vpc.private_subnet_ids
-  eks_cluster_name                      = module.regional_cluster.cluster_name
-  eks_cluster_security_group_id         = module.vpc.cluster_security_group_id
-  eks_cluster_primary_security_group_id = module.regional_cluster.node_security_group_id
-
-  bastion_enabled           = var.enable_bastion
-  bastion_security_group_id = var.enable_bastion ? module.bastion[0].security_group_id : null
-
-  db_instance_class      = var.maestro_db_instance_class
-  db_multi_az            = var.maestro_db_multi_az
-  db_deletion_protection = var.maestro_db_deletion_protection
-
-  mqtt_topic_prefix = var.maestro_mqtt_topic_prefix
-
-  # IoT Core logging
-  iot_log_level = var.iot_log_level
-}
-
-# =============================================================================
 # Authorization Module
 # =============================================================================
 
@@ -421,29 +403,76 @@ module "zoa" {
 }
 
 # =============================================================================
-# HyperFleet Infrastructure Module - MQ broker provisions in parallel with EKS
+# HyperFleet DB (PostgreSQL)
+#
+# Replaces fleet-db (workerless EKS). Multi-AZ PostgreSQL instance storing
+# hyperfleet CRs in a single `resources` table with jsonb spec/status.
+# The DSN is written to Secrets Manager for ESO to sync into the
+# hyperfleet-db-dsn Kubernetes Secret consumed by the operator and platform-api.
 # =============================================================================
 
-module "hyperfleet_infrastructure" {
-  source = "../../modules/hyperfleet-infrastructure"
+module "hyperfleet_db" {
+  source = "../../modules/hyperfleet-db"
 
-  # Required variables from EKS cluster
-  regional_id                           = var.regional_id
-  vpc_id                                = module.vpc.vpc_id
-  private_subnets                       = module.vpc.private_subnet_ids
-  eks_cluster_name                      = module.regional_cluster.cluster_name
-  eks_cluster_security_group_id         = module.vpc.cluster_security_group_id
-  eks_cluster_primary_security_group_id = module.regional_cluster.node_security_group_id
+  cluster_id         = var.regional_id
+  vpc_id             = module.vpc.vpc_id
+  private_subnet_ids = module.vpc.private_subnet_ids
+  vpc_cidr           = module.vpc.vpc_cidr
 
-  bastion_enabled           = var.enable_bastion
-  bastion_security_group_id = var.enable_bastion ? module.bastion[0].security_group_id : null
+  instance_class = var.hyperfleet_db_instance_class
+  engine_version = var.hyperfleet_db_engine_version
 
-  db_instance_class      = var.hyperfleet_db_instance_class
-  db_multi_az            = var.hyperfleet_db_multi_az
-  db_deletion_protection = var.hyperfleet_db_deletion_protection
+  backup_retention_period      = var.hyperfleet_db_backup_retention_period
+  deletion_protection          = var.hyperfleet_db_deletion_protection
+  skip_final_snapshot          = var.hyperfleet_db_skip_final_snapshot
+  performance_insights_enabled = var.hyperfleet_db_performance_insights_enabled
+  monitoring_interval          = var.hyperfleet_db_monitoring_interval
+}
 
-  mq_instance_type   = var.hyperfleet_mq_instance_type
-  mq_deployment_mode = var.hyperfleet_mq_deployment_mode
+# =============================================================================
+# Hyperfleet Operator IAM (Pod Identity)
+#
+# The hyperfleet-operator runs on the RC, reads/writes CRs in hyperfleet-db
+# (Postgres via DSN from Secrets Manager), and writes/reads DynamoDB
+# desire tables for MC communication.
+# =============================================================================
+
+resource "aws_iam_role" "hyperfleet_operator" {
+  name        = "${var.regional_id}-hyperfleet-operator"
+  description = "IAM role for hyperfleet-operator with DynamoDB access"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "pods.eks.amazonaws.com"
+      }
+      Action = [
+        "sts:AssumeRole",
+        "sts:TagSession"
+      ]
+    }]
+  })
+
+  tags = {
+    Name      = "${var.regional_id}-hyperfleet-operator-role"
+    Component = "hyperfleet-operator"
+    ManagedBy = "terraform"
+  }
+}
+
+resource "aws_eks_pod_identity_association" "hyperfleet_operator" {
+  cluster_name    = module.regional_cluster.cluster_name
+  namespace       = "hyperfleet"
+  service_account = "hyperfleet-operator"
+  role_arn        = aws_iam_role.hyperfleet_operator.arn
+
+  tags = {
+    Name      = "${var.regional_id}-hyperfleet-operator-pod-identity"
+    Component = "hyperfleet-operator"
+    ManagedBy = "terraform"
+  }
 }
 
 # =============================================================================

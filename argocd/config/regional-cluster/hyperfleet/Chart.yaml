@@ -1,0 +1,6 @@
+apiVersion: v2
+name: hyperfleet-operator
+description: A Helm chart that deploys an ArgoCD Application for hyperfleet-operator
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
