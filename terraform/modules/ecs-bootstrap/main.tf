@@ -392,6 +392,8 @@ resource "aws_ecs_task_definition" "bootstrap" {
               _HS_STATUS=$(kubectl get application hypershift -n argocd \
                 -o jsonpath='{.status.health.status}' 2>/dev/null || echo "NotFound")
               echo "  hypershift health: $${_HS_STATUS} ($(( _HS_DEADLINE - SECONDS ))s remaining)"
+              kubectl logs -n hypershift-install -l job-name=hypershift-install \
+                --tail=5 2>/dev/null || true
               sleep 15
             done
             echo "=== hypershift is Healthy ==="
