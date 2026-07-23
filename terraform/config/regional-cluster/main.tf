@@ -252,6 +252,45 @@ module "api_gateway" {
 # can invoke this API via resource policy (metrics ingestion).
 # =============================================================================
 
+# =============================================================================
+# SRE UI ALB (Optional)
+#
+# Internal (or internet-facing) ALB for SRE tool access. Host-based routing
+# to Grafana, ArgoCD, Prometheus, Thanos QFE, and Loki QFE. HTTPS with
+# wildcard ACM cert when environment_domain is set.
+# =============================================================================
+
+module "sre_ui_alb" {
+  count  = var.enable_sre_tools_gateway ? 1 : 0
+  source = "../../modules/sre-ui-alb"
+
+  regional_id            = var.regional_id
+  vpc_id                 = module.vpc.vpc_id
+  vpc_cidr               = module.vpc.vpc_cidr
+  private_subnet_ids     = module.vpc.private_subnet_ids
+  public_subnet_ids      = module.vpc.public_subnet_ids
+  node_security_group_id = module.regional_cluster.node_security_group_id
+  cluster_name           = module.regional_cluster.cluster_name
+
+  regional_hosted_zone_id = var.environment_domain != null ? aws_route53_zone.regional[0].zone_id : null
+  deployment_name         = var.deployment_name
+  environment_domain      = var.environment_domain
+
+  internal             = !var.enable_sre_public_access
+  allowed_source_cidrs = var.sre_allowed_source_cidrs
+
+  oidc_enabled    = var.enable_sre_oidc_auth
+  oidc_issuer_url = var.sre_oidc_issuer_url
+  oidc_clients = var.enable_sre_oidc_auth ? {
+    grafana    = { client_id = var.sre_grafana_oidc_client_id, client_secret = var.sre_grafana_oidc_client_secret }
+    argocd     = { client_id = var.sre_argocd_oidc_client_id, client_secret = var.sre_argocd_oidc_client_secret }
+    prometheus = { client_id = var.sre_prometheus_oidc_client_id, client_secret = var.sre_prometheus_oidc_client_secret }
+    thanos     = { client_id = var.sre_thanos_oidc_client_id, client_secret = var.sre_thanos_oidc_client_secret }
+    loki       = { client_id = var.sre_loki_oidc_client_id, client_secret = var.sre_loki_oidc_client_secret }
+  } : {}
+
+}
+
 module "rhobs_api_gateway" {
   source = "../../modules/rhobs-api-gateway"
 

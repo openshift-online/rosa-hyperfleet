@@ -34,3 +34,21 @@ spec:
   targetGroupARN: {{ .Values.thanos.queryTargetGroup.arn | quote }}
   targetType: {{ .Values.thanos.queryTargetGroup.targetType | default "ip" }}
 {{- end }}
+---
+{{- if .Values.thanos.sre.targetGroup.arn }}
+apiVersion: eks.amazonaws.com/v1
+kind: TargetGroupBinding
+metadata:
+  name: thanos-query-frontend-sre
+  namespace: {{ include "thanos-operator.namespace" . }}
+  labels:
+    {{- include "thanos-operator.labels" . | nindent 4 }}
+  annotations:
+    {{- include "thanos-operator.annotations" . | nindent 4 }}
+spec:
+  serviceRef:
+    name: thanos-query-frontend-thanos-query
+    port: 9090
+  targetGroupARN: {{ .Values.thanos.sre.targetGroup.arn | quote }}
+  targetType: ip
+{{- end }}

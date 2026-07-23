@@ -79,6 +79,42 @@ export TF_VAR_enable_cloudtrail=$(parseBool '.enable_cloudtrail' false "$DEPLOY_
 export TF_VAR_enable_api_custom_domain=$(parseBool '.enable_api_custom_domain' false "$DEPLOY_CONFIG_FILE")
 export TF_VAR_zone_shard_count=$(jq -r '.zone_shard_count // 1' "$DEPLOY_CONFIG_FILE")
 export TF_VAR_enable_sns_alerting=$(parseBool '.enable_sns_alerting' false "$DEPLOY_CONFIG_FILE")
+TF_VAR_enable_sre_tools_gateway=$(parseBool '.enable_sre_tools_gateway' false "$DEPLOY_CONFIG_FILE")
+export TF_VAR_enable_sre_tools_gateway
+TF_VAR_enable_sre_public_access=$(parseBool '.enable_sre_public_access' false "$DEPLOY_CONFIG_FILE")
+export TF_VAR_enable_sre_public_access
+TF_VAR_sre_allowed_source_cidrs=$(jq -c '.sre_allowed_source_cidrs // []' "$DEPLOY_CONFIG_FILE")
+export TF_VAR_sre_allowed_source_cidrs
+TF_VAR_enable_sre_oidc_auth=$(parseBool '.enable_sre_oidc_auth' false "$DEPLOY_CONFIG_FILE")
+export TF_VAR_enable_sre_oidc_auth
+TF_VAR_sre_oidc_issuer_url=$(jq -r '.sre_oidc_issuer_url // "https://auth.redhat.com/auth/realms/EmployeeIDP"' "$DEPLOY_CONFIG_FILE")
+export TF_VAR_sre_oidc_issuer_url
+
+if [ "$TF_VAR_enable_sre_oidc_auth" = "true" ]; then
+    TF_VAR_sre_grafana_oidc_client_id=$(jq -r '.sre_grafana_oidc_client_id // ""' "$DEPLOY_CONFIG_FILE")
+    export TF_VAR_sre_grafana_oidc_client_id
+    TF_VAR_sre_argocd_oidc_client_id=$(jq -r '.sre_argocd_oidc_client_id // ""' "$DEPLOY_CONFIG_FILE")
+    export TF_VAR_sre_argocd_oidc_client_id
+    TF_VAR_sre_prometheus_oidc_client_id=$(jq -r '.sre_prometheus_oidc_client_id // ""' "$DEPLOY_CONFIG_FILE")
+    export TF_VAR_sre_prometheus_oidc_client_id
+    TF_VAR_sre_thanos_oidc_client_id=$(jq -r '.sre_thanos_oidc_client_id // ""' "$DEPLOY_CONFIG_FILE")
+    export TF_VAR_sre_thanos_oidc_client_id
+    TF_VAR_sre_loki_oidc_client_id=$(jq -r '.sre_loki_oidc_client_id // ""' "$DEPLOY_CONFIG_FILE")
+    export TF_VAR_sre_loki_oidc_client_id
+
+    for svc in grafana argocd prometheus thanos loki; do
+        secret=$(aws secretsmanager get-secret-value \
+            --secret-id "sre-ui-alb/${svc}/oidc-client-secret" \
+            --region "${TARGET_REGION}" \
+            --query SecretString \
+            --output text 2>/dev/null || true)
+        if [ -z "${secret}" ]; then
+            echo "ERROR: Secrets Manager secret 'sre-ui-alb/${svc}/oidc-client-secret' not found in account ${TARGET_ACCOUNT_ID} region ${TARGET_REGION}" >&2
+            exit 1
+        fi
+        export "TF_VAR_sre_${svc}_oidc_client_secret=${secret}"
+    done
+fi
 
 # MC OU path from SSM (provisioned by account-minter, required for OIDC bucket policy)
 TF_VAR_mc_ou_path=$(aws ssm get-parameter \

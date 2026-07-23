@@ -88,6 +88,10 @@ spec:
                 arn: '{{ .metadata.annotations.thanos_target_group_arn }}'
               queryTargetGroup:
                 arn: '{{ .metadata.annotations.thanos_query_target_group_arn }}'
+              # SRE UI ALB target group ARNs (empty when enable_sre_tools_gateway = false)
+              sre:
+                targetGroup:
+                  arn: '{{ .metadata.annotations.sre_thanos_target_group_arn }}'
             # Loki platform values (keys must match chart's values.yaml structure)
             platform:
               kmsKeyArn: '{{ .metadata.annotations.loki_kms_key_arn }}'
@@ -95,6 +99,10 @@ spec:
                 arn: '{{ .metadata.annotations.loki_distributor_target_group_arn }}'
               queryFrontendTargetGroup:
                 arn: '{{ .metadata.annotations.loki_query_frontend_target_group_arn }}'
+              # SRE UI ALB target group ARNs (empty when enable_sre_tools_gateway = false)
+              sre:
+                targetGroup:
+                  arn: '{{ .metadata.annotations.sre_loki_target_group_arn }}'
             # Loki subchart runtime values (bucket names, region, SSE-KMS)
             loki:
               loki:
@@ -107,6 +115,19 @@ spec:
                   bucketNames:
                     chunks: '{{ .metadata.labels.cluster_name }}-loki-logs-{{ .metadata.annotations.aws_account_id }}'
                     ruler: '{{ .metadata.labels.cluster_name }}-loki-logs-{{ .metadata.annotations.aws_account_id }}'
+            # SRE UI ALB target group ARNs (empty when enable_sre_tools_gateway = false)
+            grafana:
+              sre:
+                targetGroup:
+                  arn: '{{ .metadata.annotations.sre_grafana_target_group_arn }}'
+            argo-cd:
+              sre:
+                targetGroup:
+                  arn: '{{ .metadata.annotations.sre_argocd_target_group_arn }}'
+            monitoring:
+              sre:
+                targetGroup:
+                  arn: '{{ .metadata.annotations.sre_prometheus_target_group_arn }}'
         path: '{{ .path.path }}'
         repoURL: '{{ .metadata.annotations.git_repo }}'
         targetRevision: '{{ .metadata.annotations.git_revision }}'

@@ -28,6 +28,8 @@ regional_cluster:
   hyperfleet_db_skip_final_snapshot: true
   hyperfleet_db_performance_insights_enabled: false
   hyperfleet_db_monitoring_interval: 0
+  enable_sre_tools_gateway: true
+  enable_sre_public_access: false
 
 management_cluster_defaults:
   enable_bastion: true

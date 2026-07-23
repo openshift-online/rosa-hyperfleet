@@ -105,6 +105,101 @@ variable "enable_api_custom_domain" {
   default     = false
 }
 
+variable "enable_sre_tools_gateway" {
+  description = "Enable internal ALB for SRE UI tools (Grafana, ArgoCD, Prometheus, Thanos, Loki). Requires environment_domain to be set for DNS/TLS."
+  type        = bool
+  default     = false
+}
+
+variable "enable_sre_public_access" {
+  description = "When true, the SRE UI ALB is internet-facing. Combine with sre_allowed_source_cidrs to restrict access."
+  type        = bool
+  default     = false
+}
+
+variable "enable_sre_oidc_auth" {
+  description = "When true, ALB listener rules require OIDC authentication via Red Hat SSO. Requires per-service client IDs and secrets."
+  type        = bool
+  default     = false
+}
+
+variable "sre_oidc_issuer_url" {
+  description = "OIDC issuer base URL for the SRE UI ALB. Defaults to Red Hat SSO EmployeeIDP."
+  type        = string
+  default     = "https://auth.redhat.com/auth/realms/EmployeeIDP"
+}
+
+variable "sre_allowed_source_cidrs" {
+  description = "When SRE ALB is internet-facing, allow HTTPS only from these CIDRs (e.g. corporate proxy egress). Leave empty to allow all."
+  type        = list(string)
+  default     = []
+}
+
+variable "sre_grafana_oidc_client_id" {
+  description = "OIDC client ID for Grafana. Required when enable_sre_oidc_auth = true."
+  type        = string
+  default     = ""
+}
+
+variable "sre_grafana_oidc_client_secret" {
+  description = "OIDC client secret for Grafana. Supply via Secrets Manager — never commit to git."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "sre_argocd_oidc_client_id" {
+  description = "OIDC client ID for ArgoCD. Required when enable_sre_oidc_auth = true."
+  type        = string
+  default     = ""
+}
+
+variable "sre_argocd_oidc_client_secret" {
+  description = "OIDC client secret for ArgoCD. Supply via Secrets Manager — never commit to git."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "sre_prometheus_oidc_client_id" {
+  description = "OIDC client ID for Prometheus. Required when enable_sre_oidc_auth = true."
+  type        = string
+  default     = ""
+}
+
+variable "sre_prometheus_oidc_client_secret" {
+  description = "OIDC client secret for Prometheus. Supply via Secrets Manager — never commit to git."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "sre_thanos_oidc_client_id" {
+  description = "OIDC client ID for Thanos. Required when enable_sre_oidc_auth = true."
+  type        = string
+  default     = ""
+}
+
+variable "sre_thanos_oidc_client_secret" {
+  description = "OIDC client secret for Thanos. Supply via Secrets Manager — never commit to git."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "sre_loki_oidc_client_id" {
+  description = "OIDC client ID for Loki. Required when enable_sre_oidc_auth = true."
+  type        = string
+  default     = ""
+}
+
+variable "sre_loki_oidc_client_secret" {
+  description = "OIDC client secret for Loki. Supply via Secrets Manager — never commit to git."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "enable_sns_alerting" {
   description = "Enable SNS alerting for alert fan-out"
   type        = bool

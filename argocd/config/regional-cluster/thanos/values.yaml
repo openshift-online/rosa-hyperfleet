@@ -132,3 +132,7 @@ thanos:
     serviceName: thanos-query-frontend-thanos-query
     port: 9090
     targetType: ip
+  # SRE UI ALB — injected at runtime by ApplicationSet; empty when ALB is not deployed
+  sre:
+    targetGroup:
+      arn: ""

@@ -41,6 +41,7 @@ aws:
 dns:
   # @doc dns.domain Base domain for the environment. Must be set per environment. See config/ephemeral/defaults.yaml for how the ephemeral template selects between CI and dev account pools.
   # @used-by dns.domain pipeline-provisioner-inputs/terraform.json.j2
+  # @used-by dns.domain pipeline-regional-cluster-inputs/terraform.json.j2
   domain: "{% if ci %}ci00{% else %}dev0{% endif %}.rosa.devshift.net"
   # @doc dns.create_environment_zone Create the environment hosted zone in the central account. Set false to reuse an existing zone with pre-configured delegation.
   # @used-by dns.create_environment_zone pipeline-provisioner-inputs/terraform.json.j2
@@ -94,6 +95,37 @@ regional_cluster:
   # @doc regional_cluster.hyperfleet_db_monitoring_interval Enhanced Monitoring interval in seconds for HyperFleet DB Aurora (0 to disable).
   # @used-by regional_cluster.hyperfleet_db_monitoring_interval pipeline-regional-cluster-inputs/terraform.json.j2
   hyperfleet_db_monitoring_interval: 0
+  # @doc regional_cluster.enable_sre_tools_gateway Enable internal ALB for SRE UI tools (Grafana, ArgoCD, Prometheus, Thanos, Loki). Requires dns.domain to be set for DNS/TLS.
+  # @used-by regional_cluster.enable_sre_tools_gateway _context
+  # @used-by regional_cluster.enable_sre_tools_gateway pipeline-regional-cluster-inputs/terraform.json.j2
+  enable_sre_tools_gateway: true
+  # @doc regional_cluster.enable_sre_public_access When true, the SRE UI ALB is internet-facing. Combine with sre_allowed_source_cidrs to restrict access to known CIDRs.
+  # @used-by regional_cluster.enable_sre_public_access pipeline-regional-cluster-inputs/terraform.json.j2
+  enable_sre_public_access: false
+  # @doc regional_cluster.sre_allowed_source_cidrs Source IP CIDRs allowed to reach the SRE UI ALB when enable_sre_public_access is true. Generated from OCM trusted IP list via rosa-hyperfleet-internal/scripts/update-trusted-ips.sh and injected automatically by render.py when the internal repo is present.
+  # @used-by regional_cluster.sre_allowed_source_cidrs pipeline-regional-cluster-inputs/terraform.json.j2
+  sre_allowed_source_cidrs: []
+  # @doc regional_cluster.enable_sre_oidc_auth When true, ALB listener rules require OIDC authentication via Red Hat SSO. Requires per-service client IDs in config and client secrets in Secrets Manager (sre-ui-alb/{service}/oidc-client-secret).
+  # @used-by regional_cluster.enable_sre_oidc_auth pipeline-regional-cluster-inputs/terraform.json.j2
+  enable_sre_oidc_auth: false
+  # @doc regional_cluster.sre_oidc_issuer_url OIDC issuer base URL for the SRE UI ALB. Authorization, token, and userinfo endpoints are derived from this. Defaults to Red Hat SSO EmployeeIDP.
+  # @used-by regional_cluster.sre_oidc_issuer_url pipeline-regional-cluster-inputs/terraform.json.j2
+  sre_oidc_issuer_url: "https://auth.redhat.com/auth/realms/EmployeeIDP"
+  # @doc regional_cluster.sre_grafana_oidc_client_id OIDC client ID for Grafana. Required when enable_sre_oidc_auth is true.
+  # @used-by regional_cluster.sre_grafana_oidc_client_id pipeline-regional-cluster-inputs/terraform.json.j2
+  sre_grafana_oidc_client_id: ""
+  # @doc regional_cluster.sre_argocd_oidc_client_id OIDC client ID for ArgoCD. Required when enable_sre_oidc_auth is true.
+  # @used-by regional_cluster.sre_argocd_oidc_client_id pipeline-regional-cluster-inputs/terraform.json.j2
+  sre_argocd_oidc_client_id: ""
+  # @doc regional_cluster.sre_prometheus_oidc_client_id OIDC client ID for Prometheus. Required when enable_sre_oidc_auth is true.
+  # @used-by regional_cluster.sre_prometheus_oidc_client_id pipeline-regional-cluster-inputs/terraform.json.j2
+  sre_prometheus_oidc_client_id: ""
+  # @doc regional_cluster.sre_thanos_oidc_client_id OIDC client ID for Thanos. Required when enable_sre_oidc_auth is true.
+  # @used-by regional_cluster.sre_thanos_oidc_client_id pipeline-regional-cluster-inputs/terraform.json.j2
+  sre_thanos_oidc_client_id: ""
+  # @doc regional_cluster.sre_loki_oidc_client_id OIDC client ID for Loki. Required when enable_sre_oidc_auth is true.
+  # @used-by regional_cluster.sre_loki_oidc_client_id pipeline-regional-cluster-inputs/terraform.json.j2
+  sre_loki_oidc_client_id: ""
 
 management_cluster_defaults:
   # @doc management_cluster_defaults.enable_bastion Default enable bastion for management clusters.

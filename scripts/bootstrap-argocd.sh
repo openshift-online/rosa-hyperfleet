@@ -75,6 +75,13 @@ if [[ "$CLUSTER_TYPE" == "regional-cluster" ]]; then
     ZOA_AUDIT_TABLE_NAME=$(echo "$OUTPUTS" | jq -r '.zoa_audit_table_name.value // ""')
     ZOA_BUCKET_NAME=$(echo "$OUTPUTS" | jq -r '.zoa_bucket_name.value // ""')
     OIDC_CLOUDFRONT_DOMAIN=$(echo "$OUTPUTS" | jq -r '.oidc_cloudfront_domain.value // ""')
+    SRE_GRAFANA_TARGET_GROUP_ARN=$(echo "$OUTPUTS" | jq -r '.sre_grafana_target_group_arn.value // ""')
+    SRE_ARGOCD_TARGET_GROUP_ARN=$(echo "$OUTPUTS" | jq -r '.sre_argocd_target_group_arn.value // ""')
+    SRE_PROMETHEUS_TARGET_GROUP_ARN=$(echo "$OUTPUTS" | jq -r '.sre_prometheus_target_group_arn.value // ""')
+    SRE_THANOS_TARGET_GROUP_ARN=$(echo "$OUTPUTS" | jq -r '.sre_thanos_target_group_arn.value // ""')
+    SRE_LOKI_TARGET_GROUP_ARN=$(echo "$OUTPUTS" | jq -r '.sre_loki_target_group_arn.value // ""')
+    SRE_ALB_DNS_NAME=$(echo "$OUTPUTS" | jq -r '.sre_alb_dns_name.value // ""')
+    SRE_DOMAIN=$(echo "$OUTPUTS" | jq -r '.sre_domain.value // ""')
 else
     API_TARGET_GROUP_ARN=""
     THANOS_TARGET_GROUP_ARN=""
@@ -86,6 +93,13 @@ else
     ZOA_AUDIT_TABLE_NAME=""
     ZOA_BUCKET_NAME=""
     OIDC_CLOUDFRONT_DOMAIN=""
+    SRE_GRAFANA_TARGET_GROUP_ARN=""
+    SRE_ARGOCD_TARGET_GROUP_ARN=""
+    SRE_PROMETHEUS_TARGET_GROUP_ARN=""
+    SRE_THANOS_TARGET_GROUP_ARN=""
+    SRE_LOKI_TARGET_GROUP_ARN=""
+    SRE_ALB_DNS_NAME=""
+    SRE_DOMAIN=""
 fi
 
 RHOBS_API_URL="${RHOBS_API_URL:-}"
@@ -122,7 +136,14 @@ RUN_TASK_OUTPUT=$(aws ecs run-task \
         {\"name\": \"ZOA_TABLE_NAME\", \"value\": \"$ZOA_TABLE_NAME\"},
         {\"name\": \"ZOA_AUDIT_TABLE_NAME\", \"value\": \"$ZOA_AUDIT_TABLE_NAME\"},
         {\"name\": \"ZOA_BUCKET_NAME\", \"value\": \"$ZOA_BUCKET_NAME\"},
-        {\"name\": \"OIDC_CLOUDFRONT_DOMAIN\", \"value\": \"$OIDC_CLOUDFRONT_DOMAIN\"}
+        {\"name\": \"OIDC_CLOUDFRONT_DOMAIN\", \"value\": \"$OIDC_CLOUDFRONT_DOMAIN\"},
+        {\"name\": \"SRE_GRAFANA_TARGET_GROUP_ARN\", \"value\": \"$SRE_GRAFANA_TARGET_GROUP_ARN\"},
+        {\"name\": \"SRE_ARGOCD_TARGET_GROUP_ARN\", \"value\": \"$SRE_ARGOCD_TARGET_GROUP_ARN\"},
+        {\"name\": \"SRE_PROMETHEUS_TARGET_GROUP_ARN\", \"value\": \"$SRE_PROMETHEUS_TARGET_GROUP_ARN\"},
+        {\"name\": \"SRE_THANOS_TARGET_GROUP_ARN\", \"value\": \"$SRE_THANOS_TARGET_GROUP_ARN\"},
+        {\"name\": \"SRE_LOKI_TARGET_GROUP_ARN\", \"value\": \"$SRE_LOKI_TARGET_GROUP_ARN\"},
+        {\"name\": \"SRE_ALB_DNS_NAME\", \"value\": \"$SRE_ALB_DNS_NAME\"},
+        {\"name\": \"SRE_DOMAIN\", \"value\": \"$SRE_DOMAIN\"}
       ]
     }]
   }" 2>&1)

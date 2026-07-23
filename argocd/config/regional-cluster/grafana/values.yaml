@@ -79,6 +79,11 @@ grafana:
   persistence:
     enabled: false
 
+  # SRE UI ALB — injected at runtime by ApplicationSet; empty when ALB is not deployed
+  sre:
+    targetGroup:
+      arn: ""
+
   envFromConfigMaps:
     - name: grafana-region-env
 

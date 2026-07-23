@@ -1,6 +1,12 @@
 pagerduty:
   enabled: false
 
+# SRE UI ALB — injected at runtime by ApplicationSet; empty when ALB is not deployed
+monitoring:
+  sre:
+    targetGroup:
+      arn: ""
+
 kube-prometheus-stack:
   nameOverride: "monitoring"
   namespaceOverride: "monitoring"

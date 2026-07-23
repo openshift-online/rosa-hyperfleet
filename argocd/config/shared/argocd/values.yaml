@@ -154,3 +154,8 @@ argo-cd:
   configs:
     params:
       server.insecure: false
+
+  # SRE UI ALB — injected at runtime by ApplicationSet; empty when ALB is not deployed
+  sre:
+    targetGroup:
+      arn: ""

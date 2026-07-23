@@ -1,0 +1,13 @@
+{{- if index .Values "argo-cd" "sre" "targetGroup" "arn" }}
+apiVersion: eks.amazonaws.com/v1
+kind: TargetGroupBinding
+metadata:
+  name: argocd-server-sre
+  namespace: argocd
+spec:
+  serviceRef:
+    name: argocd-server
+    port: 443
+  targetGroupARN: {{ index .Values "argo-cd" "sre" "targetGroup" "arn" | quote }}
+  targetType: ip
+{{- end }}

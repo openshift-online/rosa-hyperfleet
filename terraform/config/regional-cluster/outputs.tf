@@ -357,6 +357,45 @@ output "loki_query_frontend_target_group_arn" {
 # ZOA Outputs
 # =============================================================================
 
+# =============================================================================
+# SRE UI ALB Outputs
+# =============================================================================
+
+output "sre_grafana_target_group_arn" {
+  description = "ARN of the Grafana SRE ALB target group"
+  value       = try(module.sre_ui_alb[0].grafana_target_group_arn, "")
+}
+
+output "sre_argocd_target_group_arn" {
+  description = "ARN of the ArgoCD SRE ALB target group"
+  value       = try(module.sre_ui_alb[0].argocd_target_group_arn, "")
+}
+
+output "sre_prometheus_target_group_arn" {
+  description = "ARN of the Prometheus SRE ALB target group"
+  value       = try(module.sre_ui_alb[0].prometheus_target_group_arn, "")
+}
+
+output "sre_thanos_target_group_arn" {
+  description = "ARN of the Thanos Query Frontend SRE ALB target group"
+  value       = try(module.sre_ui_alb[0].thanos_target_group_arn, "")
+}
+
+output "sre_loki_target_group_arn" {
+  description = "ARN of the Loki Query Frontend SRE ALB target group"
+  value       = try(module.sre_ui_alb[0].loki_target_group_arn, "")
+}
+
+output "sre_alb_dns_name" {
+  description = "DNS name of the SRE UI ALB"
+  value       = try(module.sre_ui_alb[0].alb_dns_name, "")
+}
+
+output "sre_domain" {
+  description = "SRE base domain (e.g. sre.us-east-1.int0.rosa.devshift.net)"
+  value       = try(module.sre_ui_alb[0].sre_domain, "")
+}
+
 output "zoa_table_name" {
   description = "DynamoDB table name for ZOA executions"
   value       = module.zoa.table_name

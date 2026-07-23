@@ -219,6 +219,13 @@ resource "aws_ecs_task_definition" "bootstrap" {
               zoa_audit_table_name: "$ZOA_AUDIT_TABLE_NAME"
               zoa_bucket_name: "$ZOA_BUCKET_NAME"
               oidc_cloudfront_domain: "$OIDC_CLOUDFRONT_DOMAIN"
+              sre_grafana_target_group_arn: "$SRE_GRAFANA_TARGET_GROUP_ARN"
+              sre_argocd_target_group_arn: "$SRE_ARGOCD_TARGET_GROUP_ARN"
+              sre_prometheus_target_group_arn: "$SRE_PROMETHEUS_TARGET_GROUP_ARN"
+              sre_thanos_target_group_arn: "$SRE_THANOS_TARGET_GROUP_ARN"
+              sre_loki_target_group_arn: "$SRE_LOKI_TARGET_GROUP_ARN"
+              sre_alb_dns_name: "$SRE_ALB_DNS_NAME"
+              sre_domain: "$SRE_DOMAIN"
           type: Opaque
           stringData:
             name: in-cluster
