@@ -83,7 +83,20 @@ TF_VAR_enable_sre_tools_gateway=$(parseBool '.enable_sre_tools_gateway' false "$
 export TF_VAR_enable_sre_tools_gateway
 TF_VAR_enable_sre_public_access=$(parseBool '.enable_sre_public_access' false "$DEPLOY_CONFIG_FILE")
 export TF_VAR_enable_sre_public_access
-TF_VAR_sre_allowed_source_cidrs=$(jq -c '.sre_allowed_source_cidrs // []' "$DEPLOY_CONFIG_FILE")
+# SRE UI ALB allowed source CIDRs from SSM (public mode only; not committed to the repo)
+if [ "$TF_VAR_enable_sre_public_access" = "true" ]; then
+    TF_VAR_sre_allowed_source_cidrs=$(aws ssm get-parameter \
+        --name "/infra/sre-ui-alb/allowed-source-cidrs" \
+        --query 'Parameter.Value' \
+        --output text \
+        --region "${TARGET_REGION}" 2>/dev/null || true)
+    if [ -z "${TF_VAR_sre_allowed_source_cidrs}" ]; then
+        echo "ERROR: SSM parameter /infra/sre-ui-alb/allowed-source-cidrs not found in account ${TARGET_ACCOUNT_ID} region ${TARGET_REGION}" >&2
+        exit 1
+    fi
+else
+    TF_VAR_sre_allowed_source_cidrs=$(jq -c '.sre_allowed_source_cidrs // []' "$DEPLOY_CONFIG_FILE")
+fi
 export TF_VAR_sre_allowed_source_cidrs
 TF_VAR_enable_sre_oidc_auth=$(parseBool '.enable_sre_oidc_auth' false "$DEPLOY_CONFIG_FILE")
 export TF_VAR_enable_sre_oidc_auth

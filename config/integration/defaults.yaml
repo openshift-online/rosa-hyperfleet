@@ -7,6 +7,16 @@ regional_cluster:
   enable_cloudtrail: true
   enable_api_custom_domain: true
   node_instance_families: ["m8i", "m7i"]
+  enable_sre_tools_gateway: true
+  enable_sre_public_access: true
+  sre_allowed_source_cidrs: []
+  enable_sre_oidc_auth: true
+  sre_oidc_issuer_url: "https://auth.stage.redhat.com/auth/realms/EmployeeIDP"
+  sre_grafana_oidc_client_id: "rrp-grafana-sre-int-us-east-1"
+  sre_argocd_oidc_client_id: "rrp-argocd-sre-int-us-east-1"
+  sre_prometheus_oidc_client_id: "rrp-prometheus-sre-int-us-east-1"
+  sre_thanos_oidc_client_id: "rrp-thanos-sre-int-us-east-1"
+  sre_loki_oidc_client_id: "rrp-loki-sre-int-us-east-1"
 
 management_cluster_defaults:
   enable_bastion: true
