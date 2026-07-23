@@ -21,21 +21,16 @@ kube-prometheus-stack:
         operator: Exists
         effect: NoSchedule
     admissionWebhooks:
-      # During bootstrap, ArgoCD syncs itself and restarts its controllers
-      # while other app syncs are in flight. If a PreSync hook Job completes
-      # while no controller is watching, the Kubernetes TTL controller deletes
-      # the Job (upstream default: 60s) before the replacement controller can
-      # observe it, leaving the sync stuck indefinitely.
-      # Bump to 600s to give the new controller time to come back.
-      # Ref: https://github.com/argoproj/argo-cd/issues/21055
-      create:
-        ttlSecondsAfterFinished: 600
-      patch:
-        ttlSecondsAfterFinished: 600
-        tolerations:
-          - key: CriticalAddonsOnly
-            operator: Exists
-            effect: NoSchedule
+      # Disabled: the kube-webhook-certgen PreSync hook Jobs stall monitoring
+      # sync during bootstrap when ArgoCD controllers restart and miss the hook
+      # completion event (ArgoCD #21055).
+      enabled: false
+    tls:
+      # Disabled alongside admissionWebhooks: the PrometheusOperator Deployment
+      # mounts a tls-secret volume gated on tls.enabled (not admissionWebhooks.enabled).
+      # Without this flag the pod fails to start because the certgen Job that
+      # creates the secret was disabled above.
+      enabled: false
     resources:
       requests:
         cpu: 50m
