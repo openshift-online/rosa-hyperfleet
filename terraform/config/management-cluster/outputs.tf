@@ -166,3 +166,19 @@ output "kube_applier_role_arn" {
   description = "IAM role ARN for the kube-applier-aws controller"
   value       = module.kube_applier.kube_applier_role_arn
 }
+
+# =============================================================================
+# kube-applier Messaging Outputs
+# Read by the RC kube-applier-dynamodb buildspec to wire cross-account
+# SNS subscriptions.
+# =============================================================================
+
+output "kube_applier_specs_queue_arn" {
+  description = "ARN of the MC-side specs SQS queue (receives RC specs SNS notifications). Empty when messaging is not yet provisioned."
+  value       = length(module.kube_applier_mc_messaging) > 0 ? module.kube_applier_mc_messaging[0].specs_queue_arn : ""
+}
+
+output "kube_applier_status_topic_arn" {
+  description = "ARN of the MC-side status SNS topic (kube-applier publishes here after writing status). Empty when messaging is not yet provisioned."
+  value       = length(module.kube_applier_mc_messaging) > 0 ? module.kube_applier_mc_messaging[0].status_topic_arn : ""
+}

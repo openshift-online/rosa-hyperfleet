@@ -187,3 +187,28 @@ module "kube_applier" {
   rc_aws_account_id = var.regional_aws_account_id
   aws_region        = var.region
 }
+
+# =============================================================================
+# kube-applier MC-side Messaging (SNS/SQS cross-account notifications)
+#
+# Creates the specs SQS queue (receives notifications from the RC specs SNS
+# topic when the operator writes a new desire document) and the status SNS
+# topic (kube-applier publishes here after writing a status document so the
+# RC-side operator queues are notified immediately).
+#
+# rc_specs_sns_topic_arn is read from the RC kube-applier-dynamodb terraform
+# state by the buildspec script and passed in as TF_VAR_rc_specs_sns_topic_arn.
+# When empty (e.g. during initial bootstrap before the RC run completes) the
+# module is skipped and messaging falls back to 5-minute safety polling.
+# =============================================================================
+
+module "kube_applier_mc_messaging" {
+  count  = var.rc_specs_sns_topic_arn != "" ? 1 : 0
+  source = "../../modules/kube-applier-mc-messaging"
+
+  mc_name                = var.management_id
+  rc_aws_account_id      = var.regional_aws_account_id
+  rc_specs_sns_topic_arn = var.rc_specs_sns_topic_arn
+  eks_cluster_name       = module.management_cluster.cluster_name
+  aws_region             = var.region
+}

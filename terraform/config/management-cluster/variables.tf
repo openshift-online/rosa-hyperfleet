@@ -139,3 +139,13 @@ variable "oidc_cloudfront_domain" {
   default     = ""
 }
 
+# =============================================================================
+# kube-applier Messaging Variables
+# =============================================================================
+
+variable "rc_specs_sns_topic_arn" {
+  description = "ARN of the RC-account SNS topic for specs change notifications (read from RC kube-applier-dynamodb terraform state). kube-applier subscribes the MC-side SQS queue to this topic."
+  type        = string
+  default     = ""
+}
+
