@@ -384,18 +384,54 @@ resource "aws_ecs_task_definition" "bootstrap" {
           if [ "$${CLUSTER_TYPE:-}" = "management-cluster" ]; then
             echo "=== Waiting for hypershift Application to be Healthy (up to 30m) ==="
             _HS_DEADLINE=$((SECONDS + 1800))
+            _dump_bootstrap_diagnostics() {
+              echo "=== All ArgoCD Applications ===" >&2
+              kubectl get applications -n argocd 2>/dev/null || true
+              echo "=== hypershift Application ===" >&2
+              kubectl get application hypershift -n argocd -o yaml 2>/dev/null || true
+              echo "=== monitoring Application ===" >&2
+              kubectl get application monitoring -n argocd -o yaml 2>/dev/null || true
+              echo "=== monitoring namespace pods ===" >&2
+              kubectl get pods -n monitoring 2>/dev/null || true
+              echo "=== monitoring namespace events (last 20) ===" >&2
+              kubectl get events -n monitoring --sort-by='.lastTimestamp' 2>/dev/null | tail -20 || true
+              echo "=== Prometheus Operator CRDs ===" >&2
+              kubectl get crd 2>/dev/null | grep 'coreos\.com' || echo "  (none)" >&2
+              echo "=== hypershift-install Job logs (last 50) ===" >&2
+              kubectl logs -n hypershift-install -l job-name=hypershift-install \
+                --tail=50 2>/dev/null || true
+            }
             until [ "$(kubectl get application hypershift -n argocd \
                 -o jsonpath='{.status.health.status}' 2>/dev/null)" = "Healthy" ]; do
               if [ $SECONDS -ge $_HS_DEADLINE ]; then
                 echo "ERROR: hypershift Application not Healthy after 30 minutes" >&2
-                kubectl get application hypershift -n argocd -o yaml 2>/dev/null || true
+                _dump_bootstrap_diagnostics
                 exit 1
               fi
               _HS_STATUS=$(kubectl get application hypershift -n argocd \
                 -o jsonpath='{.status.health.status}' 2>/dev/null || echo "NotFound")
               echo "  hypershift health: $${_HS_STATUS} ($(( _HS_DEADLINE - SECONDS ))s remaining)"
+              if [ "$${_HS_STATUS}" = "Degraded" ]; then
+                echo "ERROR: hypershift Application is Degraded — failing fast" >&2
+                _dump_bootstrap_diagnostics
+                exit 1
+              fi
+              _MON_HEALTH=$(kubectl get application monitoring -n argocd \
+                -o jsonpath='{.status.health.status}/{.status.sync.status}' 2>/dev/null || echo "NotFound")
+              _MON_MSG=$(kubectl get application monitoring -n argocd \
+                -o jsonpath='{.status.operationState.message}' 2>/dev/null \
+                | tr '\n' ' ' | cut -c1-200 || true)
+              if [ -n "$${_MON_MSG}" ]; then
+                echo "  monitoring: $${_MON_HEALTH} | $${_MON_MSG}"
+              else
+                echo "  monitoring: $${_MON_HEALTH}"
+              fi
+              _NODES_READY=$(kubectl get nodes --no-headers 2>/dev/null | grep -c " Ready" || echo "0")
+              _CRD_STATUS=$(kubectl get crd servicemonitors.monitoring.coreos.com \
+                >/dev/null 2>&1 && echo "present" || echo "absent")
+              echo "  nodes ready: $${_NODES_READY} | prometheus CRDs: $${_CRD_STATUS}"
               kubectl logs -n hypershift-install -l job-name=hypershift-install \
-                --tail=5 2>/dev/null || true
+                --tail=10 2>/dev/null || true
               sleep 15
             done
             echo "=== hypershift is Healthy ==="
