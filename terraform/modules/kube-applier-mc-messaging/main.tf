@@ -1,0 +1,184 @@
+# =============================================================================
+# kube-applier-mc-messaging Module
+#
+# Provisions the MC-side messaging resources for kube-applier-aws.
+#
+# Specs path  (RC → MC): The RC account EventBridge Pipes deliver DynamoDB
+#   stream events to the specs SQS queue in the MC account. kube-applier
+#   polls this queue for immediate reconciliation.
+#
+# Status path (RC → RC): Status notifications are now delivered via
+#   EventBridge Pipes directly to RC SQS queues — no MC-side SNS topic is
+#   needed. kube-applier no longer publishes to SNS.
+#
+# Resource naming:
+#   Specs SQS queue:   ${mc_name}-specs-notifications  (MC account)
+#   KMS key alias:     alias/${mc_name}-kube-applier-messaging
+# =============================================================================
+
+data "aws_caller_identity" "current" {}
+data "aws_partition" "current" {}
+
+locals {
+  common_tags = merge(
+    var.tags,
+    {
+      ManagedBy         = "terraform"
+      Module            = "kube-applier-mc-messaging"
+      ManagementCluster = var.mc_name
+    }
+  )
+
+  # IAM role ARN for the kube-applier pod in this MC account
+  kube_applier_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.mc_name}-kube-applier"
+
+  # RC specs Pipe role ARN — predictable, constructed from known values.
+  # Used in the SQS queue policy and KMS key policy to allow the Pipe to
+  # deliver messages cross-account into this MC's specs SQS queue.
+  specs_pipe_role_arn = "arn:aws:iam::${var.rc_aws_account_id}:role/${var.mc_name}-specs-pipe"
+}
+
+# =============================================================================
+# KMS Key — shared encryption key for MC-side messaging resources
+# =============================================================================
+
+resource "aws_kms_key" "messaging" {
+  description             = "KMS key for ${var.mc_name} kube-applier messaging (SQS)"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+  rotation_period_in_days = 90
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "EnableRootAccess"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        # The RC-account specs EventBridge Pipe must be able to encrypt messages
+        # when delivering to this MC-account SQS queue.
+        Sid    = "AllowSpecsPipeDelivery"
+        Effect = "Allow"
+        Principal = {
+          AWS = local.specs_pipe_role_arn
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey*",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowSQS"
+        Effect = "Allow"
+        Principal = {
+          Service = "sqs.amazonaws.com"
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey*",
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
+      },
+    ]
+  })
+
+  tags = merge(local.common_tags, {
+    Name = "${var.mc_name}-kube-applier-messaging"
+  })
+}
+
+resource "aws_kms_alias" "messaging" {
+  name          = "alias/${var.mc_name}-kube-applier-messaging"
+  target_key_id = aws_kms_key.messaging.key_id
+}
+
+# =============================================================================
+# Specs SQS Queue (specs path receiver — RC EventBridge Pipe → MC SQS)
+#
+# kube-applier polls this queue for notifications that the operator has written
+# a new desire document. On receipt, it immediately re-queues the affected
+# documentID for reconciliation instead of waiting for the 5-minute safety poll.
+# =============================================================================
+
+resource "aws_sqs_queue" "specs" {
+  name                       = "${var.mc_name}-specs-notifications"
+  kms_master_key_id          = aws_kms_key.messaging.id
+  message_retention_seconds  = 300 # 5 minutes — notifications are ephemeral wake-up signals
+  visibility_timeout_seconds = 30
+  receive_wait_time_seconds  = 20 # long-polling
+
+  tags = merge(local.common_tags, {
+    Name      = "${var.mc_name}-specs-notifications"
+    Direction = "specs-rc-to-mc"
+  })
+}
+
+# Allow the RC-account specs EventBridge Pipe role to deliver messages to this
+# queue cross-account. The Pipe role ARN is deterministic from the RC account ID
+# and MC name, so no Terraform output dependency is needed.
+resource "aws_sqs_queue_policy" "specs" {
+  queue_url = aws_sqs_queue.specs.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "AllowSpecsPipeDelivery"
+      Effect = "Allow"
+      Principal = {
+        AWS = local.specs_pipe_role_arn
+      }
+      Action   = "sqs:SendMessage"
+      Resource = aws_sqs_queue.specs.arn
+    }]
+  })
+}
+
+# =============================================================================
+# IAM: extend kube-applier role with messaging permissions
+#
+# The kube-applier role is created by the kube-applier module. We add a
+# supplementary inline policy here so that all messaging IAM is co-located
+# with the messaging infrastructure rather than scattered across modules.
+# =============================================================================
+
+resource "aws_iam_role_policy" "kube_applier_messaging" {
+  name = "${var.mc_name}-kube-applier-messaging"
+  role = "${var.mc_name}-kube-applier"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "SpecsQueueReceive"
+        Effect = "Allow"
+        Action = [
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes",
+        ]
+        Resource = aws_sqs_queue.specs.arn
+      },
+      {
+        Sid    = "MessagingKMSAccess"
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey*",
+        ]
+        Resource = aws_kms_key.messaging.arn
+      },
+    ]
+  })
+}

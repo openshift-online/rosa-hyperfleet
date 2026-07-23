@@ -7,7 +7,7 @@ kubeApplier:
   image:
     registry: "quay.io"
     repository: "psav/kube-applier-aws"
-    tag: "remove-delete-desire-18d87ca"
+    tag: "461dce3"
     pullPolicy: IfNotPresent
 
   # Deployment configuration
@@ -32,6 +32,9 @@ kubeApplier:
     leaderElectionId: "kube-applier"
     logVerbosity: 4
     exitOnPanic: true
+    # Injected at runtime from the local-cluster-identity secret annotations via the
+    # ArgoCD ApplicationSet valuesObject. Must not be set here.
+    sqsQueueUrl: ""
 
   serviceAccount:
     name: kube-applier
