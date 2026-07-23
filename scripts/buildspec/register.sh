@@ -64,8 +64,6 @@ if [ -z "$API_GATEWAY_URL" ]; then
     exit 1
 fi
 
-CLOUDFRONT_URL="https://${CLOUDFRONT_DOMAIN}"
-
 # Wait for API Gateway /live endpoint.
 # RC and MC pipelines run in parallel, so RC outputs become available as soon
 # as terraform apply finishes — before the ECS bootstrap (ArgoCD install,
