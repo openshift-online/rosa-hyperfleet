@@ -19,6 +19,7 @@ spec:
         {{- end }}
         awsRegion: {{ .Values.global.aws_region }}
         baseDomain: {{ .Values.baseDomain }}
+        sqsQueueUrlPrefix: {{ index .Values "hyperfleet" "sqsQueueUrlPrefix" | default "" | quote }}
         postgres:
           secretName: {{ .Values.global.postgres_secret_name | default "hyperfleet-db-dsn" }}
           secretKey: {{ .Values.global.postgres_secret_key | default "dsn" }}

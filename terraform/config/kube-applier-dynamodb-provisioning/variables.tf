@@ -53,3 +53,9 @@ variable "environment" {
   description = "Environment name (staging, production, etc.)"
   type        = string
 }
+
+variable "operator_replica_count" {
+  description = "Number of hyperfleet-operator replicas. One status SQS queue is created per replica in the RC account."
+  type        = number
+  default     = 3
+}

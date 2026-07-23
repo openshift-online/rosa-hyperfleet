@@ -166,3 +166,20 @@ output "kube_applier_role_arn" {
   description = "IAM role ARN for the kube-applier-aws controller"
   value       = module.kube_applier.kube_applier_role_arn
 }
+
+# =============================================================================
+# kube-applier Messaging Outputs
+# Read by bootstrap-argocd.sh to wire the queue URL into the ArgoCD cluster
+# secret annotation, which the ApplicationSet then passes to the kube-applier
+# Helm chart as --sqs-queue-url.
+# =============================================================================
+
+output "kube_applier_specs_queue_arn" {
+  description = "ARN of the MC-side specs SQS queue (receives RC EventBridge Pipe notifications)."
+  value       = module.kube_applier_mc_messaging.specs_queue_arn
+}
+
+output "kube_applier_specs_queue_url" {
+  description = "URL of the MC-side specs SQS queue (polled by kube-applier for spec change notifications)."
+  value       = module.kube_applier_mc_messaging.specs_queue_url
+}

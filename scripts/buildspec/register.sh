@@ -155,3 +155,5 @@ if [ "$REG_OK" != "true" ]; then
     cat /tmp/register-response.json >&2
     exit 1
 fi
+
+echo "MC ${CLUSTER_ID} registered successfully"
