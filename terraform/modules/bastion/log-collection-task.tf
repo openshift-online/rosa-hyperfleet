@@ -80,8 +80,8 @@ resource "aws_ecs_task_definition" "log_collector" {
             thanosreceivers.monitoring.thanos.io
             thanosrulers.monitoring.thanos.io
             thanosstores.monitoring.thanos.io
-            targetgroupbindings.eks.amazonaws.com
-            nodeclasses.eks.amazonaws.com
+            targetgroupbindings.elbv2.k8s.aws
+            ec2nodeclasses.karpenter.k8s.aws
             secretproviderclasses.secrets-store.csi.x-k8s.io
           )
           batch=0

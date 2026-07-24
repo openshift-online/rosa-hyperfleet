@@ -87,21 +87,21 @@ output "cluster_iam_role_arn" {
 }
 
 output "node_iam_role_arn" {
-  description = "IAM role ARN for cluster nodes (Auto Mode node role or Karpenter node role, depending on enable_karpenter)"
-  value       = var.enable_karpenter ? aws_iam_role.karpenter_node[0].arn : aws_iam_role.eks_auto_mode_node.arn
+  description = "IAM role ARN for Karpenter-provisioned nodes"
+  value       = aws_iam_role.karpenter_node.arn
 }
 
 output "karpenter_controller_role_arn" {
-  description = "IAM role ARN for the Karpenter controller (IRSA). Null when enable_karpenter = false."
-  value       = var.enable_karpenter ? aws_iam_role.karpenter_controller[0].arn : null
+  description = "IAM role ARN for the Karpenter controller (IRSA)"
+  value       = aws_iam_role.karpenter_controller.arn
 }
 
 output "karpenter_queue_url" {
-  description = "SQS queue URL for Karpenter interruption handling. Null when enable_karpenter = false."
-  value       = var.enable_karpenter ? aws_sqs_queue.karpenter_interruption[0].url : null
+  description = "SQS queue URL for Karpenter interruption handling"
+  value       = aws_sqs_queue.karpenter_interruption.url
 }
 
 output "karpenter_node_instance_profile_name" {
-  description = "Instance profile name for Karpenter-provisioned nodes (matches EC2NodeClass.spec.instanceProfile). Null when enable_karpenter = false."
-  value       = var.enable_karpenter ? aws_iam_instance_profile.karpenter_node[0].name : null
+  description = "Instance profile name for Karpenter-provisioned nodes (matches EC2NodeClass.spec.instanceProfile)"
+  value       = aws_iam_instance_profile.karpenter_node.name
 }

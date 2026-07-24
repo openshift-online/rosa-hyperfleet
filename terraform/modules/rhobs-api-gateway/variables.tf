@@ -28,7 +28,7 @@ variable "node_security_group_id" {
 }
 
 variable "cluster_name" {
-  description = "EKS cluster name - required for tagging target group with eks:eks-cluster-name tag for Auto Mode IAM permissions"
+  description = "EKS cluster name - used to tag target groups with eks:eks-cluster-name"
   type        = string
 }
 

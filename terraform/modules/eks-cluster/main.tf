@@ -1,7 +1,7 @@
 # =============================================================================
 # EKS Cluster Configuration
 #
-# Creates a fully private EKS cluster with Auto Mode enabled.
+# Creates a fully private EKS cluster with OSS Karpenter compute.
 # Includes KMS encryption for secrets, proper networking,
 # and managed addons for a complete cluster deployment.
 # VPC and networking are provided as inputs from the vpc module.
@@ -111,33 +111,6 @@ resource "aws_eks_cluster" "main" {
     security_group_ids      = [var.cluster_security_group_id]
   }
 
-  dynamic "compute_config" {
-    for_each = var.enable_karpenter ? [] : [1]
-    content {
-      enabled       = true
-      node_pools    = ["system"]
-      node_role_arn = aws_iam_role.eks_auto_mode_node.arn
-    }
-  }
-
-  dynamic "kubernetes_network_config" {
-    for_each = var.enable_karpenter ? [] : [1]
-    content {
-      elastic_load_balancing {
-        enabled = true
-      }
-    }
-  }
-
-  dynamic "storage_config" {
-    for_each = var.enable_karpenter ? [] : [1]
-    content {
-      block_storage {
-        enabled = true
-      }
-    }
-  }
-
   enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 
   depends_on = [
@@ -225,10 +198,9 @@ resource "aws_eks_addon" "pod_identity" {
 # -----------------------------------------------------------------------------
 
 resource "aws_eks_node_group" "karpenter_bootstrap" {
-  count           = var.enable_karpenter ? 1 : 0
   cluster_name    = aws_eks_cluster.main.name
   node_group_name = "${local.cluster_id}-karpenter-bootstrap"
-  node_role_arn   = aws_iam_role.karpenter_node[0].arn
+  node_role_arn   = aws_iam_role.karpenter_node.arn
   subnet_ids      = var.private_subnet_ids
 
   ami_type       = "AL2023_x86_64_STANDARD"
@@ -265,13 +237,11 @@ resource "aws_eks_node_group" "karpenter_bootstrap" {
 # -----------------------------------------------------------------------------
 
 resource "aws_eks_addon" "vpc_cni" {
-  count        = var.enable_karpenter ? 1 : 0
   cluster_name = aws_eks_cluster.main.name
   addon_name   = "vpc-cni"
 }
 
 resource "aws_eks_addon" "kube_proxy" {
-  count        = var.enable_karpenter ? 1 : 0
   cluster_name = aws_eks_cluster.main.name
   addon_name   = "kube-proxy"
 
@@ -279,7 +249,6 @@ resource "aws_eks_addon" "kube_proxy" {
 }
 
 resource "aws_eks_addon" "ebs_csi" {
-  count        = var.enable_karpenter ? 1 : 0
   cluster_name = aws_eks_cluster.main.name
   addon_name   = "aws-ebs-csi-driver"
 

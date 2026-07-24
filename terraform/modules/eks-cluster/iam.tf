@@ -1,19 +1,11 @@
 # =============================================================================
-# IAM Roles and Policies for EKS Cluster
+# IAM Roles and Policies for EKS Cluster (OSS Karpenter)
 #
-# Supports two compute modes, selected by var.enable_karpenter:
-#
-#   false — EKS Auto Mode
-#     - eks_cluster role: AmazonEKSClusterPolicy + all four Auto Mode policies
-#     - eks_auto_mode_node role: AmazonEKSWorkerNodeMinimalPolicy + ECR pull-only
-#
-#   true (default) — OSS Karpenter
-#     - eks_cluster role: AmazonEKSClusterPolicy only (Auto Mode policies removed)
-#     - eks_auto_mode_node role: exists but has no policy attachments (unused)
-#     - karpenter_node role: full AmazonEKSWorkerNodePolicy + CNI + ECR + SSM
-#     - karpenter_controller role: IRSA-backed, scoped to kube-system/karpenter SA
-#     - ebs_csi role: Pod Identity-backed, scoped to kube-system/ebs-csi-controller-sa
-#     - SQS interruption queue + four EventBridge rules
+# - eks_cluster role: AmazonEKSClusterPolicy
+# - karpenter_node role: AmazonEKSWorkerNodePolicy + CNI + ECR + SSM
+# - karpenter_controller role: IRSA-backed, scoped to kube-system/karpenter SA
+# - ebs_csi role: Pod Identity-backed, scoped to kube-system/ebs-csi-controller-sa
+# - SQS interruption queue + four EventBridge rules
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -34,54 +26,12 @@ resource "aws_iam_role" "eks_cluster" {
 }
 
 resource "aws_iam_role_policy_attachment" "eks_cluster_managed" {
-  for_each = toset(concat(
-    ["arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonEKSClusterPolicy"],
-    var.enable_karpenter ? [] : [
-      "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonEKSComputePolicy",
-      "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonEKSBlockStoragePolicy",
-      "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonEKSLoadBalancingPolicy",
-      "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonEKSNetworkingPolicy",
-    ]
-  ))
-  policy_arn = each.value
+  policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonEKSClusterPolicy"
   role       = aws_iam_role.eks_cluster.name
 }
 
-# -----------------------------------------------------------------------------
-# EKS Auto Mode Node Role
-#
-# Always created so that existing Auto Mode clusters can reference it in
-# compute_config without requiring a count-indexed reference. When
-# enable_karpenter = true the policy attachments are empty and the cluster's
-# compute_config dynamic block is absent, so this role is unused but harmless.
-# -----------------------------------------------------------------------------
-
-resource "aws_iam_role" "eks_auto_mode_node" {
-  name = "${local.cluster_id}-auto-node-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Action = ["sts:AssumeRole", "sts:TagSession"]
-      Effect = "Allow"
-      Principal = {
-        Service = ["ec2.amazonaws.com", "eks.amazonaws.com"]
-      }
-    }]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "auto_node_managed" {
-  for_each = var.enable_karpenter ? toset([]) : toset([
-    "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonEKSWorkerNodeMinimalPolicy",
-    "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly",
-  ])
-  policy_arn = each.value
-  role       = aws_iam_role.eks_auto_mode_node.name
-}
-
 # =============================================================================
-# Karpenter — all resources below are gated on var.enable_karpenter
+# Karpenter
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -92,8 +42,7 @@ resource "aws_iam_role_policy_attachment" "auto_node_managed" {
 # -----------------------------------------------------------------------------
 
 resource "aws_iam_role" "karpenter_node" {
-  count = var.enable_karpenter ? 1 : 0
-  name  = "${local.cluster_id}-karpenter-node-role"
+  name = "${local.cluster_id}-karpenter-node-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -106,23 +55,22 @@ resource "aws_iam_role" "karpenter_node" {
 }
 
 resource "aws_iam_role_policy_attachment" "karpenter_node_managed" {
-  for_each = var.enable_karpenter ? toset([
+  for_each = toset([
     "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonEKSWorkerNodePolicy",
     "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly",
     "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonEKS_CNI_Policy",
     "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonSSMManagedInstanceCore",
-  ]) : toset([])
+  ])
   policy_arn = each.value
-  role       = aws_iam_role.karpenter_node[0].name
+  role       = aws_iam_role.karpenter_node.name
 }
 
 # Instance profile wrapping the node role. Referenced by EC2NodeClass.spec.instanceProfile.
 # Pre-creating it here avoids race conditions during bootstrap and removes the
 # need for iam:CreateInstanceProfile in the Karpenter controller policy.
 resource "aws_iam_instance_profile" "karpenter_node" {
-  count = var.enable_karpenter ? 1 : 0
-  name  = "${local.cluster_id}-karpenter-node-role"
-  role  = aws_iam_role.karpenter_node[0].name
+  name = "${local.cluster_id}-karpenter-node-role"
+  role = aws_iam_role.karpenter_node.name
 }
 
 # -----------------------------------------------------------------------------
@@ -130,9 +78,8 @@ resource "aws_iam_instance_profile" "karpenter_node" {
 # -----------------------------------------------------------------------------
 
 resource "aws_iam_openid_connect_provider" "eks" {
-  count           = var.enable_karpenter ? 1 : 0
   client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = [data.tls_certificate.eks_oidc[0].certificates[0].sha1_fingerprint]
+  thumbprint_list = [data.tls_certificate.eks_oidc.certificates[0].sha1_fingerprint]
   url             = aws_eks_cluster.main.identity[0].oidc[0].issuer
 }
 
@@ -144,15 +91,14 @@ resource "aws_iam_openid_connect_provider" "eks" {
 # -----------------------------------------------------------------------------
 
 resource "aws_iam_role" "karpenter_controller" {
-  count = var.enable_karpenter ? 1 : 0
-  name  = "${local.cluster_id}-karpenter-controller"
+  name = "${local.cluster_id}-karpenter-controller"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
       Effect = "Allow"
       Principal = {
-        Federated = aws_iam_openid_connect_provider.eks[0].arn
+        Federated = aws_iam_openid_connect_provider.eks.arn
       }
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
@@ -166,9 +112,8 @@ resource "aws_iam_role" "karpenter_controller" {
 }
 
 resource "aws_iam_role_policy" "karpenter_controller" {
-  count = var.enable_karpenter ? 1 : 0
-  name  = "karpenter-controller"
-  role  = aws_iam_role.karpenter_controller[0].id
+  name = "karpenter-controller"
+  role = aws_iam_role.karpenter_controller.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -304,7 +249,7 @@ resource "aws_iam_role_policy" "karpenter_controller" {
         Sid      = "IAMPassRole"
         Effect   = "Allow"
         Action   = "iam:PassRole"
-        Resource = aws_iam_role.karpenter_node[0].arn
+        Resource = aws_iam_role.karpenter_node.arn
         Condition = {
           StringEquals = {
             "iam:PassedToService" = "ec2.amazonaws.com"
@@ -320,7 +265,7 @@ resource "aws_iam_role_policy" "karpenter_controller" {
           "sqs:GetQueueUrl",
           "sqs:ReceiveMessage",
         ]
-        Resource = aws_sqs_queue.karpenter_interruption[0].arn
+        Resource = aws_sqs_queue.karpenter_interruption.arn
       },
       {
         Sid      = "EKS"
@@ -349,9 +294,9 @@ resource "aws_iam_role_policy" "karpenter_controller" {
 # kms:GrantIsForAWSResource restricts grant creation to AWS service principals,
 # preventing the controller from granting arbitrary IAM principals key access.
 resource "aws_iam_role_policy" "karpenter_controller_kms" {
-  count = var.enable_karpenter && var.ami_kms_key_arn != "" ? 1 : 0
+  count = var.ami_kms_key_arn != "" ? 1 : 0
   name  = "rhel-ami-kms"
-  role  = aws_iam_role.karpenter_controller[0].id
+  role  = aws_iam_role.karpenter_controller.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -385,16 +330,14 @@ resource "aws_iam_role_policy" "karpenter_controller_kms" {
 # -----------------------------------------------------------------------------
 
 resource "aws_sqs_queue" "karpenter_interruption" {
-  count = var.enable_karpenter ? 1 : 0
-  name  = "${local.cluster_id}-karpenter"
+  name = "${local.cluster_id}-karpenter"
 
   message_retention_seconds = 300
   sqs_managed_sse_enabled   = true
 }
 
 resource "aws_sqs_queue_policy" "karpenter_interruption" {
-  count     = var.enable_karpenter ? 1 : 0
-  queue_url = aws_sqs_queue.karpenter_interruption[0].id
+  queue_url = aws_sqs_queue.karpenter_interruption.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -403,13 +346,13 @@ resource "aws_sqs_queue_policy" "karpenter_interruption" {
       Effect    = "Allow"
       Principal = { Service = "events.amazonaws.com" }
       Action    = "sqs:SendMessage"
-      Resource  = aws_sqs_queue.karpenter_interruption[0].arn
+      Resource  = aws_sqs_queue.karpenter_interruption.arn
     }]
   })
 }
 
 locals {
-  karpenter_event_rules = var.enable_karpenter ? {
+  karpenter_event_rules = {
     spot-interruption = {
       description   = "Karpenter: EC2 Spot Instance Interruption Warning"
       event_pattern = jsonencode({ source = ["aws.ec2"], "detail-type" = ["EC2 Spot Instance Interruption Warning"] })
@@ -426,7 +369,7 @@ locals {
       description   = "Karpenter: AWS Health EC2 Scheduled Change"
       event_pattern = jsonencode({ source = ["aws.health"], "detail-type" = ["AWS Health Event"], detail = { service = ["EC2"], eventTypeCategory = ["scheduledChange"] } })
     }
-  } : {}
+  }
 }
 
 resource "aws_cloudwatch_event_rule" "karpenter" {
@@ -439,7 +382,7 @@ resource "aws_cloudwatch_event_rule" "karpenter" {
 resource "aws_cloudwatch_event_target" "karpenter" {
   for_each = local.karpenter_event_rules
   rule     = aws_cloudwatch_event_rule.karpenter[each.key].name
-  arn      = aws_sqs_queue.karpenter_interruption[0].arn
+  arn      = aws_sqs_queue.karpenter_interruption.arn
 }
 
 # -----------------------------------------------------------------------------
@@ -451,8 +394,7 @@ resource "aws_cloudwatch_event_target" "karpenter" {
 # -----------------------------------------------------------------------------
 
 resource "aws_iam_role" "ebs_csi" {
-  count = var.enable_karpenter ? 1 : 0
-  name  = "${local.cluster_id}-ebs-csi-role"
+  name = "${local.cluster_id}-ebs-csi-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -465,15 +407,13 @@ resource "aws_iam_role" "ebs_csi" {
 }
 
 resource "aws_iam_role_policy_attachment" "ebs_csi" {
-  count      = var.enable_karpenter ? 1 : 0
   policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
-  role       = aws_iam_role.ebs_csi[0].name
+  role       = aws_iam_role.ebs_csi.name
 }
 
 resource "aws_eks_pod_identity_association" "ebs_csi" {
-  count           = var.enable_karpenter ? 1 : 0
   cluster_name    = aws_eks_cluster.main.name
   namespace       = "kube-system"
   service_account = "ebs-csi-controller-sa"
-  role_arn        = aws_iam_role.ebs_csi[0].arn
+  role_arn        = aws_iam_role.ebs_csi.arn
 }
