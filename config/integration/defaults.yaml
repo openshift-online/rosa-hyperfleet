@@ -16,7 +16,6 @@ regional_cluster:
   sre_argocd_oidc_client_id: "rrp-argocd-sre-int-us-east-1"
   sre_prometheus_oidc_client_id: "rrp-prometheus-sre-int-us-east-1"
   sre_thanos_oidc_client_id: "rrp-thanos-sre-int-us-east-1"
-  sre_loki_oidc_client_id: "rrp-loki-sre-int-us-east-1"
 
 management_cluster_defaults:
   enable_bastion: true

@@ -1,6 +1,6 @@
 # SRE UI Access — Integration Environment
 
-Browser-based access to Grafana, ArgoCD, Prometheus, Thanos, and Loki for the
+Browser-based access to Grafana, ArgoCD, Prometheus, and Thanos for the
 integration environment via the SRE UI ALB.
 
 ## Prerequisites
@@ -20,7 +20,6 @@ integration environment via the SRE UI ALB.
 | ArgoCD     | https://argocd.sre.us-east-1.int0.rosa.devshift.net     | GitOps application status    |
 | Prometheus | https://prometheus.sre.us-east-1.int0.rosa.devshift.net | Raw metric queries (RC)      |
 | Thanos     | https://thanos.sre.us-east-1.int0.rosa.devshift.net     | Aggregated metrics (RC + MC) |
-| Loki       | https://loki.sre.us-east-1.int0.rosa.devshift.net       | Platform logs API            |
 
 ## Authentication
 
@@ -35,7 +34,6 @@ Hat credentials or via Kerberos SSO. Sessions last 8 hours.
 | ArgoCD     | Read-only                |
 | Prometheus | Read-only                |
 | Thanos     | Read-only                |
-| Loki       | API only                 |
 
 ## Browser proxy configuration
 

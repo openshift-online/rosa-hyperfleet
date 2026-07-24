@@ -286,7 +286,6 @@ module "sre_ui_alb" {
     argocd     = { client_id = var.sre_argocd_oidc_client_id, client_secret = var.sre_argocd_oidc_client_secret }
     prometheus = { client_id = var.sre_prometheus_oidc_client_id, client_secret = var.sre_prometheus_oidc_client_secret }
     thanos     = { client_id = var.sre_thanos_oidc_client_id, client_secret = var.sre_thanos_oidc_client_secret }
-    loki       = { client_id = var.sre_loki_oidc_client_id, client_secret = var.sre_loki_oidc_client_secret }
   } : {}
 
 }

@@ -12,7 +12,6 @@
 #   argocd.sre.{deployment_name}.{domain}     -> ArgoCD server  :443
 #   prometheus.sre.{deployment_name}.{domain} -> Prometheus     :9090
 #   thanos.sre.{deployment_name}.{domain}     -> Thanos QFE     :9090
-#   loki.sre.{deployment_name}.{domain}       -> Loki QFE       :3100
 # =============================================================================
 
 locals {
@@ -59,13 +58,6 @@ locals {
       sg_port     = 9090
       health_path = "/-/ready"
       priority    = 400
-    }
-    loki = {
-      tg_port     = 3100
-      protocol    = "HTTP"
-      sg_port     = 3100
-      health_path = "/ready"
-      priority    = 500
     }
   }
 

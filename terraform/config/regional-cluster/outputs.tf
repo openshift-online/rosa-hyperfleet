@@ -381,11 +381,6 @@ output "sre_thanos_target_group_arn" {
   value       = try(module.sre_ui_alb[0].thanos_target_group_arn, "")
 }
 
-output "sre_loki_target_group_arn" {
-  description = "ARN of the Loki Query Frontend SRE ALB target group"
-  value       = try(module.sre_ui_alb[0].loki_target_group_arn, "")
-}
-
 output "sre_alb_dns_name" {
   description = "DNS name of the SRE UI ALB"
   value       = try(module.sre_ui_alb[0].alb_dns_name, "")
