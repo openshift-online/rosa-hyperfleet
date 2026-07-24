@@ -88,37 +88,37 @@ module "regional_cluster" {
 
 ## Variables
 
-| Name                            | Description                                                                                                                                                                      | Type           | Default                                                 | Required |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | ------------------------------------------------------- | -------- |
-| `cluster_id`                    | Deterministic cluster identifier for resource naming (e.g., `regional`, `mc01`)                                                                                                  | `string`       | n/a                                                     | yes      |
-| `cluster_type`                  | Type of cluster: `regional-cluster` or `management-cluster`                                                                                                                      | `string`       | n/a                                                     | yes      |
-| `cluster_version`               | Kubernetes version                                                                                                                                                               | `string`       | `"1.34"`                                                | no       |
-| `vpc_cidr`                      | VPC CIDR block                                                                                                                                                                   | `string`       | `"10.0.0.0/16"`                                         | no       |
-| `availability_zones`            | List of availability zones (auto-detected if empty)                                                                                                                              | `list(string)` | `[]`                                                    | no       |
-| `private_subnet_cidrs`          | CIDR blocks for private subnets                                                                                                                                                  | `list(string)` | `["10.0.0.0/18", "10.0.64.0/18", "10.0.128.0/18"]`      | no       |
-| `public_subnet_cidrs`           | CIDR blocks for public subnets                                                                                                                                                   | `list(string)` | `["10.0.192.0/22", "10.0.196.0/22", "10.0.200.0/22"]`   | no       |
-| `enable_pod_security_standards` | Enable Pod Security Standards                                                                                                                                                    | `bool`         | `true`                                                  | no       |
-| `ami_kms_key_arn`               | ARN of the Red Hat KMS key encrypting FIPS AMI EBS snapshots. When set, adds `kms:Decrypt` and `kms:CreateGrant` to Karpenter node and controller roles.                         | `string`       | `""`                                                    | no       |
-| `bootstrap_enabled`             | Enable ArgoCD bootstrap for GitOps management                                                                                                                                    | `bool`         | `true`                                                  | no       |
-| `argocd_namespace`              | Kubernetes namespace for ArgoCD installation                                                                                                                                     | `string`       | `"argocd"`                                              | no       |
-| `argocd_chart_version`          | ArgoCD Helm chart version                                                                                                                                                        | `string`       | `"9.3.0"`                                               | no       |
-| `bootstrap_repository_url`      | Git repository URL for ArgoCD configuration                                                                                                                                      | `string`       | `"https://github.com/openshift-online/rosa-hyperfleet"` | no       |
-| `bootstrap_repository_branch`   | Git branch to track                                                                                                                                                              | `string`       | `"main"`                                                | no       |
+| Name                            | Description                                                                                                                                              | Type           | Default                                                 | Required |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | ------------------------------------------------------- | -------- |
+| `cluster_id`                    | Deterministic cluster identifier for resource naming (e.g., `regional`, `mc01`)                                                                          | `string`       | n/a                                                     | yes      |
+| `cluster_type`                  | Type of cluster: `regional-cluster` or `management-cluster`                                                                                              | `string`       | n/a                                                     | yes      |
+| `cluster_version`               | Kubernetes version                                                                                                                                       | `string`       | `"1.34"`                                                | no       |
+| `vpc_cidr`                      | VPC CIDR block                                                                                                                                           | `string`       | `"10.0.0.0/16"`                                         | no       |
+| `availability_zones`            | List of availability zones (auto-detected if empty)                                                                                                      | `list(string)` | `[]`                                                    | no       |
+| `private_subnet_cidrs`          | CIDR blocks for private subnets                                                                                                                          | `list(string)` | `["10.0.0.0/18", "10.0.64.0/18", "10.0.128.0/18"]`      | no       |
+| `public_subnet_cidrs`           | CIDR blocks for public subnets                                                                                                                           | `list(string)` | `["10.0.192.0/22", "10.0.196.0/22", "10.0.200.0/22"]`   | no       |
+| `enable_pod_security_standards` | Enable Pod Security Standards                                                                                                                            | `bool`         | `true`                                                  | no       |
+| `ami_kms_key_arn`               | ARN of the Red Hat KMS key encrypting FIPS AMI EBS snapshots. When set, adds `kms:Decrypt` and `kms:CreateGrant` to Karpenter node and controller roles. | `string`       | `""`                                                    | no       |
+| `bootstrap_enabled`             | Enable ArgoCD bootstrap for GitOps management                                                                                                            | `bool`         | `true`                                                  | no       |
+| `argocd_namespace`              | Kubernetes namespace for ArgoCD installation                                                                                                             | `string`       | `"argocd"`                                              | no       |
+| `argocd_chart_version`          | ArgoCD Helm chart version                                                                                                                                | `string`       | `"9.3.0"`                                               | no       |
+| `bootstrap_repository_url`      | Git repository URL for ArgoCD configuration                                                                                                              | `string`       | `"https://github.com/openshift-online/rosa-hyperfleet"` | no       |
+| `bootstrap_repository_branch`   | Git branch to track                                                                                                                                      | `string`       | `"main"`                                                | no       |
 
 ## Outputs
 
-| Name                                   | Description                                                                                                                       |
-| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `cluster_name`                         | EKS cluster name (same as `cluster_id`)                                                                                           |
-| `cluster_endpoint`                     | EKS cluster API endpoint                                                                                                          |
-| `cluster_certificate_authority_data`   | Base64 encoded certificate data                                                                                                   |
-| `vpc_id`                               | VPC ID where cluster is deployed                                                                                                  |
-| `private_subnets`                      | Private subnet IDs where worker nodes are deployed                                                                                |
-| `cluster_security_group_id`            | EKS cluster security group ID                                                                                                     |
-| `karpenter_controller_role_arn`        | IAM role ARN for Karpenter controller (IRSA)                                                      |
-| `karpenter_queue_url`                  | SQS queue URL for Karpenter EC2 interruption handling                                              |
-| `karpenter_node_instance_profile_name` | Instance profile name for Karpenter-provisioned nodes (matches `EC2NodeClass.spec.role`)           |
-| `bootstrap_report`                     | Bootstrap process information and status                                                                                          |
+| Name                                   | Description                                                                              |
+| -------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `cluster_name`                         | EKS cluster name (same as `cluster_id`)                                                  |
+| `cluster_endpoint`                     | EKS cluster API endpoint                                                                 |
+| `cluster_certificate_authority_data`   | Base64 encoded certificate data                                                          |
+| `vpc_id`                               | VPC ID where cluster is deployed                                                         |
+| `private_subnets`                      | Private subnet IDs where worker nodes are deployed                                       |
+| `cluster_security_group_id`            | EKS cluster security group ID                                                            |
+| `karpenter_controller_role_arn`        | IAM role ARN for Karpenter controller (IRSA)                                             |
+| `karpenter_queue_url`                  | SQS queue URL for Karpenter EC2 interruption handling                                    |
+| `karpenter_node_instance_profile_name` | Instance profile name for Karpenter-provisioned nodes (matches `EC2NodeClass.spec.role`) |
+| `bootstrap_report`                     | Bootstrap process information and status                                                 |
 
 ## Bootstrap Functionality
 
