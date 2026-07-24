@@ -4,7 +4,7 @@ The regional architecture is designed exclusively for **ROSA HCP** (Hosted Contr
 
 ### What is the Regional Cluster and what services run on it?
 
-The Regional Cluster (RC) is an EKS-based cluster running core regional services (Platform API, CLM, Maestro, ArgoCD, Tekton). For the complete three-layer architecture and component details, see [Architecture at a Glance](README.md#architecture-at-a-glance).
+The Regional Cluster (RC) is an EKS-based cluster running core regional services (Platform API, CLM, kube-applier, ArgoCD, Tekton). For the complete three-layer architecture and component details, see [Architecture at a Glance](README.md#architecture-at-a-glance).
 
 ### What is the difference between the Regional Cluster and the Regional-Access Cluster?
 
@@ -50,7 +50,7 @@ In this implementation we will **not** use Regional-Access Clusters. Instead, we
 
 - **Source of truth**: CLM is the single declarative source of truth for cluster state. Its data is persisted in a dedicated RDS database, with regular cross-region backups.
 - **etcd state of MCs**: Critical for hosted cluster data; etcd snapshots will be continuously backed up to a dedicated DR AWS account (per region)
-- **Maestro cache**: Can be rebuilt from CLM; Maestro caches state for performance but CLM is authoritative. Loss of Maestro cache does not impact recovery.
+- **kube-applier DynamoDB tables**: Can be rebuilt from CLM; kube-applier tables cache desire/status state for resource distribution but CLM is authoritative. Loss of these tables does not impact recovery.
 - **Recovery path**:
   - Management Cluster recovery: Restore from etcd backups in the DR account
   - Hosted Cluster recovery: etcd snapshots allow restoration of customer control planes
@@ -71,11 +71,11 @@ This list is not complete, but some key ones are:
 - Management Clusters are EKS clusters managed. We would open a support case with AWS to restore the API.
 - If the Management Cluster is unrecoverable, we will have to provision a new MC, and restore all the HCPs from etcd backups, as well as update the single source of truth (CLM).
 
-### Where does the Maestro client run and how does it handle API unavailability?
+### How does kube-applier distribute resources to Management Clusters?
 
-A Maestro agent runs on each Management Cluster, subscribing to MQTT topics and applying received resources to the local Kubernetes API. If the MC API is non-responsive, observability alerts notify SREs.
+A kube-applier controller runs on each Management Cluster, reading desire documents from DynamoDB tables (written by CLM in the RC account) via DynamoDB Streams and applying them to the local Kubernetes API. If the MC API is non-responsive, observability alerts notify SREs.
 
-For full architecture details, see [Maestro MQTT Resource Distribution](design/maestro-mqtt-resource-distribution.md).
+For historical context on the predecessor design, see [Maestro MQTT Resource Distribution](design/maestro-mqtt-resource-distribution.md) (superseded).
 
 ### How are new regions deployed?
 

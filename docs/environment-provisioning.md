@@ -1,6 +1,6 @@
 # Provision a New Environment
 
-Set up a central pipeline that provisions Regional and Management Clusters with ArgoCD and Maestro connectivity.
+Set up a central pipeline that provisions Regional and Management Clusters with ArgoCD and kube-applier connectivity.
 
 ---
 
@@ -170,7 +170,6 @@ argocd      argocd                Synced        Healthy
 argocd      hyperfleet-adapter1   Synced        Healthy
 argocd      hyperfleet-api        Synced        Healthy
 argocd      hyperfleet-sentinel   Synced        Healthy
-argocd      maestro-server        Synced        Healthy
 argocd      monitoring          Synced        Healthy
 argocd      platform-api        Synced        Healthy
 argocd      root                Synced        Healthy
@@ -190,7 +189,7 @@ NAMESPACE   NAME            SYNC STATUS   HEALTH STATUS
 argocd      argocd          Synced        Healthy
 argocd      cert-manager    Synced        Healthy
 argocd      hypershift      Synced        Healthy
-argocd      maestro-agent   Synced        Healthy
+argocd      kube-applier    Synced        Healthy
 argocd      monitoring      Synced        Healthy
 argocd      root            Synced        Healthy
 argocd      storageclass    Synced        Healthy
@@ -215,17 +214,6 @@ terraform output -raw api_test_command
 ```
 
 > **Note:** The API Gateway accepts requests from any authenticated AWS principal. Authorization is enforced by the Platform API backend — only accounts registered with the Platform API (starting with the bootstrap account) receive a successful response.
-
-### 4.4 Verify Maestro Connectivity
-
-From the Regional account, verify IoT certificates are active:
-
-```bash
-export AWS_PROFILE=<regional-profile>
-
-aws iot describe-endpoint --endpoint-type iot:Data-ATS
-aws iot list-certificates | jq -r '.certificates[].status'
-```
 
 ---
 

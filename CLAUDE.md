@@ -18,7 +18,7 @@ The **ROSA HyperFleet** is a strategic redesign of Red Hat OpenShift Service on 
 1. **Regional Cluster (RC)** - EKS-based cluster running core services:
    - Platform API (customer-facing with AWS IAM auth)
    - CLM (Cluster Lifecycle Manager) - single source of truth
-   - Maestro - MQTT-based configuration distribution
+   - kube-applier - DynamoDB-backed resource distribution to MCs
    - ArgoCD - GitOps deployment
    - Tekton - infrastructure provisioning pipelines
 
@@ -37,7 +37,7 @@ The **ROSA HyperFleet** is a strategic redesign of Red Hat OpenShift Service on 
 - **Identity**: AWS IAM for authentication and authorization
 - **Infrastructure**: Terraform modules with GitOps patterns
 - **CI/CD**: ArgoCD (apps), Tekton (infrastructure pipelines)
-- **Messaging**: Maestro (MQTT-based resource distribution)
+- **Resource Distribution**: kube-applier (DynamoDB-backed controller applying resources to MCs)
 - **Languages**: Go (primary backend), Shell scripting
 - **Container Orchestration**: Kubernetes via EKS
 
@@ -72,7 +72,7 @@ When creating ROSAENG issues:
 - **GitOps First**: ArgoCD for cluster configuration management, infrastructure via Terraform
 - **Private-by-Default**: EKS clusters use fully private architecture with ECS bootstrap
 - **Declarative State**: CLM maintains single source of truth for all cluster state
-- **Event-Driven**: Maestro handles CLM ↔ MC communication for configuration distribution
+- **Event-Driven**: kube-applier reads desire documents from DynamoDB (written by CLM) and applies them to MCs via DynamoDB Streams
 - **Regional Isolation**: Each region operates independently with minimal cross-region dependencies
 - **Explicit Feature Flags**: Optional or environment-specific infrastructure (e.g., CloudTrail, PagerDuty, resources with per-account limits) should be gated behind `enable_*` configuration flags. Avoid patterns like checking against the environment's name to change behavior or functionality.
   - Feature flags should default to what keeps the best developer experience — focus on the lowest barrier to getting a new region started. We'd rather have verbose production configs than require developers to understand every flag just to get going.
