@@ -26,13 +26,7 @@ resource "aws_lb" "platform" {
 # -----------------------------------------------------------------------------
 # Target Group
 #
-# Uses IP target type for TargetGroupBinding compatibility.
-# EKS Auto Mode will register pod IPs when the TargetGroupBinding resource
-# is created in Kubernetes.
-#
-# IMPORTANT: The eks:eks-cluster-name tag is REQUIRED for EKS Auto Mode.
-# The AmazonEKSLoadBalancingPolicy has a condition that only allows
-# RegisterTargets on target groups tagged with the cluster name.
+# Uses IP target type so LBC TargetGroupBindings register pod IPs directly.
 # -----------------------------------------------------------------------------
 
 resource "aws_lb_target_group" "platform" {

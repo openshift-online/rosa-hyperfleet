@@ -330,6 +330,14 @@ else
                     | jq -r '.[]? | select(.health.status == "Degraded" or .health.status == "Missing" or .health.status == "Unknown") | "    \(.kind)/\(.name): \(.health.status) — \(.health.message // "-")"' \
                     2>/dev/null | head -10 || true
             fi
+            if [[ "$_sync" == "Unknown" ]]; then
+                kubectl get application "$_app" -n argocd \
+                    -o jsonpath='{.status.conditions}' 2>/dev/null \
+                    | jq -r '.[]? | "    condition: \(.type): \(.message // "-")"' 2>/dev/null || true
+                _op_msg=$(kubectl get application "$_app" -n argocd \
+                    -o jsonpath='{.status.operationState.message}' 2>/dev/null || true)
+                [[ -n "$_op_msg" ]] && echo "    operationState: ${_op_msg}"
+            fi
         done <<< "$not_synced"
     fi
 
