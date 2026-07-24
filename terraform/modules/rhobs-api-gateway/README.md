@@ -38,7 +38,7 @@ After Terraform creates the infrastructure, deploy a `TargetGroupBinding` in Kub
 to register pod IPs with the target group:
 
 ```yaml
-apiVersion: elbv2.k8s.aws/v1beta1
+apiVersion: elbv2.k8s.aws/v1alpha1
 kind: TargetGroupBinding
 metadata:
   name: thanos-receive

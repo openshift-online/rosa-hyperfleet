@@ -1,5 +1,5 @@
 ---
-apiVersion: elbv2.k8s.aws/v1beta1
+apiVersion: elbv2.k8s.aws/v1alpha1
 kind: TargetGroupBinding
 metadata:
   name: {{ .Values.platformApi.app.name }}
