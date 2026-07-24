@@ -9,6 +9,15 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# --- Timing instrumentation ---
+_timing_record() {
+    local phase="$1" start="$2" status="${3:-ok}"
+    [[ -n "${SHARED_DIR:-}" ]] || return 0
+    printf '{"phase":"%s","start":%s,"end":%s,"step":"e2e","status":"%s"}\n' \
+        "$phase" "$start" "$(date +%s.%N)" "$status" \
+        >> "${SHARED_DIR}/timing.jsonl"
+}
 CREDS_DIR="${CREDS_DIR:-/var/run/rosa-credentials}"
 
 source "${SCRIPT_DIR}/setup-aws-profiles.sh"
@@ -100,7 +109,9 @@ platform_rc=0
 zoa_rc=0
 hcp_rc=0
 monitoring_rc=0
+_t=$(date +%s.%N)
 make test-e2e-api || platform_rc=$?
+_timing_record "api-tests" "$_t" "$([ $platform_rc -eq 0 ] && echo ok || echo error)"
 
 # Get regional account ID for CLI tests
 if [[ -z "${E2E_ACCOUNT_ID:-}" ]]; then
@@ -115,7 +126,9 @@ else
   echo ""
   echo "=== ZOA Tests ==="
   echo ""
+  _t=$(date +%s.%N)
   make test-e2e-zoa || zoa_rc=$?
+  _timing_record "zoa-tests" "$_t" "$([ $zoa_rc -eq 0 ] && echo ok || echo error)"
 fi
 
 # --- HCP Creation E2E Tests ---
@@ -178,12 +191,16 @@ if [[ "$_have_customer_creds" == "true" ]]; then
     echo "HCP creation test completed for: ${HCP_CLUSTER_NAME}"
   }
 
+  _t=$(date +%s.%N)
   test_hcp_creation || hcp_rc=$?
+  _timing_record "hcp-tests" "$_t" "$([ $hcp_rc -eq 0 ] && echo ok || echo error)"
 
   echo ""
   echo "=== Platform Monitoring Tests ==="
   echo ""
+  _t=$(date +%s.%N)
   make test-e2e-platform-monitoring || monitoring_rc=$?
+  _timing_record "platform-monitoring-tests" "$_t" "$([ $monitoring_rc -eq 0 ] && echo ok || echo error)"
 fi
 
 # HCP test failures collect logs via PRE_CLEANUP_HOOK in the test's DeferCleanup
@@ -200,6 +217,12 @@ fi
 
 echo ""
 echo "E2E results: platform=$platform_rc zoa=$zoa_rc hcp=$hcp_rc monitoring=$monitoring_rc"
+
+if [[ -n "${SHARED_DIR:-}" && -f "${SHARED_DIR}/timing.jsonl" && -n "${ARTIFACT_DIR:-}" ]]; then
+    uv run "${SCRIPT_DIR}/timing-report.py" \
+        "${SHARED_DIR}/timing.jsonl" "${ARTIFACT_DIR}/timing-report.html" || true
+fi
+
 if [[ $platform_rc -ne 0 ]] || [[ $zoa_rc -ne 0 ]] || [[ $hcp_rc -ne 0 ]] || [[ $monitoring_rc -ne 0 ]]; then
     exit 1
 fi
