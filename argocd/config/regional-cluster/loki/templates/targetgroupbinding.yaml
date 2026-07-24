@@ -35,7 +35,7 @@ spec:
 {{- end }}
 ---
 {{- if .Values.platform.sre.targetGroup.arn }}
-apiVersion: eks.amazonaws.com/v1
+apiVersion: elbv2.k8s.aws/v1beta1
 kind: TargetGroupBinding
 metadata:
   name: loki-query-frontend-sre
