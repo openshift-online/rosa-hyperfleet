@@ -117,7 +117,7 @@ variable "oidc_issuer_url" {
 }
 
 variable "oidc_clients" {
-  description = "Per-service OIDC client credentials. Map key must match a service name in local.services (grafana, argocd, prometheus, thanos, loki). Required when oidc_enabled = true."
+  description = "Per-service OIDC client credentials. Map key must match a service name in local.services (grafana, argocd, prometheus, thanos). Required when oidc_enabled = true."
   type = map(object({
     client_id     = string
     client_secret = string

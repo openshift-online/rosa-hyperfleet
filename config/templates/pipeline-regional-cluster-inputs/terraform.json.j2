@@ -24,7 +24,6 @@
   "sre_argocd_oidc_client_id": {{ regional_cluster.sre_argocd_oidc_client_id | default("") | tojson }},
   "sre_prometheus_oidc_client_id": {{ regional_cluster.sre_prometheus_oidc_client_id | default("") | tojson }},
   "sre_thanos_oidc_client_id": {{ regional_cluster.sre_thanos_oidc_client_id | default("") | tojson }},
-  "sre_loki_oidc_client_id": {{ regional_cluster.sre_loki_oidc_client_id | default("") | tojson }},
   "environment_domain": {{ dns.domain | default(None) | tojson }},
   "regional_id": "{% if eph_prefix %}{{ eph_prefix }}-regional{% else %}regional{% endif %}",
   "eph_prefix": "{{ eph_prefix | default('') }}",

@@ -123,9 +123,6 @@ regional_cluster:
   # @doc regional_cluster.sre_thanos_oidc_client_id OIDC client ID for Thanos. Required when enable_sre_oidc_auth is true.
   # @used-by regional_cluster.sre_thanos_oidc_client_id pipeline-regional-cluster-inputs/terraform.json.j2
   sre_thanos_oidc_client_id: "rrp-thanos-sre-int-us-east-1"
-  # @doc regional_cluster.sre_loki_oidc_client_id OIDC client ID for Loki. Required when enable_sre_oidc_auth is true.
-  # @used-by regional_cluster.sre_loki_oidc_client_id pipeline-regional-cluster-inputs/terraform.json.j2
-  sre_loki_oidc_client_id: "rrp-loki-sre-int-us-east-1"
 
 management_cluster_defaults:
   # @doc management_cluster_defaults.enable_bastion Default enable bastion for management clusters.

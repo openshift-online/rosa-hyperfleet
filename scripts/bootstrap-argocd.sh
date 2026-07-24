@@ -79,7 +79,6 @@ if [[ "$CLUSTER_TYPE" == "regional-cluster" ]]; then
     SRE_ARGOCD_TARGET_GROUP_ARN=$(echo "$OUTPUTS" | jq -r '.sre_argocd_target_group_arn.value // ""')
     SRE_PROMETHEUS_TARGET_GROUP_ARN=$(echo "$OUTPUTS" | jq -r '.sre_prometheus_target_group_arn.value // ""')
     SRE_THANOS_TARGET_GROUP_ARN=$(echo "$OUTPUTS" | jq -r '.sre_thanos_target_group_arn.value // ""')
-    SRE_LOKI_TARGET_GROUP_ARN=$(echo "$OUTPUTS" | jq -r '.sre_loki_target_group_arn.value // ""')
     SRE_ALB_DNS_NAME=$(echo "$OUTPUTS" | jq -r '.sre_alb_dns_name.value // ""')
     SRE_DOMAIN=$(echo "$OUTPUTS" | jq -r '.sre_domain.value // ""')
 else
@@ -97,7 +96,6 @@ else
     SRE_ARGOCD_TARGET_GROUP_ARN=""
     SRE_PROMETHEUS_TARGET_GROUP_ARN=""
     SRE_THANOS_TARGET_GROUP_ARN=""
-    SRE_LOKI_TARGET_GROUP_ARN=""
     SRE_ALB_DNS_NAME=""
     SRE_DOMAIN=""
 fi
@@ -141,7 +139,6 @@ RUN_TASK_OUTPUT=$(aws ecs run-task \
         {\"name\": \"SRE_ARGOCD_TARGET_GROUP_ARN\", \"value\": \"$SRE_ARGOCD_TARGET_GROUP_ARN\"},
         {\"name\": \"SRE_PROMETHEUS_TARGET_GROUP_ARN\", \"value\": \"$SRE_PROMETHEUS_TARGET_GROUP_ARN\"},
         {\"name\": \"SRE_THANOS_TARGET_GROUP_ARN\", \"value\": \"$SRE_THANOS_TARGET_GROUP_ARN\"},
-        {\"name\": \"SRE_LOKI_TARGET_GROUP_ARN\", \"value\": \"$SRE_LOKI_TARGET_GROUP_ARN\"},
         {\"name\": \"SRE_ALB_DNS_NAME\", \"value\": \"$SRE_ALB_DNS_NAME\"},
         {\"name\": \"SRE_DOMAIN\", \"value\": \"$SRE_DOMAIN\"}
       ]

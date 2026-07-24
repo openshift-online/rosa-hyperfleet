@@ -33,21 +33,3 @@ spec:
   targetGroupARN: {{ .Values.platform.queryFrontendTargetGroup.arn | quote }}
   targetType: {{ .Values.platform.queryFrontendTargetGroup.targetType | default "ip" }}
 {{- end }}
----
-{{- if .Values.platform.sre.targetGroup.arn }}
-apiVersion: eks.amazonaws.com/v1
-kind: TargetGroupBinding
-metadata:
-  name: loki-query-frontend-sre
-  namespace: {{ include "loki.namespace" . }}
-  labels:
-    {{- include "loki.labels" . | nindent 4 }}
-  annotations:
-    {{- include "loki.annotations" . | nindent 4 }}
-spec:
-  serviceRef:
-    name: loki-query-frontend
-    port: 3100
-  targetGroupARN: {{ .Values.platform.sre.targetGroup.arn | quote }}
-  targetType: ip
-{{- end }}
