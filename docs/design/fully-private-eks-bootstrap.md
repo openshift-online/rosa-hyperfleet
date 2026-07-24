@@ -98,7 +98,7 @@ Creates fully private EKS cluster with:
 - KMS encryption at rest for Kubernetes secrets using customer-managed keys
 - Dedicated security groups for VPC endpoints (port 443 from VPC CIDR only)
 - Restricted cluster egress limited to HTTPS for container registries and VPC internal traffic
-- EKS Auto Mode authentication configured for API_AND_CONFIG_MAP mode
+- EKS authentication configured for API_AND_CONFIG_MAP mode
 
 **High Availability Network Architecture**:
 

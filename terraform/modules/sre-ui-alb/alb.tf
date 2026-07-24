@@ -98,7 +98,7 @@ resource "aws_lb" "sre" {
 
 # -----------------------------------------------------------------------------
 # Target Groups
-# All use IP target type for TargetGroupBinding compatibility with EKS Auto Mode.
+# All use IP target type so LBC TargetGroupBindings register pod IPs directly.
 # -----------------------------------------------------------------------------
 
 resource "aws_lb_target_group" "services" {

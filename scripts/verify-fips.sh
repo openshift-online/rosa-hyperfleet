@@ -127,34 +127,9 @@ print_workload_summary() {
 check_kubernetes_objects() {
   header "Kubernetes: NodeClass / NodePool"
 
-  # EKS Auto Mode uses nodeclasses.eks.amazonaws.com; upstream Karpenter uses
-  # nodeclasses.karpenter.k8s.aws. The advancedSecurity FIPS fields only exist
-  # on the EKS Auto Mode variant.
-  local has_eks_auto=false has_karpenter=false
-  kubectl get crd nodeclasses.eks.amazonaws.com >/dev/null 2>&1 && has_eks_auto=true
-  kubectl get crd nodeclasses.karpenter.k8s.aws  >/dev/null 2>&1 && has_karpenter=true
-
-  if [[ "$has_eks_auto" == "false" && "$has_karpenter" == "false" ]]; then
-    skip "NodeClass CRD not found — skipping (not an EKS Auto Mode or Karpenter cluster)"
+  if ! kubectl get crd nodeclasses.karpenter.k8s.aws >/dev/null 2>&1; then
+    skip "NodeClass CRD not found — skipping (Karpenter not installed)"
     return
-  fi
-
-  if [[ "$has_eks_auto" == "true" ]]; then
-    if kubectl get nodeclass fips \
-        -o jsonpath='{.spec.advancedSecurity.fips}' 2>/dev/null | grep -q "true"; then
-      pass "NodeClass 'fips': advancedSecurity.fips=true"
-    else
-      fail "NodeClass 'fips': advancedSecurity.fips=true"
-    fi
-
-    if kubectl get nodeclass fips \
-        -o jsonpath='{.spec.advancedSecurity.kernelLockdown}' 2>/dev/null | grep -q "Integrity"; then
-      pass "NodeClass 'fips': advancedSecurity.kernelLockdown=Integrity"
-    else
-      fail "NodeClass 'fips': advancedSecurity.kernelLockdown=Integrity"
-    fi
-  else
-    skip "advancedSecurity FIPS checks require nodeclasses.eks.amazonaws.com — skipping (upstream Karpenter detected)"
   fi
 
   echo ""

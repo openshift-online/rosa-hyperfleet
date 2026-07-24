@@ -6,7 +6,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-options: Replace=true,Force=true
 spec:
-  activeDeadlineSeconds: 1800
+  activeDeadlineSeconds: 3600
   backoffLimit: 1
   template:
     spec:
@@ -18,83 +18,137 @@ spec:
             volumeAttributes:
               secretProviderClass: hypershift-config
       containers:
-      - name: install
-        image: {{ .Values.hypershift.hypershift.image }}
-        volumeMounts:
-          - name: secrets-store
-            mountPath: /mnt/secrets-store
-            readOnly: true
-        env:
-          - name: OIDC_BUCKET_NAME
-            valueFrom:
-              secretKeyRef:
-                name: hypershift-config-env
-                key: OIDC_BUCKET_NAME
-          - name: OIDC_BUCKET_REGION
-            valueFrom:
-              secretKeyRef:
-                name: hypershift-config-env
-                key: OIDC_BUCKET_REGION
-          - name: OIDC_WRITER_ROLE_ARN
-            valueFrom:
-              secretKeyRef:
-                name: hypershift-config-env
-                key: OIDC_WRITER_ROLE_ARN
-          - name: DNS_ZONE_OPERATOR_ROLE_ARN
-            value: "{{ .Values.global.dns_zone_operator_role_arn }}"
-        command:
-        - /bin/sh
-        - -c
-        - |
-          mkdir -p /tmp/aws
+        - name: install
+          image: {{ .Values.hypershift.hypershift.image }}
+          volumeMounts:
+            - name: secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
+          env:
+            - name: OIDC_BUCKET_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: hypershift-config-env
+                  key: OIDC_BUCKET_NAME
+            - name: OIDC_BUCKET_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: hypershift-config-env
+                  key: OIDC_BUCKET_REGION
+            - name: OIDC_WRITER_ROLE_ARN
+              valueFrom:
+                secretKeyRef:
+                  name: hypershift-config-env
+                  key: OIDC_WRITER_ROLE_ARN
+            - name: DNS_ZONE_OPERATOR_ROLE_ARN
+              value: "{{ .Values.global.dns_zone_operator_role_arn }}"
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -euo pipefail
+              mkdir -p /tmp/aws
 
-          # Private platform creds — Pod Identity provides MC-account credentials
-          echo -e "[default]\n# pod identity handles auth" > /tmp/aws/private-creds
+              # Private platform creds — Pod Identity provides MC-account credentials
+              echo -e "[default]\n# pod identity handles auth" > /tmp/aws/private-creds
 
-          # OIDC S3 creds — assume into the RC oidc-writer role for cross-account S3+KMS
-          if [ -n "${OIDC_WRITER_ROLE_ARN:-}" ]; then
-            cat > /tmp/aws/oidc-creds <<CREDS
-          [default]
-          role_arn = ${OIDC_WRITER_ROLE_ARN}
-          credential_source = EcsContainer
-          CREDS
-          else
-            cp /tmp/aws/private-creds /tmp/aws/oidc-creds
-          fi
+              # OIDC S3 creds — assume into the RC oidc-writer role for cross-account S3+KMS
+              if [ -n "${OIDC_WRITER_ROLE_ARN:-}" ]; then
+                cat > /tmp/aws/oidc-creds <<CREDS
+              [default]
+              role_arn = ${OIDC_WRITER_ROLE_ARN}
+              credential_source = EcsContainer
+              CREDS
+              else
+                cp /tmp/aws/private-creds /tmp/aws/oidc-creds
+              fi
 
-          hypershift install \
-            --namespace hypershift \
-            --enable-conversion-webhook=false \
-            --hypershift-image {{ .Values.hypershift.hypershift.image }} \
-            --limit-crd-install AWS \
-            --private-platform AWS \
-            --aws-private-creds /tmp/aws/private-creds \
-            --aws-private-region {{ .Values.hypershift.region }} \
-            --oidc-storage-provider-s3-bucket-name $(OIDC_BUCKET_NAME) \
-            --oidc-storage-provider-s3-region $(OIDC_BUCKET_REGION) \
-            --oidc-storage-provider-s3-credentials /tmp/aws/oidc-creds \
-            --external-dns-provider aws \
-            --external-dns-domain-filter {{ .Values.hypershift.externalDns.domain }} \
-            --external-dns-secret external-dns \
-            --external-dns-image {{ .Values.hypershift.externalDns.image }} \
+              # In-cluster API server credentials — used for CRD polling and
+              # the external-dns patch below. Defined here so both code paths
+              # share the same variables without repeating the setup.
+              _CA=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              _TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+              _API=https://kubernetes.default.svc
 
-          # TODO(hypershift): Upstream --aws-assume-role + Pod Identity support
-          # to hypershift install CLI, then replace this post-install patch
-          # with native flags.
-          if [ -n "${DNS_ZONE_OPERATOR_ROLE_ARN:-}" ]; then
-            echo "Patching external-dns with --aws-assume-role=${DNS_ZONE_OPERATOR_ROLE_ARN}"
-            _CA=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-            _TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
-            _API="https://kubernetes.default.svc"
+              # The hypershift-operator image does not include kubectl; use curl
+              # against the in-cluster API server to check CRD existence.
+              _crd_ready() {
+                curl -sf --cacert "$_CA" -H "Authorization: Bearer $_TOKEN" \
+                  "$_API/apis/apiextensions.k8s.io/v1/customresourcedefinitions/$1" \
+                  -o /dev/null 2>&1
+              }
 
-            # Patch the command and add --aws-assume-role.
-            curl -sf --cacert "$_CA" -H "Authorization: Bearer $_TOKEN" \
-              -H "Content-Type: application/json-patch+json" -X PATCH \
-              "${_API}/apis/apps/v1/namespaces/hypershift/deployments/external-dns" \
-              -d '[
-                {"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--aws-assume-role='"${DNS_ZONE_OPERATOR_ROLE_ARN}"'"}
-              ]' \
-              -o /dev/null -w "  HTTP %{http_code}\n"
-          fi
+              # Prometheus Operator CRDs must exist before hypershift install applies
+              # ServiceMonitor/PrometheusRule. The monitoring chart may still be syncing.
+              _CRD_DEADLINE=$((SECONDS + 1800))
+              echo "Waiting for Prometheus Operator CRDs..."
+              until _crd_ready servicemonitors.monitoring.coreos.com && \
+                    _crd_ready prometheusrules.monitoring.coreos.com; do
+                if [ $SECONDS -ge $_CRD_DEADLINE ]; then
+                  echo "ERROR: Prometheus Operator CRDs not available after 30 minutes" >&2
+                  echo "coreos.com CRDs present:" >&2
+                  curl -sf --cacert "$_CA" -H "Authorization: Bearer $_TOKEN" \
+                    "$_API/apis/apiextensions.k8s.io/v1/customresourcedefinitions" \
+                    2>/dev/null | grep -o '"name":"[^"]*coreos[^"]*"' \
+                    || echo "  (none or curl failed)" >&2
+                  exit 1
+                fi
+                echo "  Waiting for Prometheus Operator CRDs ($(( _CRD_DEADLINE - SECONDS ))s remaining)..."
+                sleep 15
+              done
+              echo "=== Prometheus Operator CRDs present — proceeding with hypershift install ==="
+
+              hypershift install \
+                --namespace hypershift \
+                --enable-conversion-webhook=false \
+                --hypershift-image {{ .Values.hypershift.hypershift.image }} \
+                --limit-crd-install AWS \
+                --private-platform AWS \
+                --aws-private-creds /tmp/aws/private-creds \
+                --aws-private-region {{ .Values.hypershift.region }} \
+                --oidc-storage-provider-s3-bucket-name $(OIDC_BUCKET_NAME) \
+                --oidc-storage-provider-s3-region $(OIDC_BUCKET_REGION) \
+                --oidc-storage-provider-s3-credentials /tmp/aws/oidc-creds \
+                {{- if .Values.hypershift.externalDns.domain }}
+                --external-dns-provider aws \
+                --external-dns-domain-filter {{ .Values.hypershift.externalDns.domain }} \
+                --external-dns-secret external-dns \
+                --external-dns-image {{ .Values.hypershift.externalDns.image }} \
+                {{- end }}
+              {{- if .Values.hypershift.externalDns.domain }}
+              # TODO(hypershift): Upstream --aws-assume-role + Pod Identity support
+              # to hypershift install CLI, then replace this post-install patch
+              # with native flags.
+              if [ -n "${DNS_ZONE_OPERATOR_ROLE_ARN:-}" ]; then
+                echo "Patching external-dns with --aws-assume-role=${DNS_ZONE_OPERATOR_ROLE_ARN}"
+
+                # Upstream external-dns (ko-built) has the binary at /ko-app/external-dns
+                # instead of /external-dns. Patch the command and add --aws-assume-role.
+                curl -sf --cacert "$_CA" -H "Authorization: Bearer $_TOKEN" \
+                  -H "Content-Type: application/json-patch+json" -X PATCH \
+                  "${_API}/apis/apps/v1/namespaces/hypershift/deployments/external-dns" \
+                  -d '[
+                    {"op":"replace","path":"/spec/template/spec/containers/0/command","value":["/ko-app/external-dns"]},
+                    {"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--aws-assume-role='"${DNS_ZONE_OPERATOR_ROLE_ARN}"'"}
+                  ]' \
+                  -o /dev/null -w "  HTTP %{http_code}\n"
+
+                # Upstream v0.21.0 needs discovery.k8s.io and networking.k8s.io API groups
+                # that HyperShift's generated ClusterRole doesn't include.
+                curl -sf --cacert "$_CA" -H "Authorization: Bearer $_TOKEN" \
+                  -H "Content-Type: application/merge-patch+json" -X PATCH \
+                  "${_API}/apis/rbac.authorization.k8s.io/v1/clusterroles/external-dns" \
+                  -d '{"rules":[
+                    {"apiGroups":["","discovery.k8s.io"],"resources":["services","endpoints","pods","nodes","endpointslices"],"verbs":["get","watch","list"]},
+                    {"apiGroups":["extensions","networking.k8s.io"],"resources":["ingresses","ingressroutes","ingressroutetcps","ingressrouteudps"],"verbs":["get","list","watch"]},
+                    {"apiGroups":["route.openshift.io"],"resources":["routes"],"verbs":["get","list","watch"]}
+                  ]}' \
+                  -o /dev/null -w "  HTTP %{http_code}\n"
+              fi
+              {{- end }}
       restartPolicy: Never
       serviceAccountName: hypershift-installer
+      tolerations:
+        - key: CriticalAddonsOnly
+          operator: Exists
+          effect: NoSchedule

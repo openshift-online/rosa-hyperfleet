@@ -31,7 +31,7 @@ resource "aws_lb" "rhobs" {
 # Thanos Receive Target Group
 #
 # Receives Prometheus remote_write from Management Clusters via RHOBS API GW.
-# Uses IP target type for TargetGroupBinding compatibility with EKS Auto Mode.
+# Uses IP target type so LBC TargetGroupBindings register pod IPs directly.
 # -----------------------------------------------------------------------------
 
 resource "aws_lb_target_group" "thanos_receive" {
@@ -108,7 +108,7 @@ resource "aws_lb_listener_rule" "thanos_receive" {
 # Thanos Query Frontend Target Group
 #
 # Serves PromQL queries from E2E tests and internal tooling via RHOBS API GW.
-# Uses IP target type for TargetGroupBinding compatibility with EKS Auto Mode.
+# Uses IP target type so LBC TargetGroupBindings register pod IPs directly.
 # -----------------------------------------------------------------------------
 
 resource "aws_lb_target_group" "thanos_query" {
@@ -172,7 +172,7 @@ resource "aws_lb_listener_rule" "thanos_rules" {
 # Loki Distributor Target Group
 #
 # Receives log push requests from MC Vector (via sigv4-proxy) and RC Vector.
-# Uses IP target type for TargetGroupBinding compatibility with EKS Auto Mode.
+# Uses IP target type so LBC TargetGroupBindings register pod IPs directly.
 # -----------------------------------------------------------------------------
 
 resource "aws_lb_target_group" "loki_distributor" {
@@ -220,7 +220,7 @@ resource "aws_lb_listener_rule" "loki_push" {
 # Loki Query Frontend Target Group
 #
 # Serves LogQL queries from E2E tests and internal tooling via RHOBS API GW.
-# Uses IP target type for TargetGroupBinding compatibility with EKS Auto Mode.
+# Uses IP target type so LBC TargetGroupBindings register pod IPs directly.
 # -----------------------------------------------------------------------------
 
 resource "aws_lb_target_group" "loki_query_frontend" {

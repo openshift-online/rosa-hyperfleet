@@ -43,7 +43,7 @@ output "vpc_endpoints_security_group_id" {
 }
 
 output "node_security_group_id" {
-  description = "EKS node security group ID (Auto Mode primary SG - only available after EKS creation)"
+  description = "EKS cluster security group ID (primary node SG, available after cluster creation)"
   value       = aws_eks_cluster.main.vpc_config[0].cluster_security_group_id
 }
 
@@ -87,6 +87,21 @@ output "cluster_iam_role_arn" {
 }
 
 output "node_iam_role_arn" {
-  description = "IAM role ARN of the EKS Auto Mode nodes"
-  value       = aws_iam_role.eks_auto_mode_node.arn
+  description = "IAM role ARN for Karpenter-provisioned nodes"
+  value       = aws_iam_role.karpenter_node.arn
+}
+
+output "karpenter_controller_role_arn" {
+  description = "IAM role ARN for the Karpenter controller (IRSA)"
+  value       = aws_iam_role.karpenter_controller.arn
+}
+
+output "karpenter_queue_url" {
+  description = "SQS queue URL for Karpenter interruption handling"
+  value       = aws_sqs_queue.karpenter_interruption.url
+}
+
+output "karpenter_node_instance_profile_name" {
+  description = "Instance profile name for Karpenter-provisioned nodes (matches EC2NodeClass.spec.instanceProfile)"
+  value       = aws_iam_instance_profile.karpenter_node.name
 }
