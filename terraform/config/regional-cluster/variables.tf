@@ -187,19 +187,6 @@ variable "sre_thanos_oidc_client_secret" {
   sensitive   = true
 }
 
-variable "sre_loki_oidc_client_id" {
-  description = "OIDC client ID for Loki. Required when enable_sre_oidc_auth = true."
-  type        = string
-  default     = ""
-}
-
-variable "sre_loki_oidc_client_secret" {
-  description = "OIDC client secret for Loki. Supply via Secrets Manager — never commit to git."
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
 variable "enable_sns_alerting" {
   description = "Enable SNS alerting for alert fan-out"
   type        = bool

@@ -344,7 +344,6 @@ resource "aws_ecs_task_definition" "bootstrap" {
               sre_argocd_target_group_arn: "$SRE_ARGOCD_TARGET_GROUP_ARN"
               sre_prometheus_target_group_arn: "$SRE_PROMETHEUS_TARGET_GROUP_ARN"
               sre_thanos_target_group_arn: "$SRE_THANOS_TARGET_GROUP_ARN"
-              sre_loki_target_group_arn: "$SRE_LOKI_TARGET_GROUP_ARN"
               sre_alb_dns_name: "$SRE_ALB_DNS_NAME"
               sre_domain: "$SRE_DOMAIN"
           type: Opaque

@@ -61,6 +61,29 @@ resource "aws_vpc_security_group_ingress_rule" "alb_https_from_cidr" {
 }
 
 
+# Egress: HTTPS to OIDC identity provider (required for ALB authenticate-oidc token exchange)
+#
+# Destination: 0.0.0.0/0 — exception acknowledged.
+# The OIDC provider (var.oidc_issuer_url, default: auth.redhat.com) resolves via dynamic
+# IPs on Red Hat's CDN/load balancing infrastructure. No stable CIDR block or AWS managed
+# prefix list is published for this endpoint, so destination restriction is not possible.
+#
+# Compensating controls:
+#   - Rule only exists when var.oidc_enabled = true (opt-in, not default)
+#   - Restricted to TCP:443 (HTTPS) only — no broad egress
+#   - ALB ingress is already restricted to allowed_source_cidrs
+#   - OIDC token exchange is mutually authenticated (client_id + client_secret)
+resource "aws_vpc_security_group_egress_rule" "alb_to_oidc" {
+  count = var.oidc_enabled ? 1 : 0
+
+  security_group_id = aws_security_group.alb.id
+  description       = "Allow HTTPS to OIDC IdP for token exchange (0.0.0.0/0 - dynamic IdP IPs)"
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
+  cidr_ipv4         = "0.0.0.0/0"
+}
+
 # Egress: one rule per unique container port derived from local.services
 resource "aws_vpc_security_group_egress_rule" "alb_to_pods" {
   for_each = local.unique_sg_ports

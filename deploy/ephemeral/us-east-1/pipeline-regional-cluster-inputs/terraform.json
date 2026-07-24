@@ -24,7 +24,6 @@
   "sre_argocd_oidc_client_id": "",
   "sre_prometheus_oidc_client_id": "",
   "sre_thanos_oidc_client_id": "",
-  "sre_loki_oidc_client_id": "",
   "environment_domain": "dev0.rosa.devshift.net",
   "regional_id": "regional",
   "eph_prefix": "",

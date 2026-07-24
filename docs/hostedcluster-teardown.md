@@ -228,7 +228,7 @@ done
 
 ### Step 4 — Wait for HostedCluster and NodePool Removal (Management Cluster)
 
-After deleting the resource bundles, Maestro will propagate the deletion to the
+After deleting the resource bundles, kube-applier will propagate the deletion to the
 Management Cluster. Wait for the HostedCluster and NodePool resources to be
 fully removed before proceeding.
 

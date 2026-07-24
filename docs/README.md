@@ -10,7 +10,7 @@ The goal is to improve reliability, reduce dependencies on global services, and 
 
 The architecture consists of three layers within each region:
 
-1. **Regional Cluster (RC)** - EKS-based cluster running core services (Platform API, CLM, Maestro, ArgoCD, Tekton)
+1. **Regional Cluster (RC)** - EKS-based cluster running core services (Platform API, CLM, kube-applier, ArgoCD, Tekton)
 2. **Management Clusters (MC)** - EKS clusters hosting customer Hosted Control Planes via HyperShift
 3. **Customer Hosted Clusters** - ROSA HCP clusters with control planes in MCs and workers in customer accounts
 
@@ -31,7 +31,7 @@ Detailed architecture and rationale for key technical decisions:
 | [GitOps Cluster Configuration](design/gitops-cluster-configuration.md)             | ApplicationSet pattern, progressive deployment, config modes       |
 | [Infrastructure Logging](design/infrastructure-logging.md)                         | AWS CloudWatch log groups, KMS encryption, Grafana access          |
 | [Logging Platform](design/logging-platform.md)                                     | Application-level log collection (Vector + Loki)                   |
-| [Maestro MQTT Resource Distribution](design/maestro-mqtt-resource-distribution.md) | RC-to-MC communication via AWS IoT Core MQTT                       |
+| [Maestro MQTT Resource Distribution](design/maestro-mqtt-resource-distribution.md) | RC-to-MC communication via MQTT _(superseded by kube-applier)_     |
 | [MC Metrics Remote Write](design/mc-metrics-remote-write.md)                       | MC-to-RC metrics forwarding via RHOBS API Gateway                  |
 | [Monitoring Platform](design/monitoring-platform.md)                               | Metrics pipeline (Prometheus + Thanos)                             |
 | [Pipeline-Based Lifecycle](design/pipeline-based-lifecycle.md)                     | CodePipeline hierarchy for cluster provisioning                    |
@@ -75,8 +75,9 @@ Each module has its own README with usage, inputs, outputs, and architecture:
 - [`api-gateway`](../terraform/modules/api-gateway/README.md) - API Gateway with VPC Link to internal ALB
 - [`authz`](../terraform/modules/authz/README.md) - Cedar/AVP authorization (DynamoDB, IAM)
 - [`bastion`](../terraform/modules/bastion/README.md) - Ephemeral bastion for private cluster access
-- [`maestro-infrastructure`](../terraform/modules/maestro-infrastructure/README.md) - IoT Core, RDS, Secrets Manager for Maestro Server
-- [`maestro-agent`](../terraform/modules/maestro-agent/README.md) - IAM and Pod Identity for Maestro Agent
+- [`kube-applier`](../terraform/modules/kube-applier/README.md) - IAM and Pod Identity for the kube-applier controller on MCs
+- [`kube-applier-dynamodb`](../terraform/modules/kube-applier-dynamodb/README.md) - DynamoDB tables and backend IAM role for kube-applier (RC account)
+- [`hyperfleet-db`](../terraform/modules/hyperfleet-db/) - Aurora PostgreSQL for HyperFleet cluster/nodepool state
 - [`grafana-cloudwatch-logs`](../terraform/modules/grafana-cloudwatch-logs/) - IAM + Pod Identity for Grafana CloudWatch Logs datasources (RC primary + MC reader)
 - [`hyperfleet-infrastructure`](../terraform/modules/hyperfleet-infrastructure/README.md) - RDS, Amazon MQ, IAM for HyperFleet (CLM)
 - [`aws-load-balancer-controller`](../terraform/modules/aws-load-balancer-controller/README.md) - IAM role and Pod Identity association for AWS Load Balancer Controller

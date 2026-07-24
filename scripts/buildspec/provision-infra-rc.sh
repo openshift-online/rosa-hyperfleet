@@ -112,10 +112,8 @@ if [ "$TF_VAR_enable_sre_oidc_auth" = "true" ]; then
     export TF_VAR_sre_prometheus_oidc_client_id
     TF_VAR_sre_thanos_oidc_client_id=$(jq -r '.sre_thanos_oidc_client_id // ""' "$DEPLOY_CONFIG_FILE")
     export TF_VAR_sre_thanos_oidc_client_id
-    TF_VAR_sre_loki_oidc_client_id=$(jq -r '.sre_loki_oidc_client_id // ""' "$DEPLOY_CONFIG_FILE")
-    export TF_VAR_sre_loki_oidc_client_id
 
-    for svc in grafana argocd prometheus thanos loki; do
+    for svc in grafana argocd prometheus thanos; do
         secret=$(aws secretsmanager get-secret-value \
             --secret-id "sre-ui-alb/${svc}/oidc-client-secret" \
             --region "${TARGET_REGION}" \

@@ -61,6 +61,7 @@ grafana:
     users:
       allow_sign_up: false
       auto_assign_org_role: Admin
+      viewers_can_edit: true
 
     analytics:
       reporting_enabled: false

@@ -22,11 +22,6 @@ output "thanos_target_group_arn" {
   value       = aws_lb_target_group.services["thanos"].arn
 }
 
-output "loki_target_group_arn" {
-  description = "ARN of the Loki Query Frontend ALB target group"
-  value       = aws_lb_target_group.services["loki"].arn
-}
-
 output "alb_dns_name" {
   description = "DNS name of the SRE UI ALB"
   value       = aws_lb.sre.dns_name
