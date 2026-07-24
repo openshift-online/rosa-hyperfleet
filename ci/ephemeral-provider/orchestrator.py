@@ -229,12 +229,19 @@ class EphemeralEnvOrchestrator:
         # Replace config with overrides if provided
         if self.override_dir and self.override_dir.exists():
             log.info("Applying environment overrides from %s", self.override_dir)
-            # Ensure target directory exists and clear existing config
             env_config_dir.mkdir(parents=True, exist_ok=True)
+            # Delete only region files (not defaults.yaml) to purge stale configs.
+            # defaults.yaml is merged rather than replaced to preserve env-level
+            # settings (e.g. dns.domain) that the override file omits.
             for existing in env_config_dir.glob("*.yaml"):
-                existing.unlink()
+                if existing.name != "defaults.yaml":
+                    existing.unlink()
             for override_file in self.override_dir.glob("*.yaml"):
-                shutil.copy2(override_file, env_config_dir / override_file.name)
+                target = env_config_dir / override_file.name
+                if override_file.name == "defaults.yaml" and target.exists():
+                    load_and_merge(target, override_file)
+                else:
+                    shutil.copy2(override_file, target)
 
         # Validate: exactly 1 region file must exist (enforced by discover_region
         # at startup, but re-check after override replacement)
