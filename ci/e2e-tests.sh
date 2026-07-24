@@ -183,7 +183,13 @@ if [[ "$_have_customer_creds" == "true" ]]; then
   echo ""
   echo "=== Platform Monitoring Tests ==="
   echo ""
-  make test-e2e-platform-monitoring || monitoring_rc=$?
+  # Run with an explicit 25m timeout: the two Eventually("10m",...) specs need at
+  # least 21m of suite time; the remote Makefile target uses --timeout=5m which
+  # fires before either spec can complete.
+  E2E_RHOBS_API_URL="${RHOBS_API_URL}" \
+    ginkgo --timeout=25m -v --no-color --label-filter=Observability \
+    ./test/e2e/... \
+    || monitoring_rc=$?
 fi
 
 # HCP test failures collect logs via PRE_CLEANUP_HOOK in the test's DeferCleanup
