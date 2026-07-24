@@ -2,7 +2,7 @@
 
 ## Status
 
-**Superseded** — Maestro was replaced by [kube-applier](../../../terraform/modules/kube-applier/README.md) + [DynamoDB tables](../../../terraform/modules/kube-applier-dynamodb/README.md) in PR #677. kube-applier reads desire documents from DynamoDB (written by CLM) via DynamoDB Streams and applies them to Management Clusters. This document is retained for historical context.
+**Superseded** — Maestro was replaced by [kube-applier](../../terraform/modules/kube-applier/README.md) + [DynamoDB tables](../../terraform/modules/kube-applier-dynamodb/README.md) in PR `#677`. kube-applier reads desire documents from DynamoDB (written by CLM) via DynamoDB Streams and applies them to Management Clusters. This document is retained for historical context.
 
 ## Table of Contents
 
