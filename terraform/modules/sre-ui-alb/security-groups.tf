@@ -77,7 +77,7 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_oidc" {
   count = var.oidc_enabled ? 1 : 0
 
   security_group_id = aws_security_group.alb.id
-  description       = "Allow HTTPS to OIDC IdP for token exchange (0.0.0.0/0 — dynamic IdP IPs, see comment)"
+  description       = "Allow HTTPS to OIDC IdP for token exchange (0.0.0.0/0 - dynamic IdP IPs)"
   ip_protocol       = "tcp"
   from_port         = 443
   to_port           = 443
