@@ -148,21 +148,21 @@ fi
 
 # The RC NodePool is named 'regional-workloads'; check all NodePools so this
 # doesn't break if the name changes.
-_np_names=$(kubectl get nodepool --no-headers 2>/dev/null | awk '{print $1}' || true)
+_np_names=$(kubectl get nodepools.karpenter.sh --no-headers 2>/dev/null | awk '{print $1}' || true)
 if [[ -z "$_np_names" ]]; then
     fail "No NodePools found"
 else
     while IFS= read -r _np; do
-        np_ready=$(kubectl get nodepool "$_np" \
+        np_ready=$(kubectl get nodepools.karpenter.sh "$_np" \
             -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
         if [[ "$np_ready" == "True" ]]; then
             pass "NodePool '${_np}' Ready=True"
         else
             fail "NodePool '${_np}' Ready=${np_ready:-Unknown}"
             echo "  [diag] NodePool conditions:"
-            kubectl get nodepool "$_np" -o jsonpath='{.status.conditions}' 2>/dev/null \
+            kubectl get nodepools.karpenter.sh "$_np" -o jsonpath='{.status.conditions}' 2>/dev/null \
                 | jq -r '.[] | "    \(.type)=\(.status): \(.message // "-")"' 2>/dev/null || true
-            echo "  [diag] nodeClassRef: $(kubectl get nodepool "$_np" \
+            echo "  [diag] nodeClassRef: $(kubectl get nodepools.karpenter.sh "$_np" \
                 -o jsonpath='{.spec.template.spec.nodeClassRef.name}' 2>/dev/null || echo 'unknown')"
             echo "  [diag] Recent Karpenter logs (errors):"
             kubectl logs -n kube-system -l "app.kubernetes.io/name=karpenter" --tail=50 2>/dev/null \
