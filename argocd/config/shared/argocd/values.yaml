@@ -5,8 +5,21 @@ argo-cd:
   ha:
     enabled: true
 
+  # CriticalAddonsOnly toleration for all ArgoCD components so they can
+  # schedule on the karpenter-bootstrap node group before Karpenter has
+  # provisioned any worker nodes. Harmless on regular nodes.
+  global:
+    tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+        effect: NoSchedule
+
   # Server configuration
   server:
+    tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+        effect: NoSchedule
     autoscaling:
       enabled: true
       minReplicas: 2
@@ -40,6 +53,10 @@ argo-cd:
 
   # Controller configuration
   controller:
+    tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+        effect: NoSchedule
     replicas: 2
     pdb:
       enabled: true
@@ -71,6 +88,10 @@ argo-cd:
 
   # Repo Server configuration
   repoServer:
+    tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+        effect: NoSchedule
     autoscaling:
       enabled: true
       minReplicas: 2
@@ -104,6 +125,10 @@ argo-cd:
 
   # ApplicationSet controller
   applicationSet:
+    tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+        effect: NoSchedule
     resources:
       limits:
         cpu: 250m
@@ -118,6 +143,10 @@ argo-cd:
 
   # Dex configuration
   dex:
+    tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+        effect: NoSchedule
     resources:
       limits:
         cpu: 250m
@@ -128,6 +157,10 @@ argo-cd:
 
   # Notifications controller
   notifications:
+    tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+        effect: NoSchedule
     resources:
       limits:
         cpu: 250m
@@ -136,7 +169,20 @@ argo-cd:
         cpu: 50m
         memory: 64Mi
 
-  # Redis configuration
+  # Redis HA configuration (enabled via ha.enabled=true above).
+  # redis-ha is a subchart and does not inherit global.tolerations.
+  redis-ha:
+    tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+        effect: NoSchedule
+    haproxy:
+      tolerations:
+        - key: CriticalAddonsOnly
+          operator: Exists
+          effect: NoSchedule
+
+  # redis key kept for non-HA mode reference (unused when ha.enabled=true)
   redis:
     resources:
       limits:

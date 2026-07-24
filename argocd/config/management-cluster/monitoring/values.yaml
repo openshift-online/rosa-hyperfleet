@@ -16,18 +16,17 @@ kube-prometheus-stack:
     enabled: false
 
   prometheusOperator:
+    tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+        effect: NoSchedule
     admissionWebhooks:
-      # During bootstrap, ArgoCD syncs itself and restarts its controllers
-      # while other app syncs are in flight. If a PreSync hook Job completes
-      # while no controller is watching, the Kubernetes TTL controller deletes
-      # the Job (upstream default: 60s) before the replacement controller can
-      # observe it, leaving the sync stuck indefinitely.
-      # Bump to 600s to give the new controller time to come back.
-      # Ref: https://github.com/argoproj/argo-cd/issues/21055
-      create:
-        ttlSecondsAfterFinished: 600
-      patch:
-        ttlSecondsAfterFinished: 600
+      # Disabled: the admission webhook PreSync hook Jobs (pre-install Helm hooks)
+      # stall the monitoring sync during bootstrap when ArgoCD controllers restart
+      # and miss the hook completion event (ArgoCD #21055). With hooks disabled,
+      # ArgoCD applies CRDs immediately at sync start, allowing the hypershift-install
+      # Job's CRD wait to succeed within seconds instead of timing out.
+      enabled: false
     resources:
       requests:
         cpu: 50m
