@@ -57,6 +57,17 @@ echo "Fetching needs-ok-to-test PRs (bot authors only)..."
 fetch_label "needs-ok-to-test" | jq --arg bots "$BOT_AUTHORS" \
   '[.[] | select(.author.login | test($bots))]' > /tmp/okt.json
 
+echo "Fetching all open bot PRs (regardless of label)..."
+for repo in "${REPOS[@]}"; do
+  gh pr list --repo "$repo" --author redhat-chai-bot --state open \
+    --limit 100 --json "$JSON_FIELDS" 2>/dev/null | \
+    jq --arg name "${repo#*/}" '[.[] | . + {repository: {name: $name}}]'
+done | jq -s 'add // []' > /tmp/bot_all.json
+
+# Merge bot PRs into okt, deduplicating by URL
+jq -s '(.[0] + .[1]) | unique_by(.url)' /tmp/okt.json /tmp/bot_all.json > /tmp/okt_merged.json
+mv /tmp/okt_merged.json /tmp/okt.json
+
 jq -n \
   --arg updated "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --slurpfile rr /tmp/rr.json \
