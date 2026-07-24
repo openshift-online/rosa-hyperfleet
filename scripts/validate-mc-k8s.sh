@@ -211,7 +211,51 @@ if kubectl api-resources --api-group=hypershift.openshift.io 2>/dev/null | grep 
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Core add-ons
+# 5. HCP API reachability
+# ---------------------------------------------------------------------------
+
+section "HCP API reachability"
+
+if ! kubectl api-resources --api-group=hypershift.openshift.io 2>/dev/null | grep -q HostedCluster; then
+    warn "HyperShift CRDs not registered — skipping HCP API reachability checks"
+elif [[ $(kubectl get hostedclusters -A --no-headers 2>/dev/null | wc -l | tr -d ' ') -eq 0 ]]; then
+    warn "No HostedClusters found — skipping HCP API reachability checks"
+else
+    while IFS= read -r line; do
+        hc_ns=$(echo "$line" | awk '{print $1}')
+        hc_name=$(echo "$line" | awk '{print $2}')
+
+        endpoint_host=$(kubectl get hostedcluster "$hc_name" -n "$hc_ns" \
+            -o jsonpath='{.status.controlPlaneEndpoint.host}' 2>/dev/null || true)
+        endpoint_port=$(kubectl get hostedcluster "$hc_name" -n "$hc_ns" \
+            -o jsonpath='{.status.controlPlaneEndpoint.port}' 2>/dev/null || true)
+        endpoint_port="${endpoint_port:-6443}"
+
+        if [[ -z "$endpoint_host" ]]; then
+            warn "HostedCluster ${hc_ns}/${hc_name}: no controlPlaneEndpoint yet — still initializing?"
+            continue
+        fi
+
+        http_code=$(curl -sk --max-time 5 \
+            --output /dev/null \
+            --write-out "%{http_code}" \
+            "https://${endpoint_host}:${endpoint_port}/livez" 2>/dev/null || echo "000")
+
+        if [[ "$http_code" == "000" ]]; then
+            fail "HostedCluster ${hc_ns}/${hc_name} API unreachable (https://${endpoint_host}:${endpoint_port})"
+            echo "  [diag] Control plane services:"
+            kubectl get svc -n "clusters-${hc_name}" --no-headers 2>/dev/null \
+                | sed 's/^/    /' || true
+        elif [[ "$http_code" =~ ^5 ]]; then
+            warn "HostedCluster ${hc_ns}/${hc_name} API reachable but returned HTTP ${http_code}"
+        else
+            pass "HostedCluster ${hc_ns}/${hc_name} API reachable (HTTP ${http_code})"
+        fi
+    done < <(kubectl get hostedclusters -A --no-headers 2>/dev/null)
+fi
+
+# ---------------------------------------------------------------------------
+# 6. Core add-ons
 # ---------------------------------------------------------------------------
 
 section "Core add-ons (kube-system)"
@@ -236,7 +280,7 @@ for label in "${!CORE_SELECTORS[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# 6. Maestro agent
+# 7. Maestro agent
 # ---------------------------------------------------------------------------
 
 section "Maestro agent"
@@ -253,7 +297,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 7. ArgoCD (optional on MC)
+# 8. ArgoCD (optional on MC)
 # ---------------------------------------------------------------------------
 
 section "ArgoCD (if present)"
