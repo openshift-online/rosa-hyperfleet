@@ -78,6 +78,13 @@ def main():
         help="Resync the ephemeral branch by rebasing onto the latest source branch",
     )
     parser.add_argument(
+        "--no-wait",
+        action="store_true",
+        help="Skip waiting for infrastructure-destroy pipelines during teardown. "
+             "Phases 2 (pipeline destroy) and 3 (provisioner destroy) still run. "
+             "Only valid with --teardown.",
+    )
+    parser.add_argument(
         "--id",
         default=None,
         dest="env_id",
@@ -131,6 +138,9 @@ def main():
     # Normalize repo format (strip github.com prefix and .git suffix if present)
     repo = re.sub(r".*github\.com/", "", args.repo)
     repo = re.sub(r"\.git$", "", repo)
+
+    if args.no_wait and not args.teardown:
+        parser.error("--no-wait can only be used with --teardown")
 
     is_teardown = args.teardown or args.teardown_fire_and_forget
 
@@ -198,7 +208,7 @@ def main():
             log.info("Resync completed successfully!")
             log.info("==========================================")
         elif is_teardown:
-            env.teardown(fire_and_forget=args.teardown_fire_and_forget)
+            env.teardown(fire_and_forget=args.teardown_fire_and_forget, no_wait=args.no_wait)
             log.info("")
             log.info("==========================================")
             log.info("Teardown completed successfully!")

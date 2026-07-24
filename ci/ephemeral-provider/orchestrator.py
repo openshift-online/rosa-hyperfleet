@@ -116,7 +116,7 @@ class EphemeralEnvOrchestrator:
         if save_state:
             self._save_terraform_outputs(git, save_state)
 
-    def teardown(self, fire_and_forget: bool = False):
+    def teardown(self, fire_and_forget: bool = False, no_wait: bool = False):
         """Tear down a previously provisioned ephemeral environment.
 
         Can run independently of provision() — reconnects to the existing
@@ -131,6 +131,10 @@ class EphemeralEnvOrchestrator:
                 Phase 3 (pipeline-provisioner destruction) are intentionally
                 skipped — teardown is expected to be driven to completion by
                 the in-account aws-nuke-cf janitor.
+            no_wait: If True, pushes infrastructure delete flags (Phase 1) but
+                skips waiting for the destroy pipelines to complete. Phases 2
+                and 3 still run. Use for pre-merge e2e where VPC stack deletion
+                is slow but pipeline cleanup is still desired.
         """
         # Check out the ephemeral branch first to discover region from its config
         git = GitManager(self.creds_dir, self.repo, self.branch,
@@ -158,7 +162,7 @@ class EphemeralEnvOrchestrator:
 
         self.central_monitor = PipelineMonitor(self.aws.session)
         self.target_monitor = PipelineMonitor(self.aws.target_session)
-        self._run_teardown(git, fire_and_forget=fire_and_forget)
+        self._run_teardown(git, fire_and_forget=fire_and_forget, no_wait=no_wait)
 
     def resync(self):
         """Resync the ephemeral branch: rebase onto latest source, re-inject config, re-render.
@@ -685,7 +689,7 @@ class EphemeralEnvOrchestrator:
             log.warning("Failed to fetch API URL from terraform state: %s", e)
             return None
 
-    def _run_teardown(self, git: GitManager, fire_and_forget: bool = False):
+    def _run_teardown(self, git: GitManager, fire_and_forget: bool = False, no_wait: bool = False):
         """Tear down infrastructure via GitOps and destroy the pipeline-provisioner."""
 
         # Phase 1: Infrastructure teardown
@@ -714,28 +718,34 @@ class EphemeralEnvOrchestrator:
             )
             return
 
-        # Discover and wait for RC/MC pipeline executions (infra destroy, target region)
-        teardown_pipelines = [
-            (name, exec_id)
-            for name, exec_id in self.target_monitor.discover_pipelines(self.pipeline_prefix, pipeline_known)
-            if name != self.provisioner_name
-        ]
+        if no_wait:
+            log.info(
+                "No-wait mode: pushed infrastructure delete flags (Phase 1) — "
+                "skipping pipeline completion wait. Proceeding to Phases 2 and 3."
+            )
+        else:
+            # Discover and wait for RC/MC pipeline executions (infra destroy, target region)
+            teardown_pipelines = [
+                (name, exec_id)
+                for name, exec_id in self.target_monitor.discover_pipelines(self.pipeline_prefix, pipeline_known)
+                if name != self.provisioner_name
+            ]
 
-        # Monitor all teardown pipelines concurrently
-        if teardown_pipelines:
-            with ThreadPoolExecutor(max_workers=len(teardown_pipelines)) as executor:
-                future_to_pipeline = {
-                    executor.submit(self.target_monitor.wait_for_completion, name, exec_id): name
-                    for name, exec_id in teardown_pipelines
-                }
+            # Monitor all teardown pipelines concurrently
+            if teardown_pipelines:
+                with ThreadPoolExecutor(max_workers=len(teardown_pipelines)) as executor:
+                    future_to_pipeline = {
+                        executor.submit(self.target_monitor.wait_for_completion, name, exec_id): name
+                        for name, exec_id in teardown_pipelines
+                    }
 
-                for future in as_completed(future_to_pipeline):
-                    pipeline_name = future_to_pipeline[future]
-                    try:
-                        future.result()
-                    except (RuntimeError, TimeoutError) as e:
-                        log.error("Teardown pipeline '%s' failed: %s", pipeline_name, e)
-                        # Continue with teardown even if infrastructure destroy fails
+                    for future in as_completed(future_to_pipeline):
+                        pipeline_name = future_to_pipeline[future]
+                        try:
+                            future.result()
+                        except (RuntimeError, TimeoutError) as e:
+                            log.error("Teardown pipeline '%s' failed: %s", pipeline_name, e)
+                            # Continue with teardown even if infrastructure destroy fails
 
         # Phase 2: Pipeline teardown
         log.info("")
