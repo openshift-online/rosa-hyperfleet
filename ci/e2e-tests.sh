@@ -158,8 +158,13 @@ diag_dns() {
     local mc_cluster="${CLUSTER_PREFIX:-}mc01"
     if AWS_PROFILE="rrp-mc" aws eks update-kubeconfig \
             --name "$mc_cluster" \
-            --kubeconfig /tmp/mc-kubeconfig 2>&1; then
-        mc_kube_ok=true
+            --kubeconfig /tmp/mc-kubeconfig 2>/dev/null; then
+        # update-kubeconfig always exits 0 for private clusters — test actual reachability.
+        if KUBECONFIG=/tmp/mc-kubeconfig kubectl cluster-info --request-timeout=5s &>/dev/null; then
+            mc_kube_ok=true
+        else
+            echo "[diag] MC API ${mc_cluster} unreachable from this runner (private cluster) — skipping kubectl checks"
+        fi
     else
         echo "[diag] Could not fetch MC kubeconfig for ${mc_cluster} — skipping kubectl checks"
     fi
@@ -197,10 +202,15 @@ diag_dns() {
         --query 'HostedZones[*].[Name,Id,Config.PrivateZone]' \
         --output table 2>&1 || true
 
-    local base_domain
-    base_domain=$(echo "${BASE_URL:-}" | sed 's|https\?://||;s|/.*||;s|^[^.]*\.||')
+    # Derive the HCP base domain from CLUSTER_PREFIX + region.
+    # BASE_URL is an API Gateway URL and cannot be used for this.
+    local base_domain=""
+    if [[ -n "${CLUSTER_PREFIX:-}" && -n "${AWS_DEFAULT_REGION:-}" ]]; then
+        local _prefix_trimmed="${CLUSTER_PREFIX%-}"
+        base_domain="${AWS_DEFAULT_REGION}-${_prefix_trimmed}.ci00.rosa.devshift.net"
+    fi
     if [[ -n "$base_domain" ]]; then
-        echo "[diag] NS delegation for base domain ${base_domain}:"
+        echo "[diag] NS delegation for HCP base domain ${base_domain}:"
         dig NS "${base_domain}" +short 2>&1 || nslookup -type=NS "${base_domain}" 2>&1 || true
     fi
 
