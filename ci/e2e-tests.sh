@@ -210,8 +210,19 @@ diag_dns() {
         base_domain="${AWS_DEFAULT_REGION}-${_prefix_trimmed}.ci00.rosa.devshift.net"
     fi
     if [[ -n "$base_domain" ]]; then
-        echo "[diag] NS delegation for HCP base domain ${base_domain}:"
-        dig NS "${base_domain}" +short 2>&1 || nslookup -type=NS "${base_domain}" 2>&1 || true
+        local _base_zone_id
+        _base_zone_id=$(AWS_PROFILE="rrp-rc" aws route53 list-hosted-zones \
+            --query "HostedZones[?Name=='${base_domain}.'].Id" \
+            --output text 2>/dev/null | head -1)
+        if [[ -n "$_base_zone_id" ]]; then
+            echo "[diag] NS records for zone ${base_domain} (Route53 authoritative):"
+            AWS_PROFILE="rrp-rc" aws route53 list-resource-record-sets \
+                --hosted-zone-id "$_base_zone_id" \
+                --query "ResourceRecordSets[?Type=='NS']" \
+                --output json 2>&1 || true
+        else
+            echo "[diag] Zone ${base_domain} not found in Route53 — NS delegation broken (root cause D)"
+        fi
     fi
 
     if [[ -n "$cluster_api_host" ]]; then
