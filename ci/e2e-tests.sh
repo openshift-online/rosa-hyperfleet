@@ -308,7 +308,7 @@ if [[ "$_have_customer_creds" == "true" ]]; then
   # fires before either spec can complete.
   E2E_RHOBS_API_URL="${RHOBS_API_URL}" \
     ginkgo --timeout=25m -v --no-color --label-filter=Observability \
-    ./test/e2e/... \
+    ./test/e2e-platform-monitoring \
     || monitoring_rc=$?
 fi
 
