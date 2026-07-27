@@ -203,11 +203,20 @@ diag_dns() {
         --output table 2>&1 || true
 
     # Derive the HCP base domain from CLUSTER_PREFIX + region.
-    # BASE_URL is an API Gateway URL and cannot be used for this.
+    # Auto-detect the env suffix (dev0, ci00, etc.) from Route53 to avoid hardcoding.
     local base_domain=""
     if [[ -n "${CLUSTER_PREFIX:-}" && -n "${AWS_DEFAULT_REGION:-}" ]]; then
         local _prefix_trimmed="${CLUSTER_PREFIX%-}"
-        base_domain="${AWS_DEFAULT_REGION}-${_prefix_trimmed}.ci00.rosa.devshift.net"
+        local _zone_prefix="${AWS_DEFAULT_REGION}-${_prefix_trimmed}."
+        base_domain=$(AWS_PROFILE="rrp-rc" aws route53 list-hosted-zones \
+            --output text \
+            --query 'HostedZones[*].Name' 2>/dev/null \
+            | tr '\t' '\n' \
+            | grep "^${_zone_prefix}" \
+            | grep -v "^0\." \
+            | head -1 \
+            | sed 's/\.$//')
+        [[ -z "$base_domain" ]] && echo "[diag] Could not auto-detect env domain for prefix ${_zone_prefix} in Route53"
     fi
     if [[ -n "$base_domain" ]]; then
         local _base_zone_id
@@ -228,19 +237,25 @@ diag_dns() {
     if [[ -n "$cluster_api_host" ]]; then
         echo "[diag] DNS resolution for: ${cluster_api_host}"
         dig A "${cluster_api_host}" +short 2>&1 || nslookup "${cluster_api_host}" 2>&1 || true
+    fi
 
-        echo "[diag] Route53 A record check for: ${cluster_api_host}"
-        local cluster_label
-        cluster_label=$(echo "$cluster_api_host" | cut -d. -f2)
-        while IFS= read -r zone_id; do
-            [[ -n "$zone_id" ]] || continue
+    # List all A records in the zone shard — external-dns writes api.* A records here.
+    # Their presence/absence answers "did external-dns write anything?" independently of
+    # whether we can construct the exact hostname (which includes an unpredictable UUID prefix).
+    if [[ -n "$base_domain" ]]; then
+        local _shard_zone_id
+        _shard_zone_id=$(AWS_PROFILE="rrp-rc" aws route53 list-hosted-zones \
+            --query "HostedZones[?Name=='0.${base_domain}.'].Id" \
+            --output text 2>/dev/null | head -1 | sed 's|/hostedzone/||')
+        if [[ -n "$_shard_zone_id" ]]; then
+            echo "[diag] A records in shard zone 0.${base_domain} (api.* written here by external-dns):"
             AWS_PROFILE="rrp-rc" aws route53 list-resource-record-sets \
-                --hosted-zone-id "$zone_id" \
-                --query "ResourceRecordSets[?Name=='${cluster_api_host}.']" \
-                --output json 2>&1 || true
-        done < <(AWS_PROFILE="rrp-rc" aws route53 list-hosted-zones \
-            --query "HostedZones[?contains(Name, '${cluster_label}')].Id" \
-            --output text 2>&1) || true
+                --hosted-zone-id "$_shard_zone_id" \
+                --query "ResourceRecordSets[?Type=='A'].[Name,TTL,ResourceRecords[0].Value]" \
+                --output table 2>&1 || true
+        else
+            echo "[diag] Shard zone 0.${base_domain} not found in Route53"
+        fi
     fi
 
     echo "=== [DIAG] end ==="
@@ -286,12 +301,8 @@ if [[ "$_have_customer_creds" == "true" ]]; then
     _hcp_rc=0
     make test-e2e-cli || _hcp_rc=$?
     if [[ $_hcp_rc -ne 0 ]]; then
-        # The zone shard suffix in the hostname comes from HyperShift's baseDomain config;
-        # the actual host appears in the make test-e2e-cli output above. This approximation
-        # is best-effort — the Route53 zone listing in diag_dns will surface the right zone.
-        _api_host="api.${HCP_CLUSTER_NAME}.${CLUSTER_PREFIX:-}.${AWS_DEFAULT_REGION:-us-east-1}.ci00.rosa.devshift.net"
-        echo "[diag] HCP test failed (exit ${_hcp_rc}) — running DNS diagnostics for: ${_api_host}"
-        diag_dns "$_api_host"
+        echo "[diag] HCP test failed (exit ${_hcp_rc}) — running DNS diagnostics"
+        diag_dns
         return $_hcp_rc
     fi
 
