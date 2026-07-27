@@ -1,15 +1,20 @@
 # Scalable DynamoDB Change Notifications via SNS/SQS
 
+**Status**: Accepted
+**Decision Date**: 2026-07-27
 **Last Updated Date**: 2026-07-27
+**Supersedes**: DynamoDB Streams-based `statusstream.Manager` and kube-applier stream watcher
 
 ## Summary
 
 This document describes the replacement of DynamoDB Streams with an SNS/SQS fan-out architecture
 for bidirectional change notifications between the hyperfleet-operator (RC account) and
-kube-applier-aws (MC account). DynamoDB remains the authoritative data store; SNS/SQS replaces
-only the wake-up signal that tells each side when a document has changed. The primary motivation
-is removing the two-replica ceiling imposed by DynamoDB Streams' two-consumer-per-shard limit,
-allowing the hyperfleet-operator StatefulSet to scale to any number of replicas.
+kube-applier-aws (MC account). PostgreSQL (via hyperfleet-db) remains the authoritative state
+store for Kubernetes resources; DynamoDB holds the desire and status documents that flow between
+the operator and kube-applier; SNS/SQS replaces only the wake-up signal that tells each side
+when a document has changed. The primary motivation is removing the two-replica ceiling imposed
+by DynamoDB Streams' two-consumer-per-stream-shard limit, allowing the hyperfleet-operator
+StatefulSet to scale to any number of replicas.
 
 ## Context
 
@@ -18,12 +23,16 @@ allowing the hyperfleet-operator StatefulSet to scale to any number of replicas.
 The hyperfleet-operator runs as a Kubernetes StatefulSet and uses DynamoDB Streams to learn when
 kube-applier has written a status update. Each operator replica runs a `statusstream.Manager`
 that starts one watcher goroutine per MC per status table suffix, polling the stream every second.
-DynamoDB Streams enforces a hard limit of **two concurrent consumers per stream shard**. A
-three-replica operator deployment violates this limit, causing stream throttling and missed events.
+DynamoDB Streams enforces a hard limit of **two concurrent consumers per stream shard** — this
+limit is absolute and applies across the entire stream, shared by all consumers regardless of how
+they are deployed. Because the operator runs multiple controllers (Cluster, NodePool, Manifest),
+each with their own stream-watcher goroutine, even a single operator replica can approach or
+exceed the two-consumer limit when deployed against multiple MCs. A multi-replica deployment
+reliably violates the limit, causing stream throttling and missed events.
 
-The equivalent limit exists in kube-applier-aws, which tails DynamoDB Streams on the specs tables
-to detect new or changed desire documents. Replacing this with a push notification avoids any
-future scaling concern on that side as well.
+kube-applier-aws also tails DynamoDB Streams on the specs tables to detect new or changed desire
+documents. Removing this dependency enables future horizontal scaling of kube-applier without
+reintroducing the consumer count problem.
 
 Direct DynamoDB polling without Streams is not a viable alternative. Without a native
 "changed since" query, each poll cycle requires a full `Scan` of all owned items, comparing
@@ -49,9 +58,13 @@ proportional to total owned item count rather than actual change rate.
 
 - The hyperfleet-operator is deployed as a Kubernetes StatefulSet. Pod hostnames encode the
   replica ordinal (e.g., `hyperfleet-operator-2`), which is used to determine which pre-provisioned
-  SQS queue a pod should poll.
-- kube-applier-aws is leader-elected per MC: only one active replica polls the specs SQS queue
-  at a time. A single specs queue per MC therefore suffices.
+  SQS queue a pod should poll. Every per-pod status SQS queue receives status notifications from
+  **all** MCs; each pod uses `EventRouter.Dispatch` to silently drop notifications for document IDs
+  it does not own.
+- kube-applier-aws is currently leader-elected per MC: only one active replica polls the specs
+  SQS queue at a time, so a single specs queue per MC suffices. The SNS/SQS design does not
+  preclude future multi-replica kube-applier deployments — additional replicas would require only
+  additional SQS queues, mirroring the operator scaling pattern.
 - The existing `RequeueAfter: 5m` safety-net poll on all controllers is unchanged and remains
   the correctness guarantee. The SQS notification path is a latency optimisation, not a
   consistency mechanism.
@@ -338,6 +351,8 @@ Provisions:
 - **IAM inline policy** — `${mc_name}-messaging-access` attached to the shared
   `${rc_id}-hyperfleet-operator` role. Grants `sns:Publish` on the specs topic and
   `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` on all status queues.
+  Also grants `kms:GenerateDataKey*` (required to publish encrypted SNS messages) and
+  `kms:Decrypt` (required to receive and decrypt SQS messages) on the RC-side KMS key.
   Follows the same incremental per-MC policy pattern as the existing DynamoDB access policies,
   so parallel per-MC Terraform state files never collide.
 - **SSM parameter** — `/${rc_id}/${mc_name}/messaging/specs-topic-arn` for operator configuration.
@@ -356,6 +371,8 @@ Provisions:
 - **KMS key** — shared MC-side messaging key.
 - **IAM inline policy** — grants kube-applier role `sqs:ReceiveMessage`, `sqs:DeleteMessage`,
   `sqs:GetQueueAttributes` on the specs queue and `sns:Publish` on the status topic.
+  Also grants `kms:Decrypt` (required to receive and decrypt SQS messages) and
+  `kms:GenerateDataKey*` (required to publish encrypted SNS messages) on the MC-side KMS key.
 - **SSM parameters** — `/${mc_name}/messaging/specs-queue-url` and
   `/${mc_name}/messaging/status-topic-arn`.
 
@@ -500,8 +517,10 @@ DLQ would create an operational burden (alarm, drain procedure) with no meaningf
 - **No DynamoDB Streams dependency** — the `DynamoDBStreams` API is no longer called at runtime.
   Stream shard limits, shard split behaviour, and iterator expiry are no longer operational
   concerns.
-- **Low-latency notifications** — status changes reach the operator in the SQS long-poll window
-  (≤ 20 seconds from publish to receive) rather than at the next safety-net poll interval.
+- **Low-latency notifications** — status changes reach the operator near-real-time (typically
+  sub-second when a message is present) rather than at the next safety-net poll interval. The
+  20-second long-poll `WaitTimeSeconds` is the maximum wait when the queue is empty, not the
+  expected end-to-end delivery latency.
 - **Independently deployable** — the Terraform bootstrapping guard allows messaging to be
   added to an existing environment on a subsequent apply without disrupting running services.
 - **Simple fan-out** — adding a new operator replica requires only provisioning a new SQS queue
@@ -555,10 +574,11 @@ independent consistency path. A complete SQS outage would degrade notification l
   KMS key policies include explicit grants for the SNS and SQS service principals to
   support cross-account encrypted delivery.
 - IAM permissions follow least privilege: the operator role is granted only `sns:Publish`
-  on its specs topic and `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes`
-  on its status queues. kube-applier is granted only `sqs:ReceiveMessage`,
-  `sqs:DeleteMessage`, `sqs:GetQueueAttributes` on its specs queue and `sns:Publish` on its
-  status topic.
+  on its specs topic, `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes`
+  on its status queues, and `kms:GenerateDataKey*` / `kms:Decrypt` on the RC-side KMS key.
+  kube-applier is granted only `sqs:ReceiveMessage`, `sqs:DeleteMessage`,
+  `sqs:GetQueueAttributes` on its specs queue, `sns:Publish` on its status topic, and
+  `kms:Decrypt` / `kms:GenerateDataKey*` on the MC-side KMS key.
 - All cross-account calls traverse the public AWS API authenticated via EKS Pod Identity.
   No VPC peering, PrivateLink, or network-level trust is required.
 - SQS queue policies use `ArnEquals` conditions on `aws:SourceArn` to restrict delivery
@@ -578,11 +598,12 @@ independent consistency path. A complete SQS outage would degrade notification l
 
 ### Cost
 
-- **SQS**: first 1 million requests per month are free; $0.40 per million thereafter.
-  At 10 messages per `ReceiveMessage`, typical notification volumes are well within the
-  free tier per queue.
+- **SQS**: first 1 million requests per month are free (account-wide, not per-queue);
+  $0.40 per million thereafter. At 10 messages per `ReceiveMessage` call, typical notification
+  volumes are well within the free tier across all queues in the account.
 - **SNS**: first 1 million publish API calls per month are free; $0.50 per million thereafter.
-  SNS-to-SQS delivery is free.
+  SNS-to-SQS message delivery incurs no per-notification fee; standard AWS data transfer rates
+  apply for cross-account delivery out of the SNS region.
 - **KMS**: one key per MC per account. Key storage is $1/month/key. API call costs are
   negligible at notification volumes.
 - **Idle queues**: a queue with no messages and no active consumer incurs no SQS charges.
