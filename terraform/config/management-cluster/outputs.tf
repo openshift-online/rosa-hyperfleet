@@ -169,13 +169,21 @@ output "kube_applier_role_arn" {
 
 # =============================================================================
 # kube-applier Messaging Outputs
-# Read by the RC kube-applier-dynamodb buildspec to wire cross-account
+# Read by bootstrap-argocd.sh to wire the queue URL and topic ARN into the
+# ArgoCD cluster secret annotations, which the ApplicationSet then passes
+# to the kube-applier Helm chart as --sqs-queue-url and --sns-status-topic-arn.
+# Also read by the RC kube-applier-dynamodb buildspec to wire cross-account
 # SNS subscriptions.
 # =============================================================================
 
 output "kube_applier_specs_queue_arn" {
   description = "ARN of the MC-side specs SQS queue (receives RC specs SNS notifications). Empty when messaging is not yet provisioned."
   value       = length(module.kube_applier_mc_messaging) > 0 ? module.kube_applier_mc_messaging[0].specs_queue_arn : ""
+}
+
+output "kube_applier_specs_queue_url" {
+  description = "URL of the MC-side specs SQS queue (polled by kube-applier for spec change notifications). Empty when messaging is not yet provisioned."
+  value       = length(module.kube_applier_mc_messaging) > 0 ? module.kube_applier_mc_messaging[0].specs_queue_url : ""
 }
 
 output "kube_applier_status_topic_arn" {

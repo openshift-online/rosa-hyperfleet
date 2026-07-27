@@ -130,6 +130,13 @@ spec:
               sre:
                 targetGroup:
                   arn: '{{ '{{ .metadata.annotations.sre_prometheus_target_group_arn }}' }}'
+{%- if cluster_type == 'management-cluster' %}
+
+            kubeApplier:
+              config:
+                sqsQueueUrl: '{{ '{{ .metadata.annotations.kube_applier_specs_queue_url }}' }}'
+                snsStatusTopicArn: '{{ '{{ .metadata.annotations.kube_applier_status_topic_arn }}' }}'
+{%- endif %}
         path: '{{ '{{ .path.path }}' }}'
         repoURL: '{{ '{{ .metadata.annotations.git_repo }}' }}'
         targetRevision: '{% if pinned %}{{ pinned }}{% else %}{{ "{{ .metadata.annotations.git_revision }}" }}{% endif %}'

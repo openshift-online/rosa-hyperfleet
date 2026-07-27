@@ -82,3 +82,15 @@ variable "redis_endpoint" {
   default     = ""
 }
 
+variable "kube_applier_specs_queue_url" {
+  description = "URL of the MC-side SQS queue that kube-applier polls for spec change notifications. Written as an annotation on the local-cluster-identity secret so the ApplicationSet can pass it to the kube-applier Helm chart."
+  type        = string
+  default     = ""
+}
+
+variable "kube_applier_status_topic_arn" {
+  description = "ARN of the MC-side SNS topic that kube-applier publishes status updates to. Written as an annotation on the local-cluster-identity secret so the ApplicationSet can pass it to the kube-applier Helm chart."
+  type        = string
+  default     = ""
+}
+

@@ -108,6 +108,15 @@ else
     REDIS_ENDPOINT=""
 fi
 
+KUBE_APPLIER_SQS_QUEUE_URL="${KUBE_APPLIER_SQS_QUEUE_URL:-}"
+KUBE_APPLIER_SNS_STATUS_TOPIC_ARN="${KUBE_APPLIER_SNS_STATUS_TOPIC_ARN:-}"
+
+# For management clusters, read the messaging outputs from terraform state.
+if [[ "$CLUSTER_TYPE" == "management-cluster" ]]; then
+    KUBE_APPLIER_SQS_QUEUE_URL=$(echo "$OUTPUTS" | jq -r '.kube_applier_specs_queue_url.value // ""')
+    KUBE_APPLIER_SNS_STATUS_TOPIC_ARN=$(echo "$OUTPUTS" | jq -r '.kube_applier_status_topic_arn.value // ""')
+fi
+
 RHOBS_API_URL="${RHOBS_API_URL:-}"
 DNS_ZONE_OPERATOR_ROLE_ARN="${DNS_ZONE_OPERATOR_ROLE_ARN:-}"
 
@@ -149,7 +158,9 @@ RUN_TASK_OUTPUT=$(aws ecs run-task \
         {\"name\": \"SRE_THANOS_TARGET_GROUP_ARN\", \"value\": \"$SRE_THANOS_TARGET_GROUP_ARN\"},
         {\"name\": \"SRE_ALB_DNS_NAME\", \"value\": \"$SRE_ALB_DNS_NAME\"},
         {\"name\": \"SRE_DOMAIN\", \"value\": \"$SRE_DOMAIN\"},
-        {\"name\": \"REDIS_ENDPOINT\", \"value\": \"$REDIS_ENDPOINT\"}
+        {\"name\": \"REDIS_ENDPOINT\", \"value\": \"$REDIS_ENDPOINT\"},
+        {\"name\": \"KUBE_APPLIER_SQS_QUEUE_URL\", \"value\": \"$KUBE_APPLIER_SQS_QUEUE_URL\"},
+        {\"name\": \"KUBE_APPLIER_SNS_STATUS_TOPIC_ARN\", \"value\": \"$KUBE_APPLIER_SNS_STATUS_TOPIC_ARN\"}
       ]
     }]
   }" 2>&1)

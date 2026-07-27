@@ -254,29 +254,3 @@ resource "aws_iam_role_policy" "kube_applier_messaging" {
     ]
   })
 }
-
-# =============================================================================
-# SSM Parameters — surface queue URL and topic ARN for app config
-# =============================================================================
-
-resource "aws_ssm_parameter" "specs_queue_url" {
-  name        = "/${var.mc_name}/messaging/specs-queue-url"
-  description = "SQS queue URL for specs change notifications (RC → MC)"
-  type        = "String"
-  value       = aws_sqs_queue.specs.url
-
-  tags = merge(local.common_tags, {
-    Name = "${var.mc_name}-specs-queue-url"
-  })
-}
-
-resource "aws_ssm_parameter" "status_topic_arn" {
-  name        = "/${var.mc_name}/messaging/status-topic-arn"
-  description = "SNS topic ARN for status change notifications (MC → RC)"
-  type        = "String"
-  value       = aws_sns_topic.status.arn
-
-  tags = merge(local.common_tags, {
-    Name = "${var.mc_name}-status-topic-arn"
-  })
-}

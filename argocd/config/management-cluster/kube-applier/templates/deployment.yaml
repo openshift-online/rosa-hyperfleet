@@ -45,6 +45,12 @@ spec:
             - --leader-election-id={{ .Values.kubeApplier.config.leaderElectionId }}
             - --log-verbosity={{ .Values.kubeApplier.config.logVerbosity }}
             - --exit-on-panic={{ .Values.kubeApplier.config.exitOnPanic }}
+            {{- if .Values.kubeApplier.config.sqsQueueUrl }}
+            - --sqs-queue-url={{ .Values.kubeApplier.config.sqsQueueUrl }}
+            {{- end }}
+            {{- if .Values.kubeApplier.config.snsStatusTopicArn }}
+            - --sns-status-topic-arn={{ .Values.kubeApplier.config.snsStatusTopicArn }}
+            {{- end }}
             {{- if .Values.kubeApplier.config.awsEndpointUrl }}
             - --aws-endpoint-url={{ .Values.kubeApplier.config.awsEndpointUrl }}
             {{- end }}
