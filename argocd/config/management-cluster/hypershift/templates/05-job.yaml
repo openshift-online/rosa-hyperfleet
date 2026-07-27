@@ -156,10 +156,10 @@ spec:
               until curl -sf --cacert "$_CA" -H "Authorization: Bearer $_TOKEN" \
                     "${_API}/apis/apps/v1/namespaces/hypershift/deployments/external-dns" \
                     -o /tmp/extdns.json 2>/dev/null && \
-                    [ "$(jq -r '.status.availableReplicas // 0' /tmp/extdns.json)" -ge 1 ]; do
+                    grep -q '"availableReplicas":[1-9]' /tmp/extdns.json; do
                 if [ $SECONDS -ge $_EXTDNS_DEADLINE ]; then
                   echo "ERROR: external-dns not available after 5 minutes" >&2
-                  jq -r '.status' /tmp/extdns.json 2>/dev/null || true
+                  grep -oE '"(available|ready|updated|replicas)[^"]*":[0-9]+' /tmp/extdns.json 2>/dev/null || true
                   exit 1
                 fi
                 echo "  Waiting for external-dns ($(( _EXTDNS_DEADLINE - SECONDS ))s remaining)..."
