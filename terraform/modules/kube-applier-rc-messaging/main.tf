@@ -79,6 +79,15 @@ resource "aws_kms_key" "messaging" {
         Action = [
           "kms:Decrypt",
           "kms:GenerateDataKey*",
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
+      },
+      {
         Sid    = "AllowSQS"
         Effect = "Allow"
         Principal = {
