@@ -68,17 +68,7 @@ resource "aws_kms_key" "messaging" {
         }
         Action = [
           "kms:Decrypt",
-          "kms:GenerateDataKey",
-        ]
-        Resource = "*"
-        Condition = {
-          StringEquals = {
-            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
-          }
-        }
-      },
-      {
-        # SQS must be able to use the key when the queue is encrypted
+          "kms:GenerateDataKey*",
         Sid    = "AllowSQS"
         Effect = "Allow"
         Principal = {
@@ -86,7 +76,7 @@ resource "aws_kms_key" "messaging" {
         }
         Action = [
           "kms:Decrypt",
-          "kms:GenerateDataKey",
+          "kms:GenerateDataKey*",
         ]
         Resource = "*"
         Condition = {
@@ -249,7 +239,7 @@ resource "aws_iam_role_policy" "kube_applier_messaging" {
         Effect = "Allow"
         Action = [
           "kms:Decrypt",
-          "kms:GenerateDataKey",
+          "kms:GenerateDataKey*",
         ]
         Resource = aws_kms_key.messaging.arn
       },

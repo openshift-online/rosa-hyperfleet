@@ -78,17 +78,7 @@ resource "aws_kms_key" "messaging" {
         }
         Action = [
           "kms:Decrypt",
-          "kms:GenerateDataKey",
-        ]
-        Resource = "*"
-        Condition = {
-          StringEquals = {
-            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
-          }
-        }
-      },
-      {
-        # SQS must be able to use the key
+          "kms:GenerateDataKey*",
         Sid    = "AllowSQS"
         Effect = "Allow"
         Principal = {
@@ -96,7 +86,7 @@ resource "aws_kms_key" "messaging" {
         }
         Action = [
           "kms:Decrypt",
-          "kms:GenerateDataKey",
+          "kms:GenerateDataKey*",
         ]
         Resource = "*"
         Condition = {
@@ -282,7 +272,7 @@ resource "aws_iam_role_policy" "hyperfleet_operator_messaging" {
         Effect = "Allow"
         Action = [
           "kms:Decrypt",
-          "kms:GenerateDataKey",
+          "kms:GenerateDataKey*",
         ]
         Resource = aws_kms_key.messaging.arn
       },
