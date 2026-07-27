@@ -202,7 +202,6 @@ resource "aws_sns_topic_policy" "status" {
         }
         Action = [
           "sns:Subscribe",
-          "sns:Unsubscribe",
         ]
         Resource = aws_sns_topic.status.arn
       },
