@@ -129,7 +129,8 @@ spec:
                   "${_API}/apis/apps/v1/namespaces/hypershift/deployments/external-dns" \
                   -d '[
                     {"op":"replace","path":"/spec/template/spec/containers/0/command","value":["/ko-app/external-dns"]},
-                    {"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--aws-assume-role='"${DNS_ZONE_OPERATOR_ROLE_ARN}"'"}
+                    {"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--aws-assume-role='"${DNS_ZONE_OPERATOR_ROLE_ARN}"'"},
+                    {"op":"add","path":"/spec/template/spec/tolerations","value":[{"key":"CriticalAddonsOnly","operator":"Exists","effect":"NoSchedule"}]}
                   ]' \
                   -o /dev/null -w "  HTTP %{http_code}\n"
 
