@@ -69,8 +69,8 @@ module "ecs_bootstrap" {
   repository_url    = var.repository_url
   repository_branch = var.repository_branch
 
-  kube_applier_specs_queue_url  = length(module.kube_applier_mc_messaging) > 0 ? module.kube_applier_mc_messaging[0].specs_queue_url : ""
-  kube_applier_status_topic_arn = length(module.kube_applier_mc_messaging) > 0 ? module.kube_applier_mc_messaging[0].status_topic_arn : ""
+  kube_applier_specs_queue_url  = module.kube_applier_mc_messaging.specs_queue_url
+  kube_applier_status_topic_arn = module.kube_applier_mc_messaging.status_topic_arn
 }
 
 # =============================================================================
@@ -206,12 +206,10 @@ module "kube_applier" {
 # =============================================================================
 
 module "kube_applier_mc_messaging" {
-  count  = var.rc_specs_sns_topic_arn != "" ? 1 : 0
   source = "../../modules/kube-applier-mc-messaging"
 
-  mc_name                = var.management_id
-  rc_aws_account_id      = var.regional_aws_account_id
-  rc_specs_sns_topic_arn = var.rc_specs_sns_topic_arn
-  eks_cluster_name       = module.management_cluster.cluster_name
-  aws_region             = var.region
+  mc_name           = var.management_id
+  rc_aws_account_id = var.regional_aws_account_id
+  eks_cluster_name  = module.management_cluster.cluster_name
+  aws_region        = var.region
 }

@@ -45,6 +45,12 @@ locals {
 
   # IAM role for the hyperfleet-operator (RC account, shared across all MCs)
   hyperfleet_operator_role_name = "${var.rc_id}-hyperfleet-operator"
+
+  # MC ARNs — predictable, constructed from known values.
+  # Used in policies and subscriptions so the RC module is self-contained
+  # and does not depend on outputs from the MC Terraform apply.
+  mc_specs_queue_arn   = "arn:aws:sqs:${var.aws_region}:${var.mc_aws_account_id}:${var.mc_name}-specs-notifications"
+  mc_status_sns_topic_arn = "arn:aws:sns:${var.aws_region}:${var.mc_aws_account_id}:${var.mc_name}-status-notifications"
 }
 
 # =============================================================================
@@ -136,7 +142,6 @@ resource "aws_sns_topic" "specs" {
 }
 
 # Allow the hyperfleet-operator pod role to publish specs notifications.
-# Also allow the MC account to confirm the cross-account SQS subscription.
 resource "aws_sns_topic_policy" "specs" {
   arn = aws_sns_topic.specs.arn
 
@@ -152,37 +157,8 @@ resource "aws_sns_topic_policy" "specs" {
         Action   = "sns:Publish"
         Resource = aws_sns_topic.specs.arn
       },
-      {
-        # The SNS subscription is created from the RC account (this module),
-        # targeting the MC SQS queue. AWS auto-confirms SQS subscriptions, so
-        # no MC-account confirmation action is needed here.
-        Sid    = "AllowSNSToDeliverToSQS"
-        Effect = "Allow"
-        Principal = {
-          Service = "sns.amazonaws.com"
-        }
-        Action   = "sns:Publish"
-        Resource = aws_sns_topic.specs.arn
-        Condition = {
-          StringEquals = {
-            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
-          }
-        }
-      },
     ]
   })
-}
-
-# Cross-account SNS→SQS subscription: RC specs topic → MC specs queue.
-# AWS auto-confirms SQS subscriptions, so no ConfirmSubscription step is needed.
-resource "aws_sns_topic_subscription" "specs_to_mc_queue" {
-  topic_arn = aws_sns_topic.specs.arn
-  protocol  = "sqs"
-  endpoint  = var.mc_specs_queue_arn
-
-  # Raw delivery passes the JSON notification body directly without the SNS
-  # envelope wrapper, simplifying parsing in the kube-applier consumer.
-  raw_message_delivery = true
 }
 
 # =============================================================================
@@ -226,21 +202,11 @@ resource "aws_sqs_queue_policy" "status" {
       Resource = aws_sqs_queue.status[count.index].arn
       Condition = {
         ArnEquals = {
-          "aws:SourceArn" = var.mc_status_sns_topic_arn
+          "aws:SourceArn" = local.mc_status_sns_topic_arn
         }
       }
     }]
   })
-}
-
-# Cross-account SNS→SQS subscriptions: MC status topic → each RC operator queue.
-resource "aws_sns_topic_subscription" "status_to_rc_queues" {
-  count = var.operator_replica_count
-
-  topic_arn            = var.mc_status_sns_topic_arn
-  protocol             = "sqs"
-  endpoint             = aws_sqs_queue.status[count.index].arn
-  raw_message_delivery = true
 }
 
 # =============================================================================

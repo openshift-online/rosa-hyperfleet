@@ -155,3 +155,47 @@ if [ "$REG_OK" != "true" ]; then
     cat /tmp/register-response.json >&2
     exit 1
 fi
+
+# Wire SNS→SQS subscriptions.
+#
+# Both subscriptions are created here — after API registration succeeds — because
+# this is the first point in the pipeline where all four resources are guaranteed
+# to exist:
+#   Stage 1 (Deploy MC):                    MC SQS + MC SNS created
+#   Stage 2 (Provision-KubeApplier-DynamoDB): RC SNS + RC SQS created
+#   Stage 4 (Register, this script):        safe to subscribe
+#
+# This script already runs under RC account credentials (use_rc_account above).
+# The MC status topic policy grants sns:Subscribe to the RC account
+# (AllowRCAccountSubscribe), so both subscriptions can be created from here.
+#
+# AWS automatically removes subscriptions when their SNS topic is deleted, so
+# no explicit teardown is needed — Terraform destroying a topic cleans up its
+# subscriptions for free.
+
+SPECS_TOPIC_ARN="arn:aws:sns:${TARGET_REGION}:${RESOLVED_REGIONAL_ACCOUNT_ID}:${CLUSTER_ID}-specs-notifications"
+SPECS_QUEUE_ARN="arn:aws:sqs:${TARGET_REGION}:${TARGET_ACCOUNT_ID}:${CLUSTER_ID}-specs-notifications"
+STATUS_TOPIC_ARN="arn:aws:sns:${TARGET_REGION}:${TARGET_ACCOUNT_ID}:${CLUSTER_ID}-status-notifications"
+OPERATOR_REPLICA_COUNT=$(jq -r '.operator_replica_count // 3' "$DEPLOY_CONFIG_FILE")
+
+echo "Subscribing specs queue to specs topic"
+aws sns subscribe \
+    --topic-arn "$SPECS_TOPIC_ARN" \
+    --protocol sqs \
+    --notification-endpoint "$SPECS_QUEUE_ARN" \
+    --attributes '{"RawMessageDelivery":"true"}' \
+    --region "$TARGET_REGION"
+
+echo "Subscribing ${OPERATOR_REPLICA_COUNT} operator replica queue(s) to status topic"
+for i in $(seq 0 $((OPERATOR_REPLICA_COUNT - 1))); do
+    STATUS_QUEUE_ARN="arn:aws:sqs:${TARGET_REGION}:${RESOLVED_REGIONAL_ACCOUNT_ID}:${RC_REGIONAL_ID}-hyperfleet-operator-${i}"
+    echo "  Subscribing replica ${i}: ${STATUS_QUEUE_ARN}"
+    aws sns subscribe \
+        --topic-arn "$STATUS_TOPIC_ARN" \
+        --protocol sqs \
+        --notification-endpoint "$STATUS_QUEUE_ARN" \
+        --attributes '{"RawMessageDelivery":"true"}' \
+        --region "$TARGET_REGION"
+done
+
+echo "SNS→SQS subscriptions wired successfully"

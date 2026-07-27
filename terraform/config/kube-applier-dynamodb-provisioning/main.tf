@@ -98,25 +98,21 @@ resource "aws_iam_role_policy" "hyperfleet_operator_dynamodb" {
 # after writing a desire document) and the per-replica status SQS queues
 # (the operator polls its own queue for status notifications from kube-applier).
 #
-# Also creates the cross-account SNS→SQS subscriptions for both directions:
-#   Specs:  RC specs SNS topic  → MC specs SQS queue (mc_specs_queue_arn)
-#   Status: MC status SNS topic → each RC operator SQS queue
+# Both modules use predictable ARNs to reference cross-account resources, so
+# there is no dependency on MC Terraform outputs and no count gate. Both sides
+# can be provisioned independently in a single pipeline run.
 #
-# mc_status_sns_topic_arn and mc_specs_queue_arn are read from the MC
-# management-cluster terraform state by the buildspec script. When empty
-# (e.g. during the initial bootstrap run before MC messaging is provisioned)
-# the module is skipped.
+# Subscriptions (RC SNS → MC SQS and MC SNS → RC SQS × N) are created by
+# the Register buildspec step, after both modules have run and all four
+# resources are guaranteed to exist.
 # =============================================================================
 
 module "kube_applier_rc_messaging" {
-  count  = var.mc_status_sns_topic_arn != "" && var.mc_specs_queue_arn != "" ? 1 : 0
   source = "../../modules/kube-applier-rc-messaging"
 
-  mc_name                 = var.mc_name
-  mc_aws_account_id       = var.mc_aws_account_id
-  rc_id                   = var.rc_id
-  aws_region              = var.region
-  operator_replica_count  = var.operator_replica_count
-  mc_status_sns_topic_arn = var.mc_status_sns_topic_arn
-  mc_specs_queue_arn      = var.mc_specs_queue_arn
+  mc_name                = var.mc_name
+  mc_aws_account_id      = var.mc_aws_account_id
+  rc_id                  = var.rc_id
+  aws_region             = var.region
+  operator_replica_count = var.operator_replica_count
 }

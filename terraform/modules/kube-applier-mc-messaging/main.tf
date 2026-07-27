@@ -35,6 +35,11 @@ locals {
 
   # IAM role ARN for the kube-applier pod in this MC account
   kube_applier_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.mc_name}-kube-applier"
+
+  # RC specs SNS topic ARN — predictable, constructed from known values.
+  # Used in the SQS queue policy so delivery is authorised from day one,
+  # before the RC messaging module has run.
+  rc_specs_sns_topic_arn = "arn:aws:sns:${var.aws_region}:${var.rc_aws_account_id}:${var.mc_name}-specs-notifications"
 }
 
 # =============================================================================
@@ -146,7 +151,7 @@ resource "aws_sqs_queue_policy" "specs" {
       Resource = aws_sqs_queue.specs.arn
       Condition = {
         ArnEquals = {
-          "aws:SourceArn" = var.rc_specs_sns_topic_arn
+          "aws:SourceArn" = local.rc_specs_sns_topic_arn
         }
       }
     }]

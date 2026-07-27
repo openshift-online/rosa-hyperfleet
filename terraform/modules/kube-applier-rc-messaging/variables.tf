@@ -43,16 +43,6 @@ variable "operator_replica_count" {
   }
 }
 
-variable "mc_status_sns_topic_arn" {
-  description = "ARN of the status SNS topic in the MC account. The RC-side SQS queues subscribe to this topic for cross-account delivery."
-  type        = string
-}
-
-variable "mc_specs_queue_arn" {
-  description = "ARN of the specs SQS queue in the MC account. The RC specs SNS topic subscribes this queue so the operator's publish triggers delivery to kube-applier."
-  type        = string
-}
-
 variable "tags" {
   description = "Additional tags to apply to resources."
   type        = map(string)

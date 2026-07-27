@@ -20,12 +20,12 @@ output "status_readdesires_stream_arn" {
 # =============================================================================
 
 output "specs_sns_topic_arn" {
-  description = "ARN of the RC-account specs SNS topic for this MC (operator publishes here after writing a desire document). Empty when messaging is not yet provisioned."
-  value       = length(module.kube_applier_rc_messaging) > 0 ? module.kube_applier_rc_messaging[0].specs_topic_arn : ""
+  description = "ARN of the RC-account specs SNS topic for this MC (operator publishes here after writing a desire document)."
+  value       = module.kube_applier_rc_messaging.specs_topic_arn
 }
 
 output "status_sqs_queue_urls" {
-  description = "URLs of the RC-account operator status SQS queues (one per replica). Empty list when messaging is not yet provisioned."
-  value       = length(module.kube_applier_rc_messaging) > 0 ? module.kube_applier_rc_messaging[0].status_queue_urls : []
+  description = "URLs of the RC-account operator status SQS queues (one per replica)."
+  value       = module.kube_applier_rc_messaging.status_queue_urls
 }
 

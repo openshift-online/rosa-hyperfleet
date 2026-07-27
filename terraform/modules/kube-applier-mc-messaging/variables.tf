@@ -22,11 +22,6 @@ variable "rc_aws_account_id" {
   }
 }
 
-variable "rc_specs_sns_topic_arn" {
-  description = "ARN of the specs SNS topic in the RC account that will deliver notifications to the specs SQS queue in this MC."
-  type        = string
-}
-
 variable "eks_cluster_name" {
   description = "Name of the EKS management cluster. Used for the Pod Identity association."
   type        = string
