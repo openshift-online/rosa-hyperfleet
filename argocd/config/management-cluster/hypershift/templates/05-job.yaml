@@ -147,33 +147,6 @@ spec:
                   -o /dev/null -w "  HTTP %{http_code}\n"
               fi
 
-              # Wait for external-dns to be available before the Job exits.
-              # ArgoCD holds the Application in Progressing until all Jobs complete,
-              # so this prevents e2e tests from starting before external-dns can
-              # write HCP API DNS records.
-              _EXTDNS_DEADLINE=$((SECONDS + 300))
-              echo "Waiting for external-dns to become available..."
-              until curl -sf --cacert "$_CA" -H "Authorization: Bearer $_TOKEN" \
-                    "${_API}/apis/apps/v1/namespaces/hypershift/deployments/external-dns" \
-                    -o /tmp/extdns.json 2>/dev/null && \
-                    grep -q '"availableReplicas":[1-9]' /tmp/extdns.json; do
-                if [ $SECONDS -ge $_EXTDNS_DEADLINE ]; then
-                  echo "ERROR: external-dns not available after 5 minutes" >&2
-                  echo "=== [DIAG] external-dns Deployment status ===" >&2
-                  grep -oE '"(available|ready|updated|replicas)[^"]*":[0-9]+' /tmp/extdns.json 2>/dev/null || true
-                  echo "=== [DIAG] external-dns pods ===" >&2
-                  curl -sf --cacert "$_CA" -H "Authorization: Bearer $_TOKEN" \
-                    "${_API}/api/v1/namespaces/hypershift/pods" \
-                    2>/dev/null \
-                  | grep -oE '"(name|phase|reason|message)":"[^"]*"' \
-                  | grep -i "external-dns\|CrashLoop\|BackOff\|OOMKilled\|Error\|Pending\|phase" \
-                  || echo "  (could not list pods)" >&2
-                  exit 1
-                fi
-                echo "  Waiting for external-dns ($(( _EXTDNS_DEADLINE - SECONDS ))s remaining)..."
-                sleep 10
-              done
-              echo "=== external-dns is available ==="
               {{- end }}
       restartPolicy: Never
       serviceAccountName: hypershift-installer
