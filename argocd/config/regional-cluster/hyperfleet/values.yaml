@@ -23,7 +23,7 @@ hyperfleet:
 
   helmValues:
     image:
-      repository: quay.io/rrp-bot/hyperfleet-operator
+      repository: quay.io/psav/hyperfleet-operator
       tag: "9ae1c99"
       pullPolicy: Always
 
