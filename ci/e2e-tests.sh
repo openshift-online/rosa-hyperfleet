@@ -283,6 +283,18 @@ diag_dns() {
             --output json 2>/dev/null \
         | jq -r '.Events[] | select((.CloudTrailEvent | fromjson | .requestParameters.roleArn // "") | test("dns-zone-operator")) | [.EventTime, .Username, (.CloudTrailEvent | fromjson | .errorCode // "OK")] | @tsv' \
         2>&1 || true
+
+        # Check the MC account for external-dns Pod Identity assumes. This is the first-hop
+        # credential step — if empty here, external-dns never ran (root cause A); if errors
+        # appear, Pod Identity is misconfigured; if OK, look further down the chain.
+        echo "[diag] CloudTrail: external-dns AssumeRoleWithWebIdentity (MC account, last 30min):"
+        AWS_PROFILE="rrp-mc" aws cloudtrail lookup-events \
+            --region us-east-1 \
+            --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRoleWithWebIdentity \
+            --start-time "$_ct_start" \
+            --output json 2>/dev/null \
+        | jq -r '.Events[] | select((.CloudTrailEvent | fromjson | .requestParameters.roleArn // "") | test("dns-operator")) | [.EventTime, (.CloudTrailEvent | fromjson | .requestParameters.roleArn | split("/")[-1]), (.CloudTrailEvent | fromjson | .errorCode // "OK")] | @tsv' \
+        2>&1 || echo "[diag]   (no events found or CloudTrail unavailable)"
     fi
 
     echo "=== [DIAG] end ==="
