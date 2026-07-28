@@ -7,6 +7,8 @@ hyperfleet:
 
   project: default
 
+  sqsQueueUrlPrefix: ""
+
   source:
     repoURL: https://github.com/rrp-bot/rosa-hyperfleet-api.git
     targetRevision: feature/sns-sqs

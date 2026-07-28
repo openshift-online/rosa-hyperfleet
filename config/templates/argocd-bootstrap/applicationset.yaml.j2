@@ -137,6 +137,11 @@ spec:
                 sqsQueueUrl: '{{ '{{ .metadata.annotations.kube_applier_specs_queue_url }}' }}'
                 snsStatusTopicArn: '{{ '{{ .metadata.annotations.kube_applier_status_topic_arn }}' }}'
 {%- endif %}
+{%- if cluster_type == 'regional-cluster' %}
+
+            hyperfleet:
+              sqsQueueUrlPrefix: 'https://sqs.{{ '{{ .metadata.labels.aws_region }}' }}.amazonaws.com/{{ '{{ .metadata.annotations.aws_account_id }}' }}/{{ '{{ .metadata.labels.cluster_name }}' }}-hyperfleet-operator-'
+{%- endif %}
         path: '{{ '{{ .path.path }}' }}'
         repoURL: '{{ '{{ .metadata.annotations.git_repo }}' }}'
         targetRevision: '{% if pinned %}{{ pinned }}{% else %}{{ "{{ .metadata.annotations.git_revision }}" }}{% endif %}'

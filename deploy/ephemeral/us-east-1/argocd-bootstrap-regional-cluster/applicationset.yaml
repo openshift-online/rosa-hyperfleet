@@ -127,6 +127,9 @@ spec:
               sre:
                 targetGroup:
                   arn: '{{ .metadata.annotations.sre_prometheus_target_group_arn }}'
+
+            hyperfleet:
+              sqsQueueUrlPrefix: 'https://sqs.{{ .metadata.labels.aws_region }}.amazonaws.com/{{ .metadata.annotations.aws_account_id }}/{{ .metadata.labels.cluster_name }}-hyperfleet-operator-'
         path: '{{ .path.path }}'
         repoURL: '{{ .metadata.annotations.git_repo }}'
         targetRevision: '{{ .metadata.annotations.git_revision }}'
