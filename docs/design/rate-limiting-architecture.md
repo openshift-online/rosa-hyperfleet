@@ -672,6 +672,8 @@ When the ConfigMap changes, the hash annotation changes, triggering a rolling re
 - SigV4 identity headers (`X-Caller-Account`, `X-Caller-Arn`) are injected by API Gateway after authentication and cannot be forged by customers
 - Fail-open behavior on Redis failure is a deliberate choice — matches ROSA HCP v1's Limitador fail-open pattern
 - API GW throttle fail-closes by default (returns 429)
+- **Encryption in transit**: TLS enabled on ElastiCache Valkey (`transit_encryption_enabled = true`). The Go client connects with `tls.Config{MinVersion: tls.VersionTLS12}`. TLS overhead is negligible (<1ms per request) relative to the 50ms fail-open timeout. Required by FedRAMP SC-8 for all network communications.
+- **Encryption at rest**: Enabled with a dedicated customer-managed KMS key (`at_rest_encryption_enabled = true`, `aws_kms_key.elasticache`), consistent with RDS and Amazon MQ patterns in this repo. Zero performance cost. Required by FedRAMP SC-13. The data stored is purely ephemeral GCRA counters (e.g., `rl:account:method:path → count`) with auto-TTL — no PII, credentials, or customer data — but encryption is applied uniformly across all data stores as a compliance baseline.
 
 ### Performance
 

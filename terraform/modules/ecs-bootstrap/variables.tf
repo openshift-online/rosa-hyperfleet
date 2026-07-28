@@ -94,3 +94,8 @@ variable "karpenter_version" {
   default     = "1.13.0"
 }
 
+variable "redis_endpoint" {
+  description = "ElastiCache Valkey endpoint for Platform API rate limiting"
+  type        = string
+  default     = ""
+}

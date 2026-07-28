@@ -1,0 +1,171 @@
+evaluation_interval: 1m
+
+rule_files:
+  - rules.yaml
+
+tests:
+  # RateLimitFailOpenActive fires when >20% of requests are fail-open for >5m
+  # 100% fail-open: all requests are failure_mode_allowed, none are ok
+  - interval: 1m
+    input_series:
+      - series: 'ratelimit_requests_total{result="failure_mode_allowed", method="GET", path="/api/v0/clusters"}'
+        values: "0+10x15"
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: RateLimitFailOpenActive
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Rate limit enforcement bypassed (>20% fail-open)"
+              description: "100% of rate-limited traffic passing without enforcement for >5m. Check Valkey connectivity."
+
+  # RateLimitFailOpenActive does NOT fire when fail-open ratio is below 20%
+  # 10% fail-open: 1 failure_mode_allowed per 9 ok
+  - interval: 1m
+    input_series:
+      - series: 'ratelimit_requests_total{result="failure_mode_allowed", method="GET", path="/api/v0/clusters"}'
+        values: "0+1x15"
+      - series: 'ratelimit_requests_total{result="ok", method="GET", path="/api/v0/clusters"}'
+        values: "0+9x15"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: RateLimitFailOpenActive
+        exp_alerts: []
+
+  # RateLimitFailOpenActive does NOT fire when there are no failure_mode_allowed requests
+  - interval: 1m
+    input_series:
+      - series: 'ratelimit_requests_total{result="ok", method="GET", path="/api/v0/clusters"}'
+        values: "0+10x15"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: RateLimitFailOpenActive
+        exp_alerts: []
+
+  # RateLimitFailOpenActive does NOT fire before 5m even at 100% fail-open
+  - interval: 1m
+    input_series:
+      - series: 'ratelimit_requests_total{result="failure_mode_allowed", method="GET", path="/api/v0/clusters"}'
+        values: "0+10x4"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: RateLimitFailOpenActive
+        exp_alerts: []
+
+  # RateLimitHighDenialRatio fires when > 50% of requests are over_limit for > 10m
+  - interval: 1m
+    input_series:
+      - series: 'ratelimit_requests_total{result="over_limit", method="GET", path="/api/v0/clusters"}'
+        values: "0+6x20"
+      - series: 'ratelimit_requests_total{result="ok", method="GET", path="/api/v0/clusters"}'
+        values: "0+4x20"
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: RateLimitHighDenialRatio
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              method: GET
+              path: /api/v0/clusters
+            exp_annotations:
+              summary: "Over 50% of requests are being rate limited"
+              description: "More than 50% of rate-limited requests on method=GET, path=/api/v0/clusters have been denied for over 10 minutes. This may indicate a misbehaving client or rate limits that need tuning."
+
+  # RateLimitHighDenialRatio fires when combined ratio across pods exceeds 50%
+  # Pod A: 3 denied + 7 ok = 30% per pod, Pod B: 4 denied + 2 ok = 67% per pod
+  # Combined: 7 denied / 16 total = 43.75% — does NOT fire (under 50%)
+  # But with higher combined: Pod A: 5 denied + 3 ok, Pod B: 4 denied + 2 ok
+  # Combined: 9 denied / 14 total = 64% — fires
+  - interval: 1m
+    input_series:
+      - series: 'ratelimit_requests_total{result="over_limit", method="GET", path="/api/v0/clusters", pod="api-0"}'
+        values: "0+5x20"
+      - series: 'ratelimit_requests_total{result="ok", method="GET", path="/api/v0/clusters", pod="api-0"}'
+        values: "0+3x20"
+      - series: 'ratelimit_requests_total{result="over_limit", method="GET", path="/api/v0/clusters", pod="api-1"}'
+        values: "0+4x20"
+      - series: 'ratelimit_requests_total{result="ok", method="GET", path="/api/v0/clusters", pod="api-1"}'
+        values: "0+2x20"
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: RateLimitHighDenialRatio
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              method: GET
+              path: /api/v0/clusters
+            exp_annotations:
+              summary: "Over 50% of requests are being rate limited"
+              description: "More than 50% of rate-limited requests on method=GET, path=/api/v0/clusters have been denied for over 10 minutes. This may indicate a misbehaving client or rate limits that need tuning."
+
+  # RateLimitHighDenialRatio does NOT fire when denial ratio is below 50%
+  # over_limit is 10% of total traffic (1 denied per 9 ok)
+  - interval: 1m
+    input_series:
+      - series: 'ratelimit_requests_total{result="over_limit", method="GET", path="/api/v0/clusters"}'
+        values: "0+1x20"
+      - series: 'ratelimit_requests_total{result="ok", method="GET", path="/api/v0/clusters"}'
+        values: "0+9x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: RateLimitHighDenialRatio
+        exp_alerts: []
+
+  # RateLimitHighDenialRatio does NOT fire before 10m even with high denial ratio
+  - interval: 1m
+    input_series:
+      - series: 'ratelimit_requests_total{result="over_limit", method="GET", path="/api/v0/clusters"}'
+        values: "0+9x8"
+      - series: 'ratelimit_requests_total{result="ok", method="GET", path="/api/v0/clusters"}'
+        values: "0+1x8"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: RateLimitHighDenialRatio
+        exp_alerts: []
+
+  # RateLimitPodHighDenialRatio fires when a single pod exceeds 70% denial for > 5m
+  # Pod api-0: 8 denied + 2 ok = 80% denial ratio
+  - interval: 1m
+    input_series:
+      - series: 'ratelimit_requests_total{result="over_limit", method="GET", path="/api/v0/clusters", pod="api-0"}'
+        values: "0+8x15"
+      - series: 'ratelimit_requests_total{result="ok", method="GET", path="/api/v0/clusters", pod="api-0"}'
+        values: "0+2x15"
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: RateLimitPodHighDenialRatio
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              method: GET
+              path: /api/v0/clusters
+              pod: api-0
+            exp_annotations:
+              summary: "Single pod denying over 70% of rate-limited requests"
+              description: "Pod api-0 is denying over 70% of requests on method=GET, path=/api/v0/clusters for over 5 minutes. This may indicate a pod-level issue rather than a global rate limit problem."
+
+  # RateLimitPodHighDenialRatio does NOT fire when pod denial ratio is below 70%
+  # Pod api-0: 6 denied + 4 ok = 60% denial ratio
+  - interval: 1m
+    input_series:
+      - series: 'ratelimit_requests_total{result="over_limit", method="GET", path="/api/v0/clusters", pod="api-0"}'
+        values: "0+6x15"
+      - series: 'ratelimit_requests_total{result="ok", method="GET", path="/api/v0/clusters", pod="api-0"}'
+        values: "0+4x15"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: RateLimitPodHighDenialRatio
+        exp_alerts: []
+
+  # RateLimitPodHighDenialRatio does NOT fire before 5m even with high denial ratio
+  - interval: 1m
+    input_series:
+      - series: 'ratelimit_requests_total{result="over_limit", method="GET", path="/api/v0/clusters", pod="api-0"}'
+        values: "0+9x4"
+      - series: 'ratelimit_requests_total{result="ok", method="GET", path="/api/v0/clusters", pod="api-0"}'
+        values: "0+1x4"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: RateLimitPodHighDenialRatio
+        exp_alerts: []

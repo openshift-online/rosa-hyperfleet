@@ -193,6 +193,24 @@ variable "enable_sns_alerting" {
   default     = false
 }
 
+variable "enable_rate_limit_redis" {
+  description = "Enable ElastiCache Redis for Platform API rate limiting"
+  type        = bool
+  default     = true
+}
+
+variable "valkey_node_type" {
+  description = "ElastiCache Valkey node type for rate limiting"
+  type        = string
+  default     = "cache.t4g.micro"
+}
+
+variable "valkey_engine_version" {
+  description = "ElastiCache Valkey engine version"
+  type        = string
+  default     = "9.1"
+}
+
 # =============================================================================
 # HyperFleet DB Variables
 # =============================================================================

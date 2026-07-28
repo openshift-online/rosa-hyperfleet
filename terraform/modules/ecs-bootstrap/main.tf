@@ -346,6 +346,7 @@ resource "aws_ecs_task_definition" "bootstrap" {
               sre_thanos_target_group_arn: "$SRE_THANOS_TARGET_GROUP_ARN"
               sre_alb_dns_name: "$SRE_ALB_DNS_NAME"
               sre_domain: "$SRE_DOMAIN"
+              redis_endpoint: "$REDIS_ENDPOINT"
           type: Opaque
           stringData:
             name: in-cluster
@@ -465,6 +466,10 @@ resource "aws_ecs_task_definition" "bootstrap" {
         {
           name  = "KARPENTER_VERSION"
           value = var.karpenter_version
+        },
+        {
+          name  = "REDIS_ENDPOINT"
+          value = var.redis_endpoint
         }
       ]
 

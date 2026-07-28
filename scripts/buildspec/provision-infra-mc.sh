@@ -80,11 +80,12 @@ else
     fi
     export TF_VAR_oidc_cloudfront_domain TF_VAR_oidc_bucket_name TF_VAR_oidc_bucket_arn TF_VAR_oidc_bucket_region TF_VAR_rhobs_api_url
 
-    # ZOA outputs bucket ARN
-    export TF_VAR_zoa_outputs_bucket_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_bucket_arn 2>/dev/null || echo "")
+    # ZOA outputs bucket ARN — validate output looks like an ARN to avoid
+    # capturing terraform warnings as the value (non-ASCII chars break IAM policies)
+    export TF_VAR_zoa_outputs_bucket_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_bucket_arn 2>/dev/null | grep -E '^arn:' || echo "")
 
     # ZOA KMS key ARN (optional — for S3 SSE-KMS cross-account access)
-    export TF_VAR_zoa_kms_key_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_kms_key_arn 2>/dev/null || echo "")
+    export TF_VAR_zoa_kms_key_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_kms_key_arn 2>/dev/null | grep -E '^arn:' || echo "")
 fi
 
 # ── Phase 2: Apply/Destroy MC infrastructure ─────────────────────────────────

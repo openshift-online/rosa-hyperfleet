@@ -81,6 +81,13 @@ if [[ "$CLUSTER_TYPE" == "regional-cluster" ]]; then
     SRE_THANOS_TARGET_GROUP_ARN=$(echo "$OUTPUTS" | jq -r '.sre_thanos_target_group_arn.value // ""')
     SRE_ALB_DNS_NAME=$(echo "$OUTPUTS" | jq -r '.sre_alb_dns_name.value // ""')
     SRE_DOMAIN=$(echo "$OUTPUTS" | jq -r '.sre_domain.value // ""')
+    _REDIS_HOST=$(echo "$OUTPUTS" | jq -r '.hyperfleet_redis_endpoint.value // ""')
+    _REDIS_PORT=$(echo "$OUTPUTS" | jq -r '.hyperfleet_redis_port.value // ""')
+    if [[ -n "$_REDIS_HOST" && -n "$_REDIS_PORT" ]]; then
+        REDIS_ENDPOINT="${_REDIS_HOST}:${_REDIS_PORT}"
+    else
+        REDIS_ENDPOINT=""
+    fi
 else
     API_TARGET_GROUP_ARN=""
     THANOS_TARGET_GROUP_ARN=""
@@ -98,6 +105,7 @@ else
     SRE_THANOS_TARGET_GROUP_ARN=""
     SRE_ALB_DNS_NAME=""
     SRE_DOMAIN=""
+    REDIS_ENDPOINT=""
 fi
 
 RHOBS_API_URL="${RHOBS_API_URL:-}"
@@ -140,7 +148,8 @@ RUN_TASK_OUTPUT=$(aws ecs run-task \
         {\"name\": \"SRE_PROMETHEUS_TARGET_GROUP_ARN\", \"value\": \"$SRE_PROMETHEUS_TARGET_GROUP_ARN\"},
         {\"name\": \"SRE_THANOS_TARGET_GROUP_ARN\", \"value\": \"$SRE_THANOS_TARGET_GROUP_ARN\"},
         {\"name\": \"SRE_ALB_DNS_NAME\", \"value\": \"$SRE_ALB_DNS_NAME\"},
-        {\"name\": \"SRE_DOMAIN\", \"value\": \"$SRE_DOMAIN\"}
+        {\"name\": \"SRE_DOMAIN\", \"value\": \"$SRE_DOMAIN\"},
+        {\"name\": \"REDIS_ENDPOINT\", \"value\": \"$REDIS_ENDPOINT\"}
       ]
     }]
   }" 2>&1)
