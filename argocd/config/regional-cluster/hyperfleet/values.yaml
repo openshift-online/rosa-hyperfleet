@@ -23,7 +23,7 @@ hyperfleet:
 
   helmValues:
     image:
-      repository: quay.io/openshift-online/hyperfleet-operator
+      repository: quay.io/rrp-bot/hyperfleet-operator
       tag: "9ae1c99"
       pullPolicy: Always
 
