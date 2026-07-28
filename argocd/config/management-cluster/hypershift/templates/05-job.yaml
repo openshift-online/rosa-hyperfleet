@@ -159,7 +159,15 @@ spec:
                     grep -q '"availableReplicas":[1-9]' /tmp/extdns.json; do
                 if [ $SECONDS -ge $_EXTDNS_DEADLINE ]; then
                   echo "ERROR: external-dns not available after 5 minutes" >&2
+                  echo "=== [DIAG] external-dns Deployment status ===" >&2
                   grep -oE '"(available|ready|updated|replicas)[^"]*":[0-9]+' /tmp/extdns.json 2>/dev/null || true
+                  echo "=== [DIAG] external-dns pods ===" >&2
+                  curl -sf --cacert "$_CA" -H "Authorization: Bearer $_TOKEN" \
+                    "${_API}/api/v1/namespaces/hypershift/pods" \
+                    2>/dev/null \
+                  | grep -oE '"(name|phase|reason|message)":"[^"]*"' \
+                  | grep -i "external-dns\|CrashLoop\|BackOff\|OOMKilled\|Error\|Pending\|phase" \
+                  || echo "  (could not list pods)" >&2
                   exit 1
                 fi
                 echo "  Waiting for external-dns ($(( _EXTDNS_DEADLINE - SECONDS ))s remaining)..."

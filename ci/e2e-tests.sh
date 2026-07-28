@@ -138,6 +138,7 @@ else
   echo "WARNING: No rrp-customer profile available — skipping HCP creation tests"
 fi
 
+# TODO(dns-troubleshooting): Remove before merging to main.
 # Collect DNS / external-dns diagnostics to help root-cause HCP API connection failures.
 #
 # Called pre-test (no args) to baseline infrastructure state, and post-failure (with
@@ -258,6 +259,32 @@ diag_dns() {
         fi
     fi
 
+    # TODO(dns-troubleshooting): Remove before merging to main.
+    # CloudTrail: did external-dns call Route53, and did it succeed?
+    echo "[diag] CloudTrail: Route53 ChangeResourceRecordSets (RC account, us-east-1, last 30min):"
+    local _ct_start
+    _ct_start=$(date -u -d '30 minutes ago' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
+        || date -u -v-30M '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || true)
+    if [[ -n "${_ct_start:-}" ]]; then
+        AWS_PROFILE="rrp-rc" aws cloudtrail lookup-events \
+            --region us-east-1 \
+            --lookup-attributes AttributeKey=EventName,AttributeValue=ChangeResourceRecordSets \
+            --start-time "$_ct_start" \
+            --output json 2>/dev/null \
+        | jq -r '.Events[] | [.EventTime, .Username,
+            (.CloudTrailEvent | fromjson | .errorCode // "OK"),
+            (.CloudTrailEvent | fromjson | .requestParameters.hostedZoneId // "-")] | @tsv' \
+        2>&1 || echo "[diag]   (no events found or CloudTrail unavailable)" || true
+
+        echo "[diag] CloudTrail: AssumeRole to dns-zone-operator (RC account, last 30min):"
+        AWS_PROFILE="rrp-rc" aws cloudtrail lookup-events \
+            --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRole \
+            --start-time "$_ct_start" \
+            --output json 2>/dev/null \
+        | jq -r '.Events[] | select((.CloudTrailEvent | fromjson | .requestParameters.roleArn // "") | test("dns-zone-operator")) | [.EventTime, .Username, (.CloudTrailEvent | fromjson | .errorCode // "OK")] | @tsv' \
+        2>&1 || true
+    fi
+
     echo "=== [DIAG] end ==="
     echo ""
 }
@@ -270,7 +297,8 @@ if [[ "$_have_customer_creds" == "true" ]]; then
     local HCP_CLUSTER_NAME="e2e-$(date +%s)"
 
     CLI_WORK_DIR="$(mktemp -d)"
-    trap 'rm -rf "${CLI_WORK_DIR}"; rm -rf "${WORK_DIR}"' EXIT
+    # TODO(dns-troubleshooting): Remove before merging to main. (restore original trap without kill)
+    trap 'kill "${_poller_pid:-}" 2>/dev/null || true; rm -rf "${CLI_WORK_DIR}"; rm -rf "${WORK_DIR}"' EXIT
     cd "${CLI_WORK_DIR}"
     git clone --depth 1 --branch "${CLI_REF}" \
       "${CLI_REPO}" "${CLI_WORK_DIR}/cli"
@@ -297,9 +325,81 @@ if [[ "$_have_customer_creds" == "true" ]]; then
       echo "E2E_SKIP_CLEANUP is set — cleanup specs will be skipped"
       export E2E_LABEL_FILTER='!cleanup'
     fi
+
+    # TODO(dns-troubleshooting): Remove before merging to main.
+    # Compute HCP base domain and shard zone for Route53 polling and log-collector passthrough.
+    _hcp_base_domain=""
+    _hcp_shard_zone_id=""
+    if [[ -n "${CLUSTER_PREFIX:-}" && -n "${AWS_DEFAULT_REGION:-}" ]]; then
+        local _pfx_trimmed="${CLUSTER_PREFIX%-}"
+        local _zone_pfx="${AWS_DEFAULT_REGION}-${_pfx_trimmed}."
+        _hcp_base_domain=$(AWS_PROFILE="rrp-rc" aws route53 list-hosted-zones \
+            --output text \
+            --query 'HostedZones[*].Name' 2>/dev/null \
+            | tr '\t' '\n' | grep "^${_zone_pfx}" | grep -v "^0\." \
+            | head -1 | sed 's/\.$//')
+        if [[ -n "$_hcp_base_domain" ]]; then
+            _hcp_shard_zone_id=$(AWS_PROFILE="rrp-rc" aws route53 list-hosted-zones \
+                --query "HostedZones[?Name=='0.${_hcp_base_domain}.'].Id" \
+                --output text 2>/dev/null | head -1 | sed 's|/hostedzone/||')
+        fi
+    fi
+    export DIAG_BASE_DOMAIN="${_hcp_base_domain:-}"
+
+    # Start a background Route53 poller that logs when A records first appear in the shard zone.
+    # This answers "did external-dns write the record, and at what time?" independently of the test.
+    _poll_log=""
+    _poller_pid=""
+    if [[ -n "${_hcp_shard_zone_id:-}" ]]; then
+        _poll_log="$(mktemp)"
+        _poll_start="$(date +%s)"
+        (
+            set +euo pipefail
+            _bl=$(AWS_PROFILE="rrp-rc" aws route53 list-resource-record-sets \
+                --hosted-zone-id "${_hcp_shard_zone_id}" \
+                --query "ResourceRecordSets[?Type=='A'].Name" \
+                --output text 2>/dev/null | tr '\t' '\n' | sort | grep -v '^$')
+            echo "[route53-poll] baseline A records: ${_bl:-none}"
+            while true; do
+                sleep 30
+                _el=$(( $(date +%s) - _poll_start ))
+                _cur=$(AWS_PROFILE="rrp-rc" aws route53 list-resource-record-sets \
+                    --hosted-zone-id "${_hcp_shard_zone_id}" \
+                    --query "ResourceRecordSets[?Type=='A'].[Name,ResourceRecords[0].Value]" \
+                    --output text 2>/dev/null)
+                _new=$(comm -13 \
+                    <(echo "$_bl" | grep -v '^$') \
+                    <(echo "$_cur" | awk '{print $1}' | sort | grep -v '^$') 2>/dev/null)
+                if [[ -n "$_new" ]]; then
+                    echo "[route53-poll] T+${_el}s: NEW A record(s) appeared:"
+                    echo "$_cur"
+                else
+                    echo "[route53-poll] T+${_el}s: no new records yet"
+                fi
+            done
+        ) >> "$_poll_log" 2>&1 &
+        _poller_pid=$!
+        echo "[route53-poll] started (pid=$_poller_pid, shard zone: ${_hcp_shard_zone_id})"
+    else
+        echo "[route53-poll] skipping — shard zone not found"
+    fi
+
+    # TODO(dns-troubleshooting): Remove before merging to main. (restore: make test-e2e-cli || return $?)
     diag_dns
     _hcp_rc=0
     make test-e2e-cli || _hcp_rc=$?
+
+    # TODO(dns-troubleshooting): Remove before merging to main.
+    kill "${_poller_pid:-}" 2>/dev/null || true
+    if [[ -n "${_poll_log:-}" && -s "${_poll_log:-/dev/null}" ]]; then
+        echo ""
+        echo "=== [route53-poll] A record timeline ==="
+        cat "$_poll_log"
+        echo "=== [route53-poll] end ==="
+        rm -f "$_poll_log"
+    fi
+
+    # TODO(dns-troubleshooting): Remove before merging to main.
     if [[ $_hcp_rc -ne 0 ]]; then
         echo "[diag] HCP test failed (exit ${_hcp_rc}) — running DNS diagnostics"
         diag_dns

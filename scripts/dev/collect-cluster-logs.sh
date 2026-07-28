@@ -213,6 +213,11 @@ collect_logs_for_cluster() {
 
     # Launch the log-collector task with namespace and S3 key overrides
     echo "  Launching log-collector task..."
+    # TODO(dns-troubleshooting): Remove DIAG_BASE_DOMAIN passthrough before merging to main.
+    local _base_domain_env=""
+    if [[ -n "${DIAG_BASE_DOMAIN:-}" ]]; then
+        _base_domain_env=",{\"name\": \"BASE_DOMAIN\", \"value\": \"${DIAG_BASE_DOMAIN}\"}"
+    fi
     local task_arn
     local run_task_output
     run_task_output=$(AWS_PAGER="" aws ecs run-task \
@@ -226,7 +231,7 @@ collect_logs_for_cluster() {
                 \"environment\": [
                     {\"name\": \"S3_BUCKET\", \"value\": \"$s3_bucket\"},
                     {\"name\": \"INSPECT_NAMESPACES\", \"value\": \"$namespaces\"},
-                    {\"name\": \"S3_KEY\", \"value\": \"$s3_key\"}
+                    {\"name\": \"S3_KEY\", \"value\": \"$s3_key\"}${_base_domain_env}
                 ]
             }]
         }") \

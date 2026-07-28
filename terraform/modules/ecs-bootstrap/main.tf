@@ -412,11 +412,16 @@ resource "aws_ecs_task_definition" "bootstrap" {
                 echo "  Pods:"
                 kubectl get pods -n hypershift-install 2>/dev/null \
                   || echo "    (no pods yet)"
-                echo "  Recent logs (last 30 lines):"
-                kubectl logs -n hypershift-install job/hypershift-install --tail=30 2>&1 \
-                  || kubectl logs -n hypershift-install \
-                       -l job-name=hypershift-install --tail=30 2>&1 \
-                  || echo "    (no logs available)"
+                echo "  Pod logs (last 50 lines each):"
+                for _hs_pod in $(kubectl get pods -n hypershift-install \
+                    -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+                  echo "  -- $${_hs_pod} --"
+                  kubectl logs -n hypershift-install "$${_hs_pod}" --tail=50 2>&1 || true
+                done
+                echo "  external-dns pods:"
+                kubectl get pods -n hypershift -l app=external-dns -o wide 2>/dev/null || true
+                echo "  external-dns logs (last 30 lines):"
+                kubectl logs -n hypershift -l app=external-dns --tail=30 2>&1 || true
                 echo "  --- [DIAG] end ---"
               fi
               sleep 15
