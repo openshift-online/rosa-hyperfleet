@@ -297,8 +297,18 @@ terraform init -reconfigure \
 # The connection is shared across runs and is removed from state before
 # destroy so it persists.
 echo "Importing CodeStar connection into Terraform state..."
-terraform import -var="github_repository=${GITHUB_REPOSITORY}" \
-    aws_codestarconnections_connection.github "$GITHUB_CONNECTION_ARN" 2>/dev/null || true
+_import_out=$(terraform import -var="github_repository=${GITHUB_REPOSITORY}" \
+    aws_codestarconnections_connection.github "$GITHUB_CONNECTION_ARN" 2>&1) || {
+    # "already managed" is fine — the connection was imported by a prior run
+    # sharing the same state key. Any other error is fatal.
+    if echo "$_import_out" | grep -q "Resource already managed"; then
+        echo "CodeStar connection already in Terraform state — skipping import"
+    else
+        echo "❌ terraform import failed:" >&2
+        echo "$_import_out" >&2
+        exit 1
+    fi
+}
 
 # Create tfvars file
 cat > terraform.tfvars <<EOF
