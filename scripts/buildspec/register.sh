@@ -70,7 +70,7 @@ fi
 # ~15 min) and initial ArgoCD sync (~10 min) have completed. Allow 40 minutes
 # so the Platform API has time to be deployed and reach a healthy state.
 set +e
-MAX_RETRIES=10
+MAX_RETRIES=80
 RETRY_DELAY=30
 RETRY_COUNT=0
 LIVE_OK=false

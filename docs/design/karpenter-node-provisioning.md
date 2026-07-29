@@ -25,9 +25,11 @@ were available for the Karpenter controller ServiceAccount:
 **Chosen**: IRSA for the Karpenter controller; EKS Pod Identity for all other workloads.
 
 **Rationale**: Karpenter v1 (1.13.0) ships with built-in IRSA support (ServiceAccount annotation
-set during `helm install` via `serviceAccount.annotations`). Using IRSA matches the upstream
-recommended installation pattern and minimizes bootstrap complexity — no additional configuration
-is required during the ECS bootstrap task.
+set during `helm install` via `serviceAccount.annotations`). EKS Pod Identity support in Karpenter
+requires a separate admission webhook and additional configuration that the upstream chart does not
+handle automatically. Using IRSA for Karpenter matches the upstream recommended installation
+pattern, minimizes bootstrap complexity, and avoids a separate admission controller dependency
+during the ECS bootstrap task.
 
 All other platform workloads (Thanos, Loki, Maestro Agent, AWS Load Balancer Controller, ZOA
 jobs) use EKS Pod Identity exclusively.
