@@ -202,7 +202,7 @@ The Platform API implements per-account rate limiting using the GCRA (Generic Ce
 
 **Data flow for Valkey endpoint**: Terraform output → `bootstrap-argocd.sh` (combines host:port) → ECS task env var → cluster secret annotation → ApplicationSet valuesObject → Helm values → `REDIS_ENDPOINT` env var on platform-api pods.
 
-**E2E test signal flow**: Terraform output (`hyperfleet_redis_endpoint`) → `ci/e2e-tests.sh` or `scripts/dev/ephemeral-env.sh` → `RATE_LIMIT_ENABLED` env var on the test runner → rate limit e2e tests run (otherwise skipped). The test runner does not connect to Valkey directly — it tests rate limiting via HTTP against the platform-api.
+**E2E test signal flow**: `ci/e2e-tests.sh` and `scripts/dev/ephemeral-env.sh` unconditionally set `RATE_LIMIT_ENABLED=true` on the test runner → rate limit e2e tests always run. The test runner does not connect to Valkey directly — it tests rate limiting via HTTP against the platform-api.
 
 ### Chai Bot Scheduled Tasks
 

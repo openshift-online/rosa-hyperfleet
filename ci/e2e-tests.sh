@@ -52,18 +52,7 @@ else
   echo "WARNING: RHOBS_API_URL not available — observability tests will be skipped"
 fi
 
-# Rate limiting signal for e2e tests.
-# The platform-api pods get RATE_LIMIT_ENABLED from Helm; the test runner
-# needs it too so the ratelimit test suite doesn't skip.
-if [[ -z "${RATE_LIMIT_ENABLED:-}" ]]; then
-  if [[ -n "${TF_OUTPUTS:-}" && -r "${TF_OUTPUTS:-}" ]]; then
-    _redis=$(jq -r '.hyperfleet_redis_endpoint.value // empty' "${TF_OUTPUTS}")
-    if [[ -n "$_redis" ]]; then
-      export RATE_LIMIT_ENABLED=true
-      echo "Rate limiting enabled (Valkey endpoint found in terraform outputs)"
-    fi
-  fi
-fi
+export RATE_LIMIT_ENABLED=true
 
 # Use the regional account profile for authenticated API calls
 export AWS_PROFILE="rrp-rc"

@@ -435,17 +435,9 @@ cmd_provision() {
             rhobs_api_url=$(jq -r '.rhobs_api_url.value // empty' "$tmpdir/tf-outputs.json" 2>/dev/null || true)
         fi
 
-        local rate_limit_enabled=""
-        if [[ -f "$tmpdir/tf-outputs.json" ]]; then
-            local _redis
-            _redis=$(jq -r '.hyperfleet_redis_endpoint.value // empty' "$tmpdir/tf-outputs.json" 2>/dev/null || true)
-            [[ -n "$_redis" ]] && rate_limit_enabled="true"
-        fi
-
         [[ -z "$region" ]]  || append_field "$ID" "REGION" "$region"
         [[ -z "$api_url" ]] || append_field "$ID" "API_URL" "$api_url"
         [[ -z "$rhobs_api_url" ]] || append_field "$ID" "RHOBS_API_URL" "$rhobs_api_url"
-        [[ -z "$rate_limit_enabled" ]] || append_field "$ID" "RATE_LIMIT_ENABLED" "$rate_limit_enabled"
 
         # Store ephemeral branch name so it survives branch swaps
         append_field "$ID" "EPH_BRANCH" "$(derive_eph_branch "$ID" "$branch")"
@@ -1017,15 +1009,11 @@ cmd_e2e() {
     local rhobs_api_url
     rhobs_api_url=$(get_field "$ENV_LINE" RHOBS_API_URL)
 
-    local rate_limit_enabled
-    rate_limit_enabled=$(get_field "$ENV_LINE" RATE_LIMIT_ENABLED)
-
     # Run tests
     echo "Running e2e tests..."
     echo "  ID:             $BUILD_ID"
     echo "  API_URL:        $api_url"
     echo "  RHOBS_API_URL:  ${rhobs_api_url:-<not set>}"
-    echo "  RATE_LIMIT:     ${rate_limit_enabled:-<not set>}"
     echo "  REGION:         $region"
     echo "  E2E_REF:        $e2e_ref"
     echo "  E2E_REPO:       $e2e_repo"
@@ -1045,7 +1033,7 @@ cmd_e2e() {
         -e "CLI_REF=${CLI_REF:-main}" \
         -e "CLI_REPO=${CLI_REPO:-}" \
         -e "E2E_SKIP_CLEANUP=${E2E_SKIP_CLEANUP:-}" \
-        -e "RATE_LIMIT_ENABLED=${rate_limit_enabled:-}" \
+        -e "RATE_LIMIT_ENABLED=true" \
         "$CI_IMAGE" \
         bash ci/e2e-tests.sh
 }
