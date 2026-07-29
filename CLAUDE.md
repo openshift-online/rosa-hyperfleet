@@ -185,22 +185,26 @@ The Platform API implements per-account rate limiting using the GCRA (Generic Ce
 
 **Key files (rosa-hyperfleet)**:
 
-| File                                                       | Purpose                                                                     |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `terraform/modules/elasticache-valkey/main.tf`             | ElastiCache Valkey replication group, KMS, security groups, parameter group |
-| `terraform/modules/elasticache-valkey/variables.tf`        | `cluster_id`, `vpc_id`, `node_type`, `engine_version`                       |
-| `terraform/modules/elasticache-valkey/outputs.tf`          | Valkey endpoint and port outputs                                            |
-| `scripts/bootstrap-argocd.sh`                              | Threads Valkey endpoint from Terraform outputs to ECS bootstrap env vars    |
-| `terraform/modules/ecs-bootstrap/main.tf`                  | Writes `redis_endpoint` annotation on the ArgoCD cluster secret             |
-| `config/templates/argocd-bootstrap/applicationset.yaml.j2` | Reads `redis_endpoint` annotation into Helm valuesObject                    |
-| `argocd/config/regional-cluster/platform-api/values.yaml`  | Rate limit config (routes, rates, burst), Valkey endpoint                   |
-| `argocd/config/regional-cluster/platform-api/templates/`   | Deployment, ratelimit-configmap, servicemonitor templates                   |
-| `argocd/config/regional-cluster/alerting-rules/templates/` | PrometheusRule CRs for rate limit alerts                                    |
-| `docs/design/rate-limiting-architecture.md`                | ADR: rate limiting design decisions                                         |
+| File                                                       | Purpose                                                                                                        |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `terraform/modules/elasticache-valkey/main.tf`             | ElastiCache Valkey replication group, KMS, security groups, parameter group                                    |
+| `terraform/modules/elasticache-valkey/variables.tf`        | `cluster_id`, `vpc_id`, `node_type`, `engine_version`                                                          |
+| `terraform/modules/elasticache-valkey/outputs.tf`          | Valkey endpoint and port outputs                                                                               |
+| `scripts/bootstrap-argocd.sh`                              | Threads Valkey endpoint from Terraform outputs to ECS bootstrap env vars                                       |
+| `terraform/modules/ecs-bootstrap/main.tf`                  | Writes `redis_endpoint` annotation on the ArgoCD cluster secret                                                |
+| `config/templates/argocd-bootstrap/applicationset.yaml.j2` | Reads `redis_endpoint` annotation into Helm valuesObject                                                       |
+| `argocd/config/regional-cluster/platform-api/values.yaml`  | Rate limit config (routes, rates, burst), Valkey endpoint                                                      |
+| `argocd/config/regional-cluster/platform-api/templates/`   | Deployment, ratelimit-configmap, servicemonitor templates                                                      |
+| `argocd/config/regional-cluster/alerting-rules/templates/` | PrometheusRule CRs for rate limit alerts                                                                       |
+| `docs/design/rate-limiting-architecture.md`                | ADR: rate limiting design decisions                                                                            |
+| `ci/e2e-tests.sh`                                          | Reads `hyperfleet_redis_endpoint` from Terraform outputs, exports `RATE_LIMIT_ENABLED` for the e2e test runner |
+| `scripts/dev/ephemeral-env.sh`                             | Stores `RATE_LIMIT_ENABLED` during provisioning, passes it to the e2e container                                |
 
-**Key files (rosa-hyperfleet-api)**: Rate limiting Go implementation lives in the API repo — `pkg/ratelimit/` (GCRA limiter, config loading), `pkg/middleware/ratelimit.go` (HTTP middleware), `cmd/rosa-regional-platform-api/main.go` (wiring).
+**Key files (rosa-hyperfleet-api)**: Rate limiting Go implementation lives in the API repo — `pkg/ratelimit/` (GCRA limiter, config loading), `pkg/middleware/ratelimit.go` (HTTP middleware), `cmd/rosa-regional-platform-api/main.go` (wiring). E2E tests live in `test/e2e-api/ratelimit_e2e_test.go` — they validate rate limiting purely over HTTP by reading `X-RateLimit-*` response headers.
 
 **Data flow for Valkey endpoint**: Terraform output → `bootstrap-argocd.sh` (combines host:port) → ECS task env var → cluster secret annotation → ApplicationSet valuesObject → Helm values → `REDIS_ENDPOINT` env var on platform-api pods.
+
+**E2E test signal flow**: Terraform output (`hyperfleet_redis_endpoint`) → `ci/e2e-tests.sh` or `scripts/dev/ephemeral-env.sh` → `RATE_LIMIT_ENABLED` env var on the test runner → rate limit e2e tests run (otherwise skipped). The test runner does not connect to Valkey directly — it tests rate limiting via HTTP against the platform-api.
 
 ### Chai Bot Scheduled Tasks
 
