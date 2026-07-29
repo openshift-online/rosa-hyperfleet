@@ -442,7 +442,6 @@ cmd_provision() {
             [[ -n "$_redis" ]] && rate_limit_enabled="true"
         fi
 
-        update_state "$ID" "ready"
         [[ -z "$region" ]]  || append_field "$ID" "REGION" "$region"
         [[ -z "$api_url" ]] || append_field "$ID" "API_URL" "$api_url"
         [[ -z "$rhobs_api_url" ]] || append_field "$ID" "RHOBS_API_URL" "$rhobs_api_url"
@@ -450,6 +449,7 @@ cmd_provision() {
 
         # Store ephemeral branch name so it survives branch swaps
         append_field "$ID" "EPH_BRANCH" "$(derive_eph_branch "$ID" "$branch")"
+        update_state "$ID" "ready"
 
         echo ""
         echo "Environment recorded in $ENVS_FILE."
