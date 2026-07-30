@@ -1,7 +1,7 @@
 # =============================================================================
 # EKS Cluster Configuration
 #
-# Creates a fully private EKS cluster with Auto Mode enabled.
+# Creates a fully private EKS cluster with OSS Karpenter compute.
 # Includes KMS encryption for secrets, proper networking,
 # and managed addons for a complete cluster deployment.
 # VPC and networking are provided as inputs from the vpc module.
@@ -111,30 +111,6 @@ resource "aws_eks_cluster" "main" {
     security_group_ids      = [var.cluster_security_group_id]
   }
 
-  compute_config {
-    enabled       = true
-    node_pools    = ["system"]
-    node_role_arn = aws_iam_role.eks_auto_mode_node.arn
-
-    # TODO: Enable IMDSv2 enforcement for security compliance
-    # node_pool_defaults configuration for launch template metadata_options
-    # is not yet supported in AWS provider 6.x for EKS Auto Mode.
-    # Will be implemented when provider support becomes available.
-    # See https://github.com/hashicorp/terraform-provider-aws/issues/40486
-  }
-
-  kubernetes_network_config {
-    elastic_load_balancing {
-      enabled = true
-    }
-  }
-
-  storage_config {
-    block_storage {
-      enabled = true
-    }
-  }
-
   enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 
   depends_on = [
@@ -142,6 +118,36 @@ resource "aws_eks_cluster" "main" {
     aws_cloudwatch_log_group.eks_cluster,
     aws_kms_key.eks_secrets
   ]
+
+  # Terminate Karpenter-provisioned EC2 instances before the cluster is deleted.
+  # Karpenter nodes are not in Terraform state, so they survive EKS deletion and
+  # block VPC/subnet teardown with DependencyViolation due to lingering ENIs.
+  # on_failure = continue so a missing AWS CLI or zero instances doesn't abort destroy.
+  provisioner "local-exec" {
+    when       = destroy
+    on_failure = continue
+    command    = <<-EOT
+      CLUSTER_NAME="${self.name}"
+      REGION=$(echo "${self.arn}" | cut -d: -f4)
+      echo "Terminating Karpenter EC2 instances for cluster: $CLUSTER_NAME"
+      INSTANCE_IDS=$(aws ec2 describe-instances \
+        --region "$REGION" \
+        --filters \
+          "Name=tag:aws:eks:cluster-name,Values=$CLUSTER_NAME" \
+          "Name=tag-key,Values=karpenter.sh/nodeclaim" \
+          "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+        --query 'Reservations[].Instances[].InstanceId' \
+        --output text)
+      if [ -z "$INSTANCE_IDS" ]; then
+        echo "No Karpenter-managed instances found."
+        exit 0
+      fi
+      echo "Terminating: $INSTANCE_IDS"
+      aws ec2 terminate-instances --region "$REGION" --instance-ids $INSTANCE_IDS
+      aws ec2 wait instance-terminated --region "$REGION" --instance-ids $INSTANCE_IDS
+      echo "Done."
+    EOT
+  }
 }
 
 # -----------------------------------------------------------------------------
@@ -163,16 +169,90 @@ resource "aws_eks_cluster" "main" {
 resource "aws_eks_addon" "coredns" {
   cluster_name = aws_eks_cluster.main.name
   addon_name   = "coredns"
+  depends_on   = [aws_eks_node_group.karpenter_bootstrap]
 }
 
 resource "aws_eks_addon" "metrics_server" {
   cluster_name = aws_eks_cluster.main.name
   addon_name   = "metrics-server"
+  depends_on   = [aws_eks_node_group.karpenter_bootstrap]
 }
 
 resource "aws_eks_addon" "pod_identity" {
   cluster_name = aws_eks_cluster.main.name
   addon_name   = "eks-pod-identity-agent"
+  depends_on   = [aws_eks_node_group.karpenter_bootstrap]
+}
+
+# -----------------------------------------------------------------------------
+# Karpenter Bootstrap Node Group
+#
+# AL2023 managed node group (t3.medium × 2, CriticalAddonsOnly:NoSchedule) that
+# provides fixed capacity for the Karpenter controller and VPC CNI daemonset
+# before any Karpenter-provisioned nodes exist. This breaks the bootstrap
+# deadlock: Karpenter cannot provision nodes for itself.
+#
+# No custom launch template: EKS managed node groups set IMDSv2 hop limit to 2
+# by default for AL2023, and managed node group auth is handled automatically
+# by EKS regardless of node name format.
+# -----------------------------------------------------------------------------
+
+resource "aws_eks_node_group" "karpenter_bootstrap" {
+  cluster_name    = aws_eks_cluster.main.name
+  node_group_name = "${local.cluster_id}-karpenter-bootstrap"
+  node_role_arn   = aws_iam_role.karpenter_node.arn
+  subnet_ids      = var.private_subnet_ids
+
+  ami_type       = "AL2023_x86_64_STANDARD"
+  instance_types = ["t3.medium"]
+
+  scaling_config {
+    desired_size = 2
+    min_size     = 2
+    max_size     = 2
+  }
+
+  taint {
+    key    = "CriticalAddonsOnly"
+    value  = "true"
+    effect = "NO_SCHEDULE"
+  }
+
+  tags = {
+    "karpenter.sh/discovery" = aws_eks_cluster.main.name
+  }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.karpenter_node_managed,
+    aws_eks_addon.vpc_cni,
+  ]
+}
+
+# -----------------------------------------------------------------------------
+# Explicit Core Addons (Karpenter mode only)
+#
+# bootstrap_self_managed_addons = false prevents EKS from auto-installing these.
+# Auto Mode clusters receive VPC CNI and kube-proxy from the managed control
+# plane; Karpenter clusters must declare them explicitly.
+# -----------------------------------------------------------------------------
+
+resource "aws_eks_addon" "vpc_cni" {
+  cluster_name = aws_eks_cluster.main.name
+  addon_name   = "vpc-cni"
+}
+
+resource "aws_eks_addon" "kube_proxy" {
+  cluster_name = aws_eks_cluster.main.name
+  addon_name   = "kube-proxy"
+
+  depends_on = [aws_eks_node_group.karpenter_bootstrap]
+}
+
+resource "aws_eks_addon" "ebs_csi" {
+  cluster_name = aws_eks_cluster.main.name
+  addon_name   = "aws-ebs-csi-driver"
+
+  depends_on = [aws_eks_node_group.karpenter_bootstrap, aws_eks_pod_identity_association.ebs_csi]
 }
 
 # AWS Secrets Store CSI Driver Provider (e.g. for Maestro agent secret mounting)
@@ -187,4 +267,6 @@ resource "aws_eks_addon" "aws_secrets_store_csi_driver_provider" {
       }
     }
   })
+
+  depends_on = [aws_eks_node_group.karpenter_bootstrap]
 }
