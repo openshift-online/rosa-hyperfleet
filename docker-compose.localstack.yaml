@@ -1,0 +1,37 @@
+# LocalStack development environment for ROSA HyperFleet.
+#
+# Emulates the multi-account AWS infrastructure locally so developers can test
+# the deployment pipeline without real AWS accounts or clusters.
+#
+# Usage:
+#   docker compose -f docker-compose.localstack.yaml up -d
+#   # or via Makefile:
+#   make localstack-up
+
+services:
+  localstack:
+    image: localstack/localstack:latest
+    container_name: rosa-hyperfleet-localstack
+    ports:
+      - "4566:4566" # LocalStack Gateway
+      - "4510-4559:4510-4559" # External service ports
+    environment:
+      # Enable all AWS services used by the ROSA HyperFleet platform.
+      - SERVICES=s3,dynamodb,ssm,sts,iam,route53,cloudformation,codepipeline,codebuild,eks,rds,ecr,ec2,elbv2,apigateway,acm,secretsmanager,kms,cloudwatch,sns,sqs,cloudtrail,elasticache,lambda,ecs,cloudfront,logs
+      - DEBUG=0
+      - PERSISTENCE=1
+      - DEFAULT_REGION=us-east-1
+      # Increase Lambda timeout for init scripts
+      - LAMBDA_EXECUTOR=local
+      # Docker socket for ECS/Lambda container support
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - "${LOCALSTACK_VOLUME_DIR:-./.localstack}:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./scripts/localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh:ro"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s

@@ -1,4 +1,4 @@
-.PHONY: help terraform-fmt terraform-init terraform-validate terraform-upgrade terraform-output-management terraform-output-regional helm-lint check-rendered-files promtool-test ephemeral-provision ephemeral-teardown ephemeral-resync ephemeral-list ephemeral-shell ephemeral-bastion-rc ephemeral-bastion-mc ephemeral-port-forward-rc ephemeral-port-forward-mc ephemeral-port-forward-rc-all ephemeral-port-forward-mc-all ephemeral-sre-ui ephemeral-e2e ephemeral-dump-env int-shell int-bastion-rc int-bastion-mc int-port-forward-rc int-port-forward-mc int-port-forward-rc-all int-port-forward-mc-all int-e2e int-dump-env check-docs check-default-tags pre-push render
+.PHONY: help terraform-fmt terraform-init terraform-validate terraform-upgrade terraform-output-management terraform-output-regional helm-lint check-rendered-files promtool-test ephemeral-provision ephemeral-teardown ephemeral-resync ephemeral-list ephemeral-shell ephemeral-bastion-rc ephemeral-bastion-mc ephemeral-port-forward-rc ephemeral-port-forward-mc ephemeral-port-forward-rc-all ephemeral-port-forward-mc-all ephemeral-sre-ui ephemeral-e2e ephemeral-dump-env int-shell int-bastion-rc int-bastion-mc int-port-forward-rc int-port-forward-mc int-port-forward-rc-all int-port-forward-mc-all int-e2e int-dump-env check-docs check-default-tags pre-push render localstack-up localstack-provision localstack-teardown localstack-shell localstack-status localstack-reset
 
 # =============================================================================
 # Local tool management
@@ -268,3 +268,27 @@ int-dump-env: ## Dump EKS must-gather and DB state from int env (CLUSTER=rc|mc)
 
 render: ## Render config templates
 	@uv run scripts/render.py
+
+# =============================================================================
+# LocalStack Local Development
+# =============================================================================
+# Local AWS emulation via LocalStack for testing the deployment pipeline
+# without real AWS accounts. See docs/localstack-testing.md for full guide.
+
+localstack-up: ## Start LocalStack services
+	@./scripts/localstack/localstack-env.sh up
+
+localstack-provision: ## Bootstrap the local AWS environment (starts LocalStack if needed)
+	@./scripts/localstack/localstack-env.sh provision
+
+localstack-teardown: ## Stop and clean up LocalStack
+	@./scripts/localstack/localstack-env.sh teardown
+
+localstack-shell: ## Interactive shell with AWS CLI against LocalStack
+	@./scripts/localstack/localstack-env.sh shell
+
+localstack-status: ## Show LocalStack service status
+	@./scripts/localstack/localstack-env.sh status
+
+localstack-reset: ## Full reset — destroy and recreate LocalStack environment
+	@./scripts/localstack/localstack-env.sh reset
