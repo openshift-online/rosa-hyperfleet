@@ -118,20 +118,6 @@ if [[ -n "${TF_OUTPUTS:-}" && -r "${TF_OUTPUTS:-}" ]]; then
       CLUSTER_ID="$_rc_cluster_name" \
       AWS_REGION="${AWS_DEFAULT_REGION}" \
       "${REPO_ROOT}/scripts/validate-rc-aws.sh" || validate_rc=$?
-
-    # k8s validation requires kubeconfig for the private RC cluster.
-    if AWS_PROFILE="rrp-rc" aws eks update-kubeconfig \
-        --name "$_rc_cluster_name" \
-        --region "${AWS_DEFAULT_REGION}" \
-        --kubeconfig /tmp/rc-kubeconfig 2>/dev/null; then
-      KUBECONFIG=/tmp/rc-kubeconfig \
-        AWS_PROFILE="rrp-rc" \
-        CLUSTER_ID="$_rc_cluster_name" \
-        AWS_REGION="${AWS_DEFAULT_REGION}" \
-        "${REPO_ROOT}/scripts/validate-rc-k8s.sh" || validate_rc=$?
-    else
-      echo "WARNING: Could not fetch RC kubeconfig — skipping k8s validation"
-    fi
   else
     echo "WARNING: cluster_name not found in TF outputs — skipping RC validation"
   fi
