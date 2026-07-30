@@ -17,8 +17,8 @@ platformApi:
   app:
     name: platform-api
     image:
-      repository: quay.io/cbusse_openshift/rosa-regional-platform-api
-      tag: "pgruntime"
+      repository: quay.io/redhat-user-workloads/rosa-tenant/platform-api
+      tag: "a3e8e9393242ac051947eaf9d803dcf48563977d"
       pullPolicy: Always
 
     # Application arguments
