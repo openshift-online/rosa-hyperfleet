@@ -142,22 +142,22 @@ resource "aws_ecs_task_definition" "bootstrap" {
               echo "✓ Karpenter already deployed, skipping"
             fi
 
-            # Always apply the EC2NodeClass and NodePool from the current chart.
-            # kubectl apply --server-side is idempotent — it patches in-place.
-            # The original skip-if-exists guard caused a bootstrap bug: the first
-            # run seeded the EC2NodeClass with the wrong IAM role name, and all
-            # subsequent runs silently kept the broken spec, so Karpenter could
-            # never provision nodes. ArgoCD eventually owns these resources, but
-            # we must ensure the correct spec is present before ArgoCD is up.
-            echo "Applying FIPS EC2NodeClass and workloads NodePool from chart..."
-            _NODEPOOL_VALUES="$REPO_DIR/deploy/$ENVIRONMENT/$REGION_DEPLOYMENT/argocd-values-$CLUSTER_TYPE.yaml"
-            _VALUES_FLAG=""
-            [ -f "$_NODEPOOL_VALUES" ] && _VALUES_FLAG="-f $_NODEPOOL_VALUES"
-            helm template eks-nodepool "$REPO_DIR/argocd/config/$CLUSTER_TYPE/eks-nodepool" \
-              --set global.cluster_name="$CLUSTER_NAME" \
-              $_VALUES_FLAG \
-              | kubectl apply --server-side -f -
-            echo "✓ FIPS EC2NodeClass and NodePool applied"
+            # Seed the FIPS NodePool only on first bootstrap. On subsequent
+            # runs (resync), ArgoCD owns this resource via the eks-nodepool
+            # chart — re-applying it creates SSA ownership conflicts.
+            if ! kubectl get nodepool workloads 2>/dev/null; then
+              echo "Applying FIPS EC2NodeClass and workloads NodePool from chart..."
+              _NODEPOOL_VALUES="$REPO_DIR/deploy/$ENVIRONMENT/$REGION_DEPLOYMENT/argocd-values-$CLUSTER_TYPE.yaml"
+              _VALUES_FLAG=""
+              [ -f "$_NODEPOOL_VALUES" ] && _VALUES_FLAG="-f $_NODEPOOL_VALUES"
+              helm template eks-nodepool "$REPO_DIR/argocd/config/$CLUSTER_TYPE/eks-nodepool" \
+                --set global.cluster_name="$CLUSTER_NAME" \
+                $_VALUES_FLAG \
+                | kubectl apply --server-side -f -
+              echo "✓ FIPS EC2NodeClass and NodePool applied"
+            else
+              echo "✓ FIPS NodePool already exists, skipping (managed by ArgoCD)"
+            fi
 
             # Pre-warm: provision one node now so EC2 API rate limiting from
             # Terraform surfaces as an ECS task failure (with automatic retry)
