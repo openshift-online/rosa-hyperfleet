@@ -95,30 +95,6 @@ resource "aws_ecs_task_definition" "log_collector" {
           done
           wait
 
-          # TODO(dns-troubleshooting): Remove before merging to main.
-          # DNS diagnostics from inside the VPC: Route53 A records and NS delegation.
-          # BASE_DOMAIN is injected at runtime by collect-cluster-logs.sh when DIAG_BASE_DOMAIN is set.
-          if [[ -n "$${BASE_DOMAIN:-}" ]]; then
-            echo ""
-            echo "=== DNS diagnostics from inside VPC ===" | tee /tmp/inspect-logs/dns-diag.txt
-            echo "Route53 A records in shard zone 0.$${BASE_DOMAIN}:" | tee -a /tmp/inspect-logs/dns-diag.txt
-            _dns_shard_id=$(aws route53 list-hosted-zones \
-                --query "HostedZones[?Name=='0.$${BASE_DOMAIN}.'].Id" \
-                --output text 2>/dev/null | head -1 | sed 's|/hostedzone/||')
-            if [[ -n "$_dns_shard_id" ]]; then
-                aws route53 list-resource-record-sets \
-                    --hosted-zone-id "$_dns_shard_id" \
-                    --query "ResourceRecordSets[?Type=='A'].[Name,TTL,ResourceRecords[0].Value]" \
-                    --output table 2>&1 | tee -a /tmp/inspect-logs/dns-diag.txt || true
-                echo "NS delegation for 0.$${BASE_DOMAIN} (resolved from inside VPC):" | tee -a /tmp/inspect-logs/dns-diag.txt
-                dig NS "0.$${BASE_DOMAIN}" +short 2>&1 | tee -a /tmp/inspect-logs/dns-diag.txt \
-                    || nslookup -type=NS "0.$${BASE_DOMAIN}" 2>&1 | tee -a /tmp/inspect-logs/dns-diag.txt || true
-            else
-                echo "Shard zone 0.$${BASE_DOMAIN} not found in Route53 (task in MC account — RC account access needed)" \
-                    | tee -a /tmp/inspect-logs/dns-diag.txt
-            fi
-          fi
-
           # Tar and upload to S3
           echo "Uploading to S3..."
           tar czf /tmp/inspect-logs.tar.gz -C /tmp inspect-logs
@@ -145,11 +121,6 @@ resource "aws_ecs_task_definition" "log_collector" {
           name  = "S3_KEY"
           value = "inspect-logs.tar.gz"
         },
-        {
-          # TODO(dns-troubleshooting): Remove before merging to main.
-          name  = "BASE_DOMAIN"
-          value = ""
-        }
       ]
 
       logConfiguration = {
@@ -240,26 +211,6 @@ resource "aws_iam_role_policy" "log_collector_s3" {
 # EKS Access — Grants the log-collector task role cluster admin access
 # =============================================================================
 
-# TODO(dns-troubleshooting): Remove before merging to main.
-# Allows the log-collector task to list Route53 zones and A records.
-# Only effective when the task runs in the RC account (zones live there).
-resource "aws_iam_role_policy" "log_collector_route53" {
-  name = "route53-read"
-  role = aws_iam_role.log_collector.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid    = "Route53Read"
-      Effect = "Allow"
-      Action = [
-        "route53:ListHostedZones",
-        "route53:ListResourceRecordSets",
-      ]
-      Resource = "*"
-    }]
-  })
-}
 
 resource "aws_eks_access_entry" "log_collector" {
   cluster_name  = var.cluster_name

@@ -391,7 +391,6 @@ resource "aws_ecs_task_definition" "bootstrap" {
           if [ "$${CLUSTER_TYPE:-}" = "management-cluster" ]; then
             echo "=== Waiting for hypershift Application to be Healthy (up to 30m) ==="
             _HS_DEADLINE=$((SECONDS + 1800))
-            _HS_DIAG_ITER=0
             until [ "$(kubectl get application hypershift -n argocd \
                 -o jsonpath='{.status.health.status}' 2>/dev/null)" = "Healthy" ]; do
               if [ $SECONDS -ge $_HS_DEADLINE ]; then
@@ -404,26 +403,6 @@ resource "aws_ecs_task_definition" "bootstrap" {
               _HS_MSG=$(kubectl get application hypershift -n argocd \
                 -o jsonpath='{.status.health.message}' 2>/dev/null || true)
               echo "  hypershift health: $${_HS_STATUS} ($(( _HS_DEADLINE - SECONDS ))s remaining)$${_HS_MSG:+ — $${_HS_MSG}}"
-              _HS_DIAG_ITER=$(( _HS_DIAG_ITER + 1 ))
-              if [ $(( _HS_DIAG_ITER % 4 )) -eq 1 ]; then
-                echo "  --- [DIAG] hypershift-install Job ($(( _HS_DIAG_ITER ))) ---"
-                kubectl get job hypershift-install -n hypershift-install 2>/dev/null \
-                  || echo "    (job not found yet — ArgoCD may still be syncing)"
-                echo "  Pods:"
-                kubectl get pods -n hypershift-install 2>/dev/null \
-                  || echo "    (no pods yet)"
-                echo "  Pod logs (last 50 lines each):"
-                for _hs_pod in $(kubectl get pods -n hypershift-install \
-                    -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
-                  echo "  -- $${_hs_pod} --"
-                  kubectl logs -n hypershift-install "$${_hs_pod}" --tail=50 2>&1 || true
-                done
-                echo "  external-dns pods:"
-                kubectl get pods -n hypershift -l app=external-dns -o wide 2>/dev/null || true
-                echo "  external-dns logs (last 30 lines):"
-                kubectl logs -n hypershift -l app=external-dns --tail=30 2>&1 || true
-                echo "  --- [DIAG] end ---"
-              fi
               sleep 15
             done
             echo "=== hypershift is Healthy ==="

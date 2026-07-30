@@ -148,23 +148,6 @@ if [ -n "${ENVIRONMENT_HOSTED_ZONE_ID:-}" ]; then
     export TF_VAR_environment_hosted_zone_id="${ENVIRONMENT_HOSTED_ZONE_ID}"
 fi
 
-# ── [DEBUG] DNS zone creation inputs ─────────────────────────────────────────
-echo "=== [DNS-DEBUG] RC Route53 zone inputs ==="
-echo "  AWS account (sts):    $(aws sts get-caller-identity --query Account --output text 2>&1)"
-echo "  DEPLOY_CONFIG_FILE:   ${DEPLOY_CONFIG_FILE}"
-_DBG_PROVISIONER_JSON="deploy/${ENVIRONMENT}/${TARGET_REGION}/pipeline-provisioner-inputs/terraform.json"
-echo "  Provisioner JSON:     ${_DBG_PROVISIONER_JSON}"
-if [ -f "${_DBG_PROVISIONER_JSON}" ]; then
-    echo "  .domain in provisioner JSON: $(jq -r '.domain // "(null)"' "${_DBG_PROVISIONER_JSON}")"
-else
-    echo "  Provisioner JSON NOT FOUND — ENVIRONMENT_DOMAIN will be empty"
-fi
-echo "  ENVIRONMENT_DOMAIN:   ${ENVIRONMENT_DOMAIN:-<unset>}"
-echo "  TF_VAR_environment_domain: ${TF_VAR_environment_domain:-<unset — no DNS zones will be created>}"
-echo "  TF_VAR_deployment_name:    ${TF_VAR_deployment_name:-<unset>}"
-echo "  TF_VAR_zone_shard_count:   ${TF_VAR_zone_shard_count:-<unset>}"
-echo "  Expected zone name:   ${TF_VAR_deployment_name:-<unset>}.${TF_VAR_environment_domain:-<unset>}"
-echo "=== [DNS-DEBUG] end ==="
 
 export TF_VAR_regional_id=$(jq -r '.regional_id' "$DEPLOY_CONFIG_FILE")
 export TF_VAR_environment=$(jq -r '.environment' "$DEPLOY_CONFIG_FILE")
@@ -191,23 +174,4 @@ if [ "${TERRAFORM_ACTION}" == "apply" ] && [ -f imports.sh ]; then
     source imports.sh
 fi
 
-echo "=== [DNS-DEBUG] Running: terraform ${TERRAFORM_ACTION} (account: $(aws sts get-caller-identity --query Account --output text 2>&1)) ==="
-
 terraform "${TERRAFORM_ACTION}" -auto-approve
-_TF_EXIT=$?
-
-echo "=== [DNS-DEBUG] Post-apply Route53 zone status ==="
-echo "  terraform exit code: ${_TF_EXIT}"
-if [ -n "${TF_VAR_environment_domain:-}" ]; then
-    echo "  terraform output regional_hosted_zone_id: $(terraform output -raw regional_hosted_zone_id 2>&1 || echo '<not available>')"
-    echo "  terraform output regional_name_servers:   $(terraform output -json regional_name_servers 2>&1 || echo '<not available>')"
-    echo "  Route53 zones matching '${TF_VAR_deployment_name:-}.${TF_VAR_environment_domain:-}' in RC account:"
-    aws route53 list-hosted-zones \
-        --query "HostedZones[?contains(Name, '${TF_VAR_deployment_name:-}')].{Name:Name,Id:Id,PrivateZone:Config.PrivateZone}" \
-        --output table 2>&1 || echo "  (aws route53 list-hosted-zones failed)"
-else
-    echo "  TF_VAR_environment_domain was empty — no DNS zone resources were declared; skipping Route53 check"
-fi
-echo "=== [DNS-DEBUG] end ==="
-
-[ "${_TF_EXIT}" -eq 0 ] || exit "${_TF_EXIT}"
