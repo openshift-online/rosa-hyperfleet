@@ -142,6 +142,9 @@ resource "aws_sns_topic" "specs" {
 }
 
 # Allow the hyperfleet-operator pod role to publish specs notifications.
+# The RC account root is also granted sns:Subscribe so that register.sh
+# (running as OrganizationAccountAccessRole) can wire the cross-account
+# subscription to the MC-side SQS queue without getting pending confirmation.
 resource "aws_sns_topic_policy" "specs" {
   arn = aws_sns_topic.specs.arn
 
@@ -155,6 +158,20 @@ resource "aws_sns_topic_policy" "specs" {
           AWS = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${local.hyperfleet_operator_role_name}"
         }
         Action   = "sns:Publish"
+        Resource = aws_sns_topic.specs.arn
+      },
+      {
+        # Allow the RC account to create the cross-account SQS subscription.
+        # register.sh runs as OrganizationAccountAccessRole (an RC account
+        # principal) and calls aws sns subscribe on this topic. Without an
+        # explicit Allow for sns:Subscribe the call returns pending confirmation
+        # even though the queue policy is correct.
+        Sid    = "AllowRCAccountSubscribe"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "sns:Subscribe"
         Resource = aws_sns_topic.specs.arn
       },
     ]
