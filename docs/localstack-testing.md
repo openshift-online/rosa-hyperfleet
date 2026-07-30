@@ -1,9 +1,13 @@
-# LocalStack Local Testing Environment
+# LocalStack Pro Local Testing Environment
 
-LocalStack provides a local AWS cloud emulation that allows developers to test
-the ROSA HyperFleet deployment pipeline without real AWS accounts or clusters.
-This environment mirrors the multi-account AWS setup using mock resources
-running in a Docker container.
+LocalStack Pro provides a local AWS cloud emulation that allows developers to
+test the ROSA HyperFleet deployment pipeline without real AWS accounts or
+clusters. This environment mirrors the multi-account AWS setup using mock
+resources running in a Docker container.
+
+> **Note:** This environment requires a
+> [LocalStack Pro](https://www.localstack.cloud/) subscription for full EKS
+> emulation, Lambda container image support, and IAM policy enforcement.
 
 ## Overview
 
@@ -21,15 +25,34 @@ The LocalStack environment emulates:
 
 ## Prerequisites
 
+- **LocalStack Pro auth token** — sign up at
+  [localstack.cloud](https://www.localstack.cloud/) and generate an API key at
+  [Account → API Keys](https://app.localstack.cloud/account/apikeys)
 - **Docker** or **Podman** with compose support (`docker compose`,
   `docker-compose`, or `podman-compose`)
 - **AWS CLI v2** (for the `localstack-shell` command)
 - **awslocal** (optional, for direct LocalStack interaction):
   `pip install awscli-local`
 
+## Setting Up Your Auth Token
+
+LocalStack Pro requires an authentication token. Set it in your shell before
+running any `make localstack-*` command:
+
+```bash
+# Add to your ~/.bashrc, ~/.zshrc, or similar:
+export LOCALSTACK_AUTH_TOKEN="ls-your-token-here"
+```
+
+The `localstack-env.sh` script checks for this variable and will refuse to
+start if it is missing.
+
 ## Quick Start
 
 ```bash
+# 0. Set your LocalStack Pro auth token (if not already in shell profile)
+export LOCALSTACK_AUTH_TOKEN="ls-your-token-here"
+
 # 1. Start LocalStack
 make localstack-up
 
@@ -52,7 +75,7 @@ make localstack-teardown
 graph TB
     subgraph Developer Machine
         subgraph "Docker / Podman"
-            LS["LocalStack Container<br/>localhost:4566"]
+            LS["LocalStack Pro Container<br/>localhost:4566<br/>(ENFORCE_IAM=1)"]
         end
 
         CLI["AWS CLI / awslocal"]
@@ -63,8 +86,8 @@ graph TB
         TF -->|"AWS_ENDPOINT_URL"| LS
     end
 
-    subgraph "LocalStack Services"
-        IAM["IAM<br/>Roles & Policies"]
+    subgraph "LocalStack Pro Services"
+        IAM["IAM<br/>Roles, Users &<br/>Policy Enforcement"]
         STS["STS<br/>Mock Accounts"]
         SSM["SSM<br/>Config Parameters"]
         S3["S3<br/>State Buckets"]
@@ -77,6 +100,8 @@ graph TB
         SM["Secrets Manager<br/>App Secrets"]
         CW["CloudWatch<br/>Log Groups"]
         SNS["SNS<br/>Alerting"]
+        EKS["EKS<br/>Cluster Emulation (Pro)"]
+        LAM["Lambda<br/>Container Images (Pro)"]
     end
 
     LS --- IAM
@@ -92,6 +117,8 @@ graph TB
     LS --- SM
     LS --- CW
     LS --- SNS
+    LS --- EKS
+    LS --- LAM
 
     RENDER -->|"Renders config/<br/>localstack/ env"| Deploy["deploy/localstack/"]
 
@@ -155,42 +182,113 @@ terraform plan
 terraform apply
 ```
 
+## IAM Enforcement
+
+This environment runs with `ENFORCE_IAM=1`, a LocalStack Pro feature that
+enforces IAM policies on every API call — just like real AWS. This means:
+
+- **Credentials matter.** The default `test`/`test` credentials used by
+  `awslocal` are mapped to an internal admin account. For scoped testing, use
+  the IAM users created by `init-aws.sh`.
+- **Policies are checked.** If a user or role lacks the required IAM
+  permission, the API call returns `AccessDeniedException` — exactly as AWS
+  would.
+- **Role assumption works.** `sts:AssumeRole` returns scoped temporary
+  credentials whose effective permissions are the intersection of the role
+  policy and the caller's permissions.
+
+### Pre-created IAM Users
+
+The `init-aws.sh` bootstrap creates IAM users with access keys for testing
+under enforcement. Credentials are stored in SSM at
+`/localstack/iam/<user>/access-key-id` and
+`/localstack/iam/<user>/secret-access-key`.
+
+| User                       | Policy              | Purpose                            |
+| -------------------------- | ------------------- | ---------------------------------- |
+| `localstack-central-admin` | AdministratorAccess | Central account pipeline admin     |
+| `localstack-rc-operator`   | AdministratorAccess | Regional cluster infrastructure    |
+| `localstack-mc-operator`   | AdministratorAccess | Management cluster infrastructure  |
+| `localstack-readonly`      | Custom read-only    | Least-privilege access testing     |
+
+To use a specific IAM user in the shell:
+
+```bash
+# Retrieve credentials from SSM
+ACCESS_KEY=$(awslocal ssm get-parameter \
+    --name /localstack/iam/localstack-readonly/access-key-id \
+    --with-decryption --query Parameter.Value --output text)
+SECRET_KEY=$(awslocal ssm get-parameter \
+    --name /localstack/iam/localstack-readonly/secret-access-key \
+    --with-decryption --query Parameter.Value --output text)
+
+# Use them
+AWS_ACCESS_KEY_ID=$ACCESS_KEY \
+AWS_SECRET_ACCESS_KEY=$SECRET_KEY \
+AWS_ENDPOINT_URL=http://localhost:4566 \
+    aws s3 ls  # succeeds — read-only policy allows s3:ListBucket
+
+AWS_ACCESS_KEY_ID=$ACCESS_KEY \
+AWS_SECRET_ACCESS_KEY=$SECRET_KEY \
+AWS_ENDPOINT_URL=http://localhost:4566 \
+    aws s3 mb s3://new-bucket  # fails — AccessDeniedException
+```
+
+### Disabling IAM Enforcement
+
+If IAM enforcement interferes with a specific test, you can disable it
+temporarily by setting `ENFORCE_IAM=0` in the `docker-compose.localstack.yaml`
+environment section and restarting LocalStack.
+
 ## Known Limitations
 
-1. **No real EKS clusters** — LocalStack's free tier provides mock EKS API
-   responses but does not run actual Kubernetes clusters. Use this environment
-   for testing Terraform plans, config rendering, and pipeline structure — not
-   for end-to-end cluster operations.
+1. **EKS is emulated, not real** — LocalStack Pro provides EKS API emulation
+   (create/describe/list clusters, node groups, OIDC providers) but does not
+   run actual Kubernetes control planes. Use this for testing Terraform plans
+   and config rendering — not for deploying workloads into EKS.
 
 2. **No real RDS** — Aurora/RDS APIs return mock responses. Database
    connectivity testing requires a separate PostgreSQL container.
 
-3. **IAM is not enforced** — LocalStack accepts any credentials and does not
-   enforce IAM policies. Use this for structural testing, not security
-   validation.
+3. **ElastiCache is limited** — LocalStack provides basic ElastiCache API
+   stubs but does not run a real Valkey/Redis instance.
 
-4. **ElastiCache is limited** — The free LocalStack image provides basic
-   ElastiCache API stubs but does not run a real Valkey/Redis instance.
-
-5. **CodePipeline/CodeBuild are stubs** — Pipeline executions are mocked and
+4. **CodePipeline/CodeBuild are stubs** — Pipeline executions are mocked and
    do not actually run build steps. Use this to test pipeline creation and
    configuration, not build execution.
 
-6. **No cross-account STS** — `sts:AssumeRole` calls succeed but do not
-   actually switch account context. All resources exist in a single namespace.
+5. **Cross-account STS is simplified** — `sts:AssumeRole` returns scoped
+   credentials but all resources exist in a single LocalStack namespace.
+   Account-level resource isolation is not fully enforced.
 
-7. **Persistence** — LocalStack state is persisted to `.localstack/` by
+6. **Persistence** — LocalStack state is persisted to `.localstack/` by
    default. Use `make localstack-reset` for a clean slate.
 
-8. **Network isolation** — Unlike real AWS, there is no network isolation
+7. **Network isolation** — Unlike real AWS, there is no network isolation
    between VPCs or accounts. All resources share the same LocalStack endpoint.
 
+8. **Pro token required** — The `localstack/localstack-pro` image requires a
+   valid `LOCALSTACK_AUTH_TOKEN`. Without it, the container will not start.
+
 ## Troubleshooting
+
+### "LOCALSTACK_AUTH_TOKEN is not set"
+
+```bash
+# Set the token in your current shell
+export LOCALSTACK_AUTH_TOKEN="ls-your-token-here"
+
+# Or add to your shell profile for persistence
+echo 'export LOCALSTACK_AUTH_TOKEN="ls-your-token-here"' >> ~/.bashrc
+```
+
+Get your token at
+[app.localstack.cloud/account/apikeys](https://app.localstack.cloud/account/apikeys).
 
 ### LocalStack fails to start
 
 ```bash
-# Check container logs
+# Check container logs (auth token issues appear here)
 docker logs rosa-hyperfleet-localstack
 
 # Verify Docker/Podman is running
@@ -198,6 +296,19 @@ docker info
 
 # Check for port conflicts on 4566
 lsof -i :4566
+```
+
+### AccessDeniedException from IAM enforcement
+
+With `ENFORCE_IAM=1`, API calls without sufficient IAM permissions are
+rejected. If you hit `AccessDeniedException`:
+
+```bash
+# Use awslocal (uses internal admin credentials, bypasses IAM)
+awslocal s3 ls
+
+# Or use one of the pre-created admin users
+# (see "IAM Enforcement" section above for credential retrieval)
 ```
 
 ### Init script fails

@@ -67,11 +67,28 @@ usage() {
     echo "  $0 teardown    # Clean up"
 }
 
+check_auth_token() {
+    if [[ -z "${LOCALSTACK_AUTH_TOKEN:-}" ]]; then
+        echo "⚠️  WARNING: LOCALSTACK_AUTH_TOKEN is not set." >&2
+        echo "   LocalStack Pro requires an auth token for EKS emulation," >&2
+        echo "   Lambda container support, and IAM enforcement." >&2
+        echo "" >&2
+        echo "   Set it with:" >&2
+        echo "     export LOCALSTACK_AUTH_TOKEN=<your-token>" >&2
+        echo "" >&2
+        echo "   Get a token at: https://app.localstack.cloud/account/apikeys" >&2
+        echo "" >&2
+        return 1
+    fi
+}
+
 preflight() {
     [[ -n "${COMPOSE_CMD}" ]] \
         || die "No compose command found. Install docker compose, docker-compose, or podman-compose."
     [[ -f "${REPO_ROOT}/${COMPOSE_FILE}" ]] \
         || die "Compose file not found: ${REPO_ROOT}/${COMPOSE_FILE}"
+    check_auth_token \
+        || die "LOCALSTACK_AUTH_TOKEN is required. See docs/localstack-testing.md for setup."
 }
 
 # Wait for LocalStack to become healthy

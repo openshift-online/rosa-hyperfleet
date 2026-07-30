@@ -73,8 +73,8 @@ EOF
         --tags "Key=Account,Value=${ACCOUNT_ID}" \
         --no-cli-pager 2>/dev/null || true
 
-    # Attach AdministratorAccess (LocalStack does not enforce policies, but
-    # this mirrors the real setup)
+    # Attach AdministratorAccess — with ENFORCE_IAM=1 enabled, this policy
+    # is actively enforced by LocalStack Pro.
     $AWSLOCAL iam attach-role-policy \
         --role-name "${ROLE_NAME}" \
         --policy-arn "arn:aws:iam::aws:policy/AdministratorAccess" \
@@ -91,6 +91,111 @@ for ROLE_SUFFIX in "pipeline-provisioner" "pipeline-regional" "pipeline-mc"; do
 done
 
 echo "  ✅ IAM roles created"
+echo ""
+
+# =============================================================================
+# IAM Users — Service accounts for IAM-enforced access
+# =============================================================================
+# With ENFORCE_IAM=1, LocalStack Pro enforces IAM policies on every API call.
+# We create per-account IAM users with access keys and appropriate policies so
+# that the pipeline, CLI, and tests can authenticate with scoped permissions.
+
+echo "--- IAM Users (for IAM enforcement) ---"
+
+# Helper: create an IAM user, generate access keys, and attach a policy.
+create_iam_user() {
+    local user_name="$1"
+    local policy_arn="$2"
+    local description="$3"
+
+    echo "  Creating IAM user: ${user_name} (${description})"
+
+    $AWSLOCAL iam create-user \
+        --user-name "${user_name}" \
+        --tags "Key=Description,Value=${description}" \
+        --no-cli-pager 2>/dev/null || true
+
+    # Create access keys (idempotent — if keys exist, skip)
+    local key_output
+    key_output=$($AWSLOCAL iam create-access-key \
+        --user-name "${user_name}" \
+        --query 'AccessKey.[AccessKeyId,SecretAccessKey]' \
+        --output text --no-cli-pager 2>/dev/null) || true
+
+    if [ -n "${key_output}" ]; then
+        local access_key secret_key
+        access_key=$(echo "${key_output}" | awk '{print $1}')
+        secret_key=$(echo "${key_output}" | awk '{print $2}')
+        echo "    Access Key: ${access_key}"
+        echo "    Secret Key: ${secret_key:0:8}..."
+
+        # Store credentials in SSM so other scripts/tests can retrieve them
+        $AWSLOCAL ssm put-parameter \
+            --name "/localstack/iam/${user_name}/access-key-id" \
+            --value "${access_key}" \
+            --type SecureString \
+            --overwrite --no-cli-pager 2>/dev/null || true
+        $AWSLOCAL ssm put-parameter \
+            --name "/localstack/iam/${user_name}/secret-access-key" \
+            --value "${secret_key}" \
+            --type SecureString \
+            --overwrite --no-cli-pager 2>/dev/null || true
+    fi
+
+    $AWSLOCAL iam attach-user-policy \
+        --user-name "${user_name}" \
+        --policy-arn "${policy_arn}" \
+        --no-cli-pager 2>/dev/null || true
+    echo "    Policy: ${policy_arn}"
+}
+
+# Central account admin — full access for pipeline orchestration
+create_iam_user "localstack-central-admin" \
+    "arn:aws:iam::aws:policy/AdministratorAccess" \
+    "Central account admin"
+
+# RC account operator — manages regional cluster infrastructure
+create_iam_user "localstack-rc-operator" \
+    "arn:aws:iam::aws:policy/AdministratorAccess" \
+    "RC account operator"
+
+# MC account operator — manages management cluster infrastructure
+create_iam_user "localstack-mc-operator" \
+    "arn:aws:iam::aws:policy/AdministratorAccess" \
+    "MC account operator"
+
+# Read-only user — for testing least-privilege access patterns
+READONLY_POLICY_ARN="arn:aws:iam::000000000001:policy/localstack-readonly"
+$AWSLOCAL iam create-policy \
+    --policy-name "localstack-readonly" \
+    --policy-document '{
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "s3:GetObject",
+                    "s3:ListBucket",
+                    "ssm:GetParameter",
+                    "ssm:GetParametersByPath",
+                    "dynamodb:GetItem",
+                    "dynamodb:Query",
+                    "dynamodb:Scan",
+                    "sts:GetCallerIdentity",
+                    "iam:GetUser",
+                    "iam:ListRoles"
+                ],
+                "Resource": "*"
+            }
+        ]
+    }' \
+    --no-cli-pager 2>/dev/null || true
+
+create_iam_user "localstack-readonly" \
+    "${READONLY_POLICY_ARN}" \
+    "Read-only test user"
+
+echo "  ✅ IAM users created"
 echo ""
 
 # =============================================================================
@@ -436,6 +541,15 @@ echo "    Central:   ${CENTRAL_ACCOUNT}"
 echo "    RC:        ${RC_ACCOUNT}"
 echo "    MC:        ${MC_ACCOUNT}"
 echo "    Customer:  ${CUSTOMER_ACCOUNT}"
+echo ""
+echo "  IAM enforcement: ENABLED (ENFORCE_IAM=1)"
+echo "  IAM policies are actively checked on every API call."
+echo ""
+echo "  IAM Users (credentials stored in SSM /localstack/iam/<user>/):"
+echo "    localstack-central-admin  — Full admin (pipeline orchestration)"
+echo "    localstack-rc-operator    — Full admin (regional cluster ops)"
+echo "    localstack-mc-operator    — Full admin (management cluster ops)"
+echo "    localstack-readonly       — Read-only (least-privilege testing)"
 echo ""
 echo "  Use 'awslocal' or set AWS_ENDPOINT_URL=http://localhost:4566"
 echo "  to interact with LocalStack services."

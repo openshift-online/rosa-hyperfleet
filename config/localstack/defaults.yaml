@@ -1,8 +1,11 @@
-# LocalStack local development environment
+# LocalStack Pro local development environment
 #
-# This environment targets a LocalStack instance running on the developer's
+# This environment targets a LocalStack Pro instance running on the developer's
 # machine. All AWS API calls are routed to http://localhost:4566 and use mock
 # account IDs created by scripts/localstack/init-aws.sh.
+#
+# Requires: LOCALSTACK_AUTH_TOKEN set in the host environment.
+# Features: Full EKS emulation, Lambda container images, IAM enforcement.
 #
 # See docs/localstack-testing.md for setup and usage.
 

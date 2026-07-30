@@ -3,14 +3,19 @@
 # Emulates the multi-account AWS infrastructure locally so developers can test
 # the deployment pipeline without real AWS accounts or clusters.
 #
+# Requires LocalStack Pro for full EKS emulation, Lambda container image
+# support, and IAM policy enforcement. Set LOCALSTACK_AUTH_TOKEN in your
+# environment before starting (see docs/localstack-testing.md).
+#
 # Usage:
+#   export LOCALSTACK_AUTH_TOKEN=<your-token>
 #   docker compose -f docker-compose.localstack.yaml up -d
 #   # or via Makefile:
 #   make localstack-up
 
 services:
   localstack:
-    image: localstack/localstack:latest
+    image: localstack/localstack-pro:latest
     container_name: rosa-hyperfleet-localstack
     ports:
       - "4566:4566" # LocalStack Gateway
@@ -21,9 +26,14 @@ services:
       - DEBUG=0
       - PERSISTENCE=1
       - DEFAULT_REGION=us-east-1
-      # Increase Lambda timeout for init scripts
-      - LAMBDA_EXECUTOR=local
-      # Docker socket for ECS/Lambda container support
+      # LocalStack Pro auth token (required — see docs/localstack-testing.md)
+      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN:?Set LOCALSTACK_AUTH_TOKEN to your LocalStack Pro API key}
+      # IAM policy enforcement — Pro feature, enabled so IAM policies are
+      # actually tested against real permission checks.
+      - ENFORCE_IAM=1
+      # Use docker executor for Lambda — Pro supports container image Lambdas
+      - LAMBDA_EXECUTOR=docker
+      # Docker socket for ECS/EKS/Lambda container support
       - DOCKER_HOST=unix:///var/run/docker.sock
     volumes:
       - "${LOCALSTACK_VOLUME_DIR:-./.localstack}:/var/lib/localstack"
