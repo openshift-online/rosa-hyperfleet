@@ -19,12 +19,10 @@ hyperfleet:
       prune: true
       selfHeal: true
 
-  sqsQueueUrlPrefix: ""
-
   helmValues:
     image:
       repository: quay.io/psav/hyperfleet-operator
-      tag: "9ae1c99"
+      tag: "bfe629c"
       pullPolicy: Always
 
     replicaCount: 2
