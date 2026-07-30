@@ -7,6 +7,9 @@
 # support, and IAM policy enforcement. Set LOCALSTACK_AUTH_TOKEN in your
 # environment before starting (see docs/localstack-testing.md).
 #
+# Podman users: activate the podman socket first:
+#   systemctl --user enable --now podman.socket
+#
 # Usage:
 #   export LOCALSTACK_AUTH_TOKEN=<your-token>
 #   docker compose -f docker-compose.localstack.yaml up -d
@@ -17,6 +20,8 @@ services:
   localstack:
     image: localstack/localstack-pro:latest
     container_name: rosa-hyperfleet-localstack
+    user: "0"
+    privileged: true
     ports:
       - "4566:4566" # LocalStack Gateway
       - "4510-4559:4510-4559" # External service ports
@@ -31,17 +36,25 @@ services:
       # IAM policy enforcement — Pro feature, enabled so IAM policies are
       # actually tested against real permission checks.
       - ENFORCE_IAM=1
-      # Use docker executor for Lambda — Pro supports container image Lambdas
-      - LAMBDA_EXECUTOR=docker
-      # Docker socket for ECS/EKS/Lambda container support
+      # Use docker-reuse executor for Lambda — reuses containers across
+      # invocations for faster cold starts (requires socket access).
+      - LAMBDA_EXECUTOR=docker-reuse
+      # Docker socket for ECS/EKS/Lambda container support.
+      # Podman provides a compatible socket; see DOCKER_SOCK below.
       - DOCKER_HOST=unix:///var/run/docker.sock
     volumes:
-      - "${LOCALSTACK_VOLUME_DIR:-./.localstack}:/var/lib/localstack"
-      - "/var/run/docker.sock:/var/run/docker.sock"
-      - "./scripts/localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh:ro"
+      - "${LOCALSTACK_VOLUME_DIR:-./.localstack}:/var/lib/localstack:Z"
+      - "${DOCKER_SOCK:-/run/user/1000/podman/podman.sock}:/var/run/docker.sock:Z"
+      - "./scripts/localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh:ro,Z"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
+    networks:
+      - localstack-net
+
+networks:
+  localstack-net:
+    driver: bridge

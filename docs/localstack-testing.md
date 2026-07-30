@@ -3,7 +3,7 @@
 LocalStack Pro provides a local AWS cloud emulation that allows developers to
 test the ROSA HyperFleet deployment pipeline without real AWS accounts or
 clusters. This environment mirrors the multi-account AWS setup using mock
-resources running in a Docker container.
+resources running in a container managed by Podman.
 
 > **Note:** This environment requires a
 > [LocalStack Pro](https://www.localstack.cloud/) subscription for full EKS
@@ -13,26 +13,42 @@ resources running in a Docker container.
 
 The LocalStack environment emulates:
 
-- **Multi-account structure** — Central, RC, MC, and Customer account IDs with
+- **Multi-account structure** -- Central, RC, MC, and Customer account IDs with
   IAM roles
-- **SSM parameters** — Config values expected by the rendering pipeline
-- **Route53 hosted zones** — DNS zones for the local domain
-- **S3 buckets** — Terraform state storage
-- **VPC infrastructure** — Basic networking with subnets and security groups
-- **CodePipeline/CodeBuild** — Mock CI/CD pipelines
-- **DynamoDB** — kube-applier tables
-- **KMS, Secrets Manager, SNS, CloudWatch** — Supporting services
+- **SSM parameters** -- Config values expected by the rendering pipeline
+- **Route53 hosted zones** -- DNS zones for the local domain
+- **S3 buckets** -- Terraform state storage
+- **VPC infrastructure** -- Basic networking with subnets and security groups
+- **CodePipeline/CodeBuild** -- Mock CI/CD pipelines
+- **DynamoDB** -- kube-applier tables
+- **KMS, Secrets Manager, SNS, CloudWatch** -- Supporting services
 
 ## Prerequisites
 
-- **LocalStack Pro auth token** — sign up at
+- **LocalStack Pro auth token** -- sign up at
   [localstack.cloud](https://www.localstack.cloud/) and generate an API key at
-  [Account → API Keys](https://app.localstack.cloud/account/apikeys)
-- **Docker** or **Podman** with compose support (`docker compose`,
-  `docker-compose`, or `podman-compose`)
+  [Account -> API Keys](https://app.localstack.cloud/account/apikeys)
+- **Podman** with `docker compose` support (podman provides Docker CLI
+  compatibility natively; no separate `podman-compose` needed)
 - **AWS CLI v2** (for the `localstack-shell` command)
 - **awslocal** (optional, for direct LocalStack interaction):
   `pip install awscli-local`
+
+### Podman Socket Setup
+
+LocalStack needs access to the container engine socket for Lambda, ECS, and EKS
+emulation. Activate the podman user socket before starting:
+
+```bash
+systemctl --user enable --now podman.socket
+```
+
+The `make localstack-up` target does this automatically. If you use a
+non-default socket path, set `DOCKER_SOCK`:
+
+```bash
+export DOCKER_SOCK=/run/user/$(id -u)/podman/podman.sock
+```
 
 ## Setting Up Your Auth Token
 
@@ -74,7 +90,7 @@ make localstack-teardown
 ```mermaid
 graph TB
     subgraph Developer Machine
-        subgraph "Docker / Podman"
+        subgraph "Podman"
             LS["LocalStack Pro Container<br/>localhost:4566<br/>(ENFORCE_IAM=1)"]
         end
 
@@ -185,13 +201,13 @@ terraform apply
 ## IAM Enforcement
 
 This environment runs with `ENFORCE_IAM=1`, a LocalStack Pro feature that
-enforces IAM policies on every API call — just like real AWS. This means:
+enforces IAM policies on every API call -- just like real AWS. This means:
 
 - **Credentials matter.** The default `test`/`test` credentials used by
   `awslocal` are mapped to an internal admin account. For scoped testing, use
   the IAM users created by `init-aws.sh`.
 - **Policies are checked.** If a user or role lacks the required IAM
-  permission, the API call returns `AccessDeniedException` — exactly as AWS
+  permission, the API call returns `AccessDeniedException` -- exactly as AWS
   would.
 - **Role assumption works.** `sts:AssumeRole` returns scoped temporary
   credentials whose effective permissions are the intersection of the role
@@ -204,12 +220,12 @@ under enforcement. Credentials are stored in SSM at
 `/localstack/iam/<user>/access-key-id` and
 `/localstack/iam/<user>/secret-access-key`.
 
-| User                       | Policy              | Purpose                            |
-| -------------------------- | ------------------- | ---------------------------------- |
-| `localstack-central-admin` | AdministratorAccess | Central account pipeline admin     |
-| `localstack-rc-operator`   | AdministratorAccess | Regional cluster infrastructure    |
-| `localstack-mc-operator`   | AdministratorAccess | Management cluster infrastructure  |
-| `localstack-readonly`      | Custom read-only    | Least-privilege access testing     |
+| User                       | Policy              | Purpose                           |
+| -------------------------- | ------------------- | --------------------------------- |
+| `localstack-central-admin` | AdministratorAccess | Central account pipeline admin    |
+| `localstack-rc-operator`   | AdministratorAccess | Regional cluster infrastructure   |
+| `localstack-mc-operator`   | AdministratorAccess | Management cluster infrastructure |
+| `localstack-readonly`      | Custom read-only    | Least-privilege access testing    |
 
 To use a specific IAM user in the shell:
 
@@ -226,12 +242,12 @@ SECRET_KEY=$(awslocal ssm get-parameter \
 AWS_ACCESS_KEY_ID=$ACCESS_KEY \
 AWS_SECRET_ACCESS_KEY=$SECRET_KEY \
 AWS_ENDPOINT_URL=http://localhost:4566 \
-    aws s3 ls  # succeeds — read-only policy allows s3:ListBucket
+    aws s3 ls  # succeeds -- read-only policy allows s3:ListBucket
 
 AWS_ACCESS_KEY_ID=$ACCESS_KEY \
 AWS_SECRET_ACCESS_KEY=$SECRET_KEY \
 AWS_ENDPOINT_URL=http://localhost:4566 \
-    aws s3 mb s3://new-bucket  # fails — AccessDeniedException
+    aws s3 mb s3://new-bucket  # fails -- AccessDeniedException
 ```
 
 ### Disabling IAM Enforcement
@@ -242,32 +258,32 @@ environment section and restarting LocalStack.
 
 ## Known Limitations
 
-1. **EKS is emulated, not real** — LocalStack Pro provides EKS API emulation
+1. **EKS is emulated, not real** -- LocalStack Pro provides EKS API emulation
    (create/describe/list clusters, node groups, OIDC providers) but does not
    run actual Kubernetes control planes. Use this for testing Terraform plans
-   and config rendering — not for deploying workloads into EKS.
+   and config rendering -- not for deploying workloads into EKS.
 
-2. **No real RDS** — Aurora/RDS APIs return mock responses. Database
+2. **No real RDS** -- Aurora/RDS APIs return mock responses. Database
    connectivity testing requires a separate PostgreSQL container.
 
-3. **ElastiCache is limited** — LocalStack provides basic ElastiCache API
+3. **ElastiCache is limited** -- LocalStack provides basic ElastiCache API
    stubs but does not run a real Valkey/Redis instance.
 
-4. **CodePipeline/CodeBuild are stubs** — Pipeline executions are mocked and
+4. **CodePipeline/CodeBuild are stubs** -- Pipeline executions are mocked and
    do not actually run build steps. Use this to test pipeline creation and
    configuration, not build execution.
 
-5. **Cross-account STS is simplified** — `sts:AssumeRole` returns scoped
+5. **Cross-account STS is simplified** -- `sts:AssumeRole` returns scoped
    credentials but all resources exist in a single LocalStack namespace.
    Account-level resource isolation is not fully enforced.
 
-6. **Persistence** — LocalStack state is persisted to `.localstack/` by
+6. **Persistence** -- LocalStack state is persisted to `.localstack/` by
    default. Use `make localstack-reset` for a clean slate.
 
-7. **Network isolation** — Unlike real AWS, there is no network isolation
+7. **Network isolation** -- Unlike real AWS, there is no network isolation
    between VPCs or accounts. All resources share the same LocalStack endpoint.
 
-8. **Pro token required** — The `localstack/localstack-pro` image requires a
+8. **Pro token required** -- The `localstack/localstack-pro` image requires a
    valid `LOCALSTACK_AUTH_TOKEN`. Without it, the container will not start.
 
 ## Troubleshooting
@@ -291,11 +307,27 @@ Get your token at
 # Check container logs (auth token issues appear here)
 docker logs rosa-hyperfleet-localstack
 
-# Verify Docker/Podman is running
-docker info
+# Verify Podman is running and the socket is active
+systemctl --user status podman.socket
 
 # Check for port conflicts on 4566
 lsof -i :4566
+```
+
+### Podman socket issues
+
+If LocalStack cannot reach the container engine socket:
+
+```bash
+# Activate the podman socket
+systemctl --user enable --now podman.socket
+
+# Verify the socket exists
+ls -la /run/user/$(id -u)/podman/podman.sock
+
+# If using a custom socket path, set DOCKER_SOCK before starting:
+export DOCKER_SOCK=/path/to/your/podman.sock
+make localstack-up
 ```
 
 ### AccessDeniedException from IAM enforcement

@@ -274,8 +274,10 @@ render: ## Render config templates
 # =============================================================================
 # Local AWS emulation via LocalStack for testing the deployment pipeline
 # without real AWS accounts. See docs/localstack-testing.md for full guide.
+# Uses podman with 'docker compose' (podman provides docker CLI compatibility).
 
 localstack-up: ## Start LocalStack services
+	@systemctl --user enable --now podman.socket 2>/dev/null || true
 	@./scripts/localstack/localstack-env.sh up
 
 localstack-provision: ## Bootstrap the local AWS environment (starts LocalStack if needed)

@@ -4,7 +4,7 @@
 #
 # Manages a LocalStack-based local development environment that emulates the
 # multi-account AWS infrastructure. Similar in spirit to ephemeral-env.sh but
-# runs entirely on the developer's machine using Docker.
+# runs entirely on the developer's machine using Podman (or Docker).
 #
 # Typically invoked via Makefile targets (make localstack-up, etc.)
 # but can be run directly: ./scripts/localstack/localstack-env.sh up
@@ -24,18 +24,19 @@ CONTAINER_NAME="rosa-hyperfleet-localstack"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-# Detect container engine (prefer podman, fall back to docker)
-CONTAINER_ENGINE="${CONTAINER_ENGINE:-$(command -v podman 2>/dev/null || command -v docker 2>/dev/null || true)}"
+# Activate podman socket if available (required for container-in-container
+# support used by Lambda, ECS, and EKS emulation).
+activate_podman_socket() {
+    if command -v podman >/dev/null 2>&1; then
+        systemctl --user enable --now podman.socket 2>/dev/null || true
+    fi
+}
 
-# Compose command — prefer 'docker compose' (v2 plugin), fall back to
-# 'docker-compose' (standalone), and support podman-compose.
+# Compose command — use 'docker compose' (v2 plugin). Podman supports
+# this natively via podman-docker compatibility.
 detect_compose_cmd() {
-    if command -v podman-compose >/dev/null 2>&1 && [[ "${CONTAINER_ENGINE}" == *podman* ]]; then
-        echo "podman-compose"
-    elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
         echo "docker compose"
-    elif command -v docker-compose >/dev/null 2>&1; then
-        echo "docker-compose"
     else
         echo ""
     fi
@@ -69,7 +70,7 @@ usage() {
 
 check_auth_token() {
     if [[ -z "${LOCALSTACK_AUTH_TOKEN:-}" ]]; then
-        echo "⚠️  WARNING: LOCALSTACK_AUTH_TOKEN is not set." >&2
+        echo "WARNING: LOCALSTACK_AUTH_TOKEN is not set." >&2
         echo "   LocalStack Pro requires an auth token for EKS emulation," >&2
         echo "   Lambda container support, and IAM enforcement." >&2
         echo "" >&2
@@ -84,27 +85,24 @@ check_auth_token() {
 
 preflight() {
     [[ -n "${COMPOSE_CMD}" ]] \
-        || die "No compose command found. Install docker compose, docker-compose, or podman-compose."
+        || die "No compose command found. Install podman (with docker compose support) or Docker."
     [[ -f "${REPO_ROOT}/${COMPOSE_FILE}" ]] \
         || die "Compose file not found: ${REPO_ROOT}/${COMPOSE_FILE}"
     check_auth_token \
         || die "LOCALSTACK_AUTH_TOKEN is required. See docs/localstack-testing.md for setup."
 }
 
-# Wait for LocalStack to become healthy
+# Wait for LocalStack to become healthy (timeout 120s)
 wait_for_localstack() {
-    local max_wait=60
-    local waited=0
     echo "Waiting for LocalStack to be ready..."
-    while [ $waited -lt $max_wait ]; do
-        if curl -sf "${LOCALSTACK_ENDPOINT}/_localstack/health" >/dev/null 2>&1; then
-            echo "  ✅ LocalStack is ready"
-            return 0
-        fi
-        sleep 2
-        waited=$((waited + 2))
-    done
-    die "LocalStack did not become ready within ${max_wait}s"
+    if ! timeout 120 bash -c "
+        until curl -sf ${LOCALSTACK_ENDPOINT}/_localstack/health > /dev/null 2>&1; do
+            sleep 2
+        done
+    "; then
+        die "LocalStack did not become ready within 120s"
+    fi
+    echo "  LocalStack is ready"
 }
 
 # =============================================================================
@@ -113,6 +111,7 @@ wait_for_localstack() {
 
 cmd_up() {
     preflight
+    activate_podman_socket
     echo "Starting LocalStack..."
     echo "  Compose file: ${COMPOSE_FILE}"
     echo "  Endpoint:     ${LOCALSTACK_ENDPOINT}"
@@ -150,7 +149,7 @@ cmd_provision() {
     fi
 
     echo ""
-    echo "  ✅ LocalStack environment provisioned."
+    echo "  LocalStack environment provisioned."
     echo ""
     echo "  Next steps:"
     echo "    make localstack-shell   # Interactive AWS CLI shell"
@@ -164,7 +163,7 @@ cmd_teardown() {
     cd "${REPO_ROOT}"
     ${COMPOSE_CMD} -f "${COMPOSE_FILE}" down -v
 
-    echo "  ✅ LocalStack stopped and volumes removed."
+    echo "  LocalStack stopped and volumes removed."
 }
 
 cmd_status() {
@@ -175,13 +174,13 @@ cmd_status() {
     echo ""
 
     if ! curl -sf "${LOCALSTACK_ENDPOINT}/_localstack/health" >/dev/null 2>&1; then
-        echo "  Status: ❌ NOT RUNNING"
+        echo "  Status: NOT RUNNING"
         echo ""
         echo "  Start with: make localstack-up"
         return 1
     fi
 
-    echo "  Status: ✅ RUNNING"
+    echo "  Status: RUNNING"
     echo ""
 
     # Fetch and display service health
@@ -195,8 +194,8 @@ try:
     data = json.load(sys.stdin)
     services = data.get('services', {})
     for svc, status in sorted(services.items()):
-        icon = '✅' if status in ('running', 'available') else '⚠️'
-        print(f'    {icon} {svc}: {status}')
+        icon = 'OK' if status in ('running', 'available') else 'WARN'
+        print(f'    [{icon}] {svc}: {status}')
 except (json.JSONDecodeError, KeyError):
     print('    (could not parse health response)')
 " 2>/dev/null || echo "    (python3 not available for health parsing)"
@@ -222,7 +221,7 @@ cmd_reset() {
     cmd_up
 
     echo ""
-    echo "  ✅ LocalStack environment reset complete."
+    echo "  LocalStack environment reset complete."
 }
 
 cmd_shell() {
