@@ -100,6 +100,43 @@ platform_rc=0
 zoa_rc=0
 hcp_rc=0
 monitoring_rc=0
+validate_rc=0
+
+# --- Infrastructure Validation (RC) ---
+# Runs only for ephemeral environments where TF_OUTPUTS is available. Validates
+# that Karpenter, SQS, and related AWS resources were provisioned correctly.
+# MC validation is skipped here because MC cluster IDs are not in regional TF
+# outputs; run scripts/validate-mc-{aws,k8s}.sh manually or from the MC
+# provisioning pipeline with the MC AWS profile.
+if [[ -n "${TF_OUTPUTS:-}" && -r "${TF_OUTPUTS:-}" ]]; then
+  echo ""
+  echo "=== RC Infrastructure Validation ==="
+  echo ""
+  _rc_cluster_name="$(jq -r '.cluster_name.value // empty' "${TF_OUTPUTS}")"
+  if [[ -n "$_rc_cluster_name" ]]; then
+    AWS_PROFILE="rrp-rc" \
+      CLUSTER_ID="$_rc_cluster_name" \
+      AWS_REGION="${AWS_DEFAULT_REGION}" \
+      "${REPO_ROOT}/scripts/validate-rc-aws.sh" || validate_rc=$?
+
+    # k8s validation requires kubeconfig for the private RC cluster.
+    if AWS_PROFILE="rrp-rc" aws eks update-kubeconfig \
+        --name "$_rc_cluster_name" \
+        --region "${AWS_DEFAULT_REGION}" \
+        --kubeconfig /tmp/rc-kubeconfig 2>/dev/null; then
+      KUBECONFIG=/tmp/rc-kubeconfig \
+        AWS_PROFILE="rrp-rc" \
+        CLUSTER_ID="$_rc_cluster_name" \
+        AWS_REGION="${AWS_DEFAULT_REGION}" \
+        "${REPO_ROOT}/scripts/validate-rc-k8s.sh" || validate_rc=$?
+    else
+      echo "WARNING: Could not fetch RC kubeconfig — skipping k8s validation"
+    fi
+  else
+    echo "WARNING: cluster_name not found in TF outputs — skipping RC validation"
+  fi
+fi
+
 make test-e2e-api || platform_rc=$?
 
 # Get regional account ID for CLI tests
@@ -138,6 +175,82 @@ else
   echo "WARNING: No rrp-customer profile available — skipping HCP creation tests"
 fi
 
+diag_dns() {
+    local cluster_api_host="${1:-}"
+    echo ""
+    echo "=== [DIAG] DNS / external-dns state ==="
+
+    local mc_kube_ok=false
+    local mc_cluster="${CLUSTER_PREFIX:-}mc01"
+    if AWS_PROFILE="rrp-mc" aws eks update-kubeconfig \
+            --name "$mc_cluster" \
+            --kubeconfig /tmp/mc-kubeconfig 2>&1; then
+        mc_kube_ok=true
+    else
+        echo "[diag] Could not fetch MC kubeconfig for ${mc_cluster} — skipping kubectl checks"
+    fi
+
+    if [[ "$mc_kube_ok" == "true" ]]; then
+        echo "[diag] external-dns pods:"
+        KUBECONFIG=/tmp/mc-kubeconfig \
+            kubectl get pods -n hypershift -l app.kubernetes.io/name=external-dns \
+            -o wide 2>&1 || true
+
+        echo "[diag] DNSEndpoint CRs:"
+        KUBECONFIG=/tmp/mc-kubeconfig \
+            kubectl get dnsendpoints.externaldns.k8s.io -A 2>&1 || true
+
+        echo "[diag] external-dns logs (last 80 lines, errors/warnings only):"
+        KUBECONFIG=/tmp/mc-kubeconfig \
+            kubectl logs -n hypershift \
+            -l app.kubernetes.io/name=external-dns \
+            --tail=80 --prefix 2>&1 | grep -iE "error|denied|zone|record|endpoint|Route53|warn|fail" || \
+        KUBECONFIG=/tmp/mc-kubeconfig \
+            kubectl logs -n hypershift \
+            -l app.kubernetes.io/name=external-dns \
+            --tail=80 --prefix 2>&1 || true
+
+        echo "[diag] Pod Identity associations for external-dns SA:"
+        AWS_PROFILE="rrp-mc" aws eks list-pod-identity-associations \
+            --cluster-name "$mc_cluster" \
+            --namespace hypershift 2>&1 || true
+    fi
+
+    echo "[diag] Route53 hosted zones in RC account:"
+    AWS_PROFILE="rrp-rc" aws route53 list-hosted-zones \
+        --query 'HostedZones[*].[Name,Id,Config.PrivateZone]' \
+        --output table 2>&1 || true
+
+    local base_domain
+    base_domain=$(echo "${BASE_URL:-}" | sed 's|https\?://||;s|/.*||;s|^[^.]*\.||')
+    if [[ -n "$base_domain" ]]; then
+        echo "[diag] NS records for base domain ${base_domain}:"
+        dig NS "${base_domain}" +short 2>&1 || nslookup -type=NS "${base_domain}" 2>&1 || true
+    fi
+
+    if [[ -n "$cluster_api_host" ]]; then
+        echo "[diag] DNS resolution for: ${cluster_api_host}"
+        dig A "${cluster_api_host}" +short 2>&1 || \
+            nslookup "${cluster_api_host}" 2>&1 || true
+
+        echo "[diag] Route53 A record for: ${cluster_api_host}"
+        local cluster_label
+        cluster_label=$(echo "$cluster_api_host" | cut -d. -f2)
+        AWS_PROFILE="rrp-rc" aws route53 list-hosted-zones \
+            --query "HostedZones[?contains(Name, '${cluster_label}')].Id" \
+            --output text 2>&1 | while read -r zone_id; do
+                [[ -n "$zone_id" ]] || continue
+                AWS_PROFILE="rrp-rc" aws route53 list-resource-record-sets \
+                    --hosted-zone-id "$zone_id" \
+                    --query "ResourceRecordSets[?Name=='${cluster_api_host}.']" \
+                    --output json 2>&1 || true
+        done || true
+    fi
+
+    echo "=== [DIAG] end ==="
+    echo ""
+}
+
 if [[ "$_have_customer_creds" == "true" ]]; then
   test_hcp_creation() {
     echo ""
@@ -174,9 +287,16 @@ if [[ "$_have_customer_creds" == "true" ]]; then
       export E2E_LABEL_FILTER='!cleanup'
     fi
 
-    make test-e2e-cli || return $?
+    diag_dns
 
-    echo "HCP creation test completed for: ${HCP_CLUSTER_NAME}"
+    _hcp_rc=0
+    make test-e2e-cli || _hcp_rc=$?
+    if [[ $_hcp_rc -ne 0 ]]; then
+        _api_host="api.${HCP_CLUSTER_NAME}.${AWS_DEFAULT_REGION:-us-east-1}.rosa.devshift.net"
+        echo "[diag] HCP test failed (exit ${_hcp_rc}) — re-running DNS diagnostics for: ${_api_host}"
+        diag_dns "$_api_host"
+    fi
+    return $_hcp_rc
   }
 
   test_hcp_creation || hcp_rc=$?
@@ -205,7 +325,7 @@ if [[ $platform_rc -ne 0 ]] || [[ $zoa_rc -ne 0 ]] || [[ $monitoring_rc -ne 0 ]]
 fi
 
 echo ""
-echo "E2E results: platform=$platform_rc zoa=$zoa_rc hcp=$hcp_rc monitoring=$monitoring_rc"
-if [[ $platform_rc -ne 0 ]] || [[ $zoa_rc -ne 0 ]] || [[ $hcp_rc -ne 0 ]] || [[ $monitoring_rc -ne 0 ]]; then
+echo "E2E results: validate=$validate_rc platform=$platform_rc zoa=$zoa_rc hcp=$hcp_rc monitoring=$monitoring_rc"
+if [[ $validate_rc -ne 0 ]] || [[ $platform_rc -ne 0 ]] || [[ $zoa_rc -ne 0 ]] || [[ $hcp_rc -ne 0 ]] || [[ $monitoring_rc -ne 0 ]]; then
     exit 1
 fi
