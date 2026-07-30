@@ -119,10 +119,12 @@ resource "aws_ecs_task_definition" "bootstrap" {
             # EC2NodeClass CRDs (karpenter.sh/v1, karpenter.k8s.aws/v1) don't
             # exist until Karpenter is installed. ArgoCD adopts this release
             # via its self-managed Karpenter Application after bootstrap.
-            _KARPENTER_READY=$(kubectl get deployment karpenter -n kube-system \
-              -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)
-            if [ -z "$_KARPENTER_READY" ] || [ "$_KARPENTER_READY" -lt 1 ]; then
+            if ! helm status karpenter -n kube-system 2>/dev/null | grep -q "^STATUS: deployed"; then
               echo "Installing Karpenter $KARPENTER_VERSION..."
+              if [ -z "$${KARPENTER_QUEUE_URL:-}" ]; then
+                echo "ERROR: KARPENTER_QUEUE_URL is not set — required when KARPENTER_CONTROLLER_ROLE_ARN is provided" >&2
+                exit 1
+              fi
               _KARPENTER_QUEUE_NAME=$(basename "$KARPENTER_QUEUE_URL")
               helm upgrade --install karpenter \
                 oci://public.ecr.aws/karpenter/karpenter \
@@ -137,7 +139,7 @@ resource "aws_ecs_task_definition" "bootstrap" {
                 --wait --timeout=5m
               echo "✓ Karpenter installed"
             else
-              echo "✓ Karpenter ready (readyReplicas=$_KARPENTER_READY), skipping"
+              echo "✓ Karpenter already deployed, skipping"
             fi
 
             # Always apply the EC2NodeClass and NodePool from the current chart.
@@ -209,7 +211,11 @@ resource "aws_ecs_task_definition" "bootstrap" {
           # does a clean initial install with all pods created from scratch.
           if helm status argocd -n argocd 2>/dev/null | grep -q "^STATUS: failed\|^STATUS: pending"; then
             echo "ArgoCD Helm release is in a broken state, uninstalling for clean reinstall..."
-            helm uninstall argocd -n argocd 2>/dev/null || true
+            if ! helm uninstall argocd -n argocd; then
+              echo "ERROR: helm uninstall argocd failed — cannot recover from broken release" >&2
+              helm status argocd -n argocd >&2 || true
+              exit 1
+            fi
             kubectl wait --for=delete pod --all -n argocd --timeout=120s 2>/dev/null || true
           fi
 
@@ -235,7 +241,7 @@ resource "aws_ecs_task_definition" "bootstrap" {
               kubectl annotate -n argocd "$_RES" \
                 "meta.helm.sh/release-name=argocd" \
                 "meta.helm.sh/release-namespace=argocd" \
-                --overwrite 2>/dev/null || true
+                --overwrite || true
             done || true
           done
 
@@ -391,8 +397,14 @@ resource "aws_ecs_task_definition" "bootstrap" {
           if [ "$${CLUSTER_TYPE:-}" = "management-cluster" ]; then
             echo "=== Waiting for hypershift Application to be Healthy (up to 30m) ==="
             _HS_DEADLINE=$((SECONDS + 1800))
-            until [ "$(kubectl get application hypershift -n argocd \
-                -o jsonpath='{.status.health.status}' 2>/dev/null)" = "Healthy" ]; do
+            until _HS_HEALTH=$(kubectl get application hypershift -n argocd \
+                -o jsonpath='{.status.health.status}' 2>/tmp/hs-err) \
+                && [ "$${_HS_HEALTH}" = "Healthy" ]; do
+              if grep -qiE "unable to connect|connection refused|i/o timeout|no such host" /tmp/hs-err 2>/dev/null; then
+                echo "ERROR: kubectl cannot reach the API server — cannot wait for hypershift:" >&2
+                cat /tmp/hs-err >&2
+                exit 1
+              fi
               if [ $SECONDS -ge $_HS_DEADLINE ]; then
                 echo "ERROR: hypershift Application not Healthy after 30 minutes" >&2
                 kubectl get application hypershift -n argocd -o yaml 2>/dev/null || true
