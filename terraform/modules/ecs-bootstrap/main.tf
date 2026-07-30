@@ -159,47 +159,6 @@ resource "aws_ecs_task_definition" "bootstrap" {
               echo "✓ FIPS NodePool already exists, skipping (managed by ArgoCD)"
             fi
 
-            # Pre-warm: provision one node now so EC2 API rate limiting from
-            # Terraform surfaces as an ECS task failure (with automatic retry)
-            # rather than a silent cascade after ArgoCD is installed.
-            echo "Pre-warming Karpenter: provisioning one node before ArgoCD install..."
-            kubectl delete pod karpenter-prewarm -n kube-system --ignore-not-found=true
-            kubectl apply -f - <<-PREWARM_EOF
-            apiVersion: v1
-            kind: Pod
-            metadata:
-              name: karpenter-prewarm
-              namespace: kube-system
-              labels:
-                app: karpenter-prewarm
-            spec:
-              containers:
-              - name: pause
-                image: public.ecr.aws/eks-distro/kubernetes/pause:3.9
-                resources:
-                  requests:
-                    cpu: 100m
-                    memory: 128Mi
-              terminationGracePeriodSeconds: 0
-          PREWARM_EOF
-            if ! kubectl wait pod karpenter-prewarm -n kube-system --for=condition=Ready --timeout=8m; then
-              echo "=== PREWARM TIMEOUT — diagnostic dump ==="
-              echo "--- EC2NodeClass fips ---"
-              kubectl get ec2nodeclass fips -o yaml 2>/dev/null || true
-              echo "--- NodePools ---"
-              kubectl get nodepool -o yaml 2>/dev/null || true
-              echo "--- NodeClaims ---"
-              kubectl get nodeclaims -o yaml 2>/dev/null || true
-              echo "--- Karpenter controller logs (last 200 lines) ---"
-              kubectl logs -n kube-system -l app.kubernetes.io/name=karpenter --tail=200 --since=15m 2>/dev/null || true
-              echo "--- Prewarm pod events ---"
-              kubectl describe pod karpenter-prewarm -n kube-system 2>/dev/null || true
-              echo "--- All nodes ---"
-              kubectl get nodes -o wide 2>/dev/null || true
-              exit 1
-            fi
-            kubectl delete pod karpenter-prewarm -n kube-system --wait=false
-            echo "✓ Karpenter node provisioned, proceeding with ArgoCD install"
           fi
 
           # If a previous bootstrap run failed mid-install, the Helm release is
