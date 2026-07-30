@@ -161,13 +161,21 @@ fi
 # Both subscriptions are created here — after API registration succeeds — because
 # this is the first point in the pipeline where all four resources are guaranteed
 # to exist:
-#   Stage 1 (Deploy MC):                    MC SQS + MC SNS created
+#   Stage 1 (Deploy MC):                      MC SQS + MC SNS created
 #   Stage 2 (Provision-KubeApplier-DynamoDB): RC SNS + RC SQS created
-#   Stage 4 (Register, this script):        safe to subscribe
+#   Stage 4 (Register, this script):          safe to subscribe
 #
-# This script already runs under RC account credentials (use_rc_account above).
-# The MC status topic policy grants sns:Subscribe to the RC account
-# (AllowRCAccountSubscribe), so both subscriptions can be created from here.
+# AWS only auto-confirms an SNS→SQS subscription when the caller is from the
+# same account as the queue.  The two subscriptions therefore need different
+# caller identities:
+#
+#   Specs  (RC SNS → MC SQS): call subscribe from the MC account, which owns
+#     the specs SQS queue.  The RC specs topic policy grants sns:Subscribe to
+#     the MC account root (AllowMCAccountSubscribe).
+#
+#   Status (MC SNS → RC SQS): call subscribe from the RC account, which owns
+#     the status SQS queues.  The MC status topic policy grants sns:Subscribe
+#     to the RC account root (AllowRCAccountSubscribe).
 #
 # AWS automatically removes subscriptions when their SNS topic is deleted, so
 # no explicit teardown is needed — Terraform destroying a topic cleans up its
@@ -178,7 +186,9 @@ SPECS_QUEUE_ARN="arn:aws:sqs:${TARGET_REGION}:${TARGET_ACCOUNT_ID}:${CLUSTER_ID}
 STATUS_TOPIC_ARN="arn:aws:sns:${TARGET_REGION}:${TARGET_ACCOUNT_ID}:${CLUSTER_ID}-status-notifications"
 OPERATOR_REPLICA_COUNT=$(jq -r '.operator_replica_count // 3' "$DEPLOY_CONFIG_FILE")
 
-echo "Subscribing specs queue to specs topic"
+# Specs subscription: must be called from the MC account (queue owner).
+echo "Subscribing specs queue to specs topic (as MC account)"
+use_mc_account
 aws sns subscribe \
     --topic-arn "$SPECS_TOPIC_ARN" \
     --protocol sqs \
@@ -186,7 +196,9 @@ aws sns subscribe \
     --attributes '{"RawMessageDelivery":"true"}' \
     --region "$TARGET_REGION"
 
-echo "Subscribing ${OPERATOR_REPLICA_COUNT} operator replica queue(s) to status topic"
+# Status subscriptions: must be called from the RC account (queue owner).
+echo "Subscribing ${OPERATOR_REPLICA_COUNT} operator replica queue(s) to status topic (as RC account)"
+use_rc_account
 for i in $(seq 0 $((OPERATOR_REPLICA_COUNT - 1))); do
     STATUS_QUEUE_ARN="arn:aws:sqs:${TARGET_REGION}:${RESOLVED_REGIONAL_ACCOUNT_ID}:${RC_REGIONAL_ID}-hyperfleet-operator-${i}"
     echo "  Subscribing replica ${i}: ${STATUS_QUEUE_ARN}"

@@ -142,9 +142,12 @@ resource "aws_sns_topic" "specs" {
 }
 
 # Allow the hyperfleet-operator pod role to publish specs notifications.
-# The RC account root is also granted sns:Subscribe so that register.sh
-# (running as OrganizationAccountAccessRole) can wire the cross-account
-# subscription to the MC-side SQS queue without getting pending confirmation.
+# The MC account root is also granted sns:Subscribe so that register.sh
+# (running as OrganizationAccountAccessRole in the MC account) can create the
+# cross-account subscription and have it auto-confirmed. AWS only auto-confirms
+# SNS→SQS subscriptions when the caller is from the same account as the queue;
+# since the specs SQS queue is in the MC account, the subscribe call must come
+# from the MC account.
 resource "aws_sns_topic_policy" "specs" {
   arn = aws_sns_topic.specs.arn
 
@@ -161,15 +164,16 @@ resource "aws_sns_topic_policy" "specs" {
         Resource = aws_sns_topic.specs.arn
       },
       {
-        # Allow the RC account to create the cross-account SQS subscription.
-        # register.sh runs as OrganizationAccountAccessRole (an RC account
-        # principal) and calls aws sns subscribe on this topic. Without an
-        # explicit Allow for sns:Subscribe the call returns pending confirmation
-        # even though the queue policy is correct.
-        Sid    = "AllowRCAccountSubscribe"
+        # Allow the MC account to create the cross-account SQS subscription.
+        # register.sh assumes OrganizationAccountAccessRole in the MC account
+        # before calling aws sns subscribe on this topic. AWS only auto-confirms
+        # an SNS→SQS subscription when the subscriber caller is from the same
+        # account as the queue — so the subscribe call must come from the MC
+        # account (which owns the specs SQS queue), not the RC account.
+        Sid    = "AllowMCAccountSubscribe"
         Effect = "Allow"
         Principal = {
-          AWS = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:root"
+          AWS = "arn:${data.aws_partition.current.partition}:iam::${var.mc_aws_account_id}:root"
         }
         Action   = "sns:Subscribe"
         Resource = aws_sns_topic.specs.arn
