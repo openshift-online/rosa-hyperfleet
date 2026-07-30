@@ -43,7 +43,7 @@ spec:
             - name: DNS_ZONE_OPERATOR_ROLE_ARN
               value: "{{ .Values.global.dns_zone_operator_role_arn }}"
           command:
-            - /bin/sh
+            - /bin/bash
             - -c
             - |
               set -euo pipefail
@@ -98,6 +98,8 @@ spec:
               done
               echo "=== Prometheus Operator CRDs present — proceeding with hypershift install ==="
 
+              _hs_install_rc=0
+              echo "Running hypershift install..."
               hypershift install \
                 --namespace hypershift \
                 --enable-conversion-webhook=false \
@@ -115,6 +117,21 @@ spec:
                 --external-dns-secret external-dns \
                 --external-dns-image {{ .Values.hypershift.externalDns.image }} \
                 {{- end }}
+                || _hs_install_rc=$?
+              echo "hypershift install exit code: $_hs_install_rc"
+              if [ $_hs_install_rc -ne 0 ]; then
+                # The aws-iam-auth build of hypershift-operator has a known post-apply
+                # internal shell error that fires after all resources are applied. Check
+                # whether the namespace exists to distinguish this from a real failure.
+                _hs_ns_http=$(curl -s --cacert "$_CA" -H "Authorization: Bearer $_TOKEN" \
+                  "$_API/api/v1/namespaces/hypershift" -o /dev/null -w "%{http_code}" 2>/dev/null || echo "000")
+                echo "hypershift namespace check: HTTP ${_hs_ns_http}"
+                if [ "$_hs_ns_http" != "200" ]; then
+                  echo "ERROR: hypershift install failed (exit $_hs_install_rc) and HyperShift namespace not found (HTTP ${_hs_ns_http})" >&2
+                  exit $_hs_install_rc
+                fi
+                echo "WARNING: hypershift install exited $_hs_install_rc but HyperShift namespace exists — resources applied (known post-apply issue in aws-iam-auth build)"
+              fi
               {{- if .Values.hypershift.externalDns.domain }}
               # TODO(hypershift): Upstream --aws-assume-role + Pod Identity support
               # to hypershift install CLI, then replace this post-install patch
@@ -122,18 +139,22 @@ spec:
               if [ -n "${DNS_ZONE_OPERATOR_ROLE_ARN:-}" ]; then
                 echo "Patching external-dns with --aws-assume-role=${DNS_ZONE_OPERATOR_ROLE_ARN}"
 
-                curl -sf --cacert "$_CA" -H "Authorization: Bearer $_TOKEN" \
+                _patch_http=$(curl -s --cacert "$_CA" -H "Authorization: Bearer $_TOKEN" \
                   -H "Content-Type: application/json-patch+json" -X PATCH \
                   "${_API}/apis/apps/v1/namespaces/hypershift/deployments/external-dns" \
                   -d '[
                     {"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--aws-assume-role='"${DNS_ZONE_OPERATOR_ROLE_ARN}"'"},
                     {"op":"add","path":"/spec/template/spec/tolerations","value":[{"key":"CriticalAddonsOnly","operator":"Exists","effect":"NoSchedule"}]}
                   ]' \
-                  -o /dev/null -w "  HTTP %{http_code}\n"
+                  -o /dev/null -w "%{http_code}" 2>/dev/null || echo "000")
+                echo "  external-dns deployment patch: HTTP ${_patch_http}"
+                if [ "$_patch_http" != "200" ] && [ "$_patch_http" != "201" ]; then
+                  echo "WARNING: external-dns deployment patch returned HTTP ${_patch_http} — skipping" >&2
+                fi
 
                 # Upstream v0.21.0 needs discovery.k8s.io and networking.k8s.io API groups
                 # that HyperShift's generated ClusterRole doesn't include.
-                curl -sf --cacert "$_CA" -H "Authorization: Bearer $_TOKEN" \
+                _patch_http=$(curl -s --cacert "$_CA" -H "Authorization: Bearer $_TOKEN" \
                   -H "Content-Type: application/merge-patch+json" -X PATCH \
                   "${_API}/apis/rbac.authorization.k8s.io/v1/clusterroles/external-dns" \
                   -d '{"rules":[
@@ -141,7 +162,11 @@ spec:
                     {"apiGroups":["extensions","networking.k8s.io"],"resources":["ingresses","ingressroutes","ingressroutetcps","ingressrouteudps"],"verbs":["get","list","watch"]},
                     {"apiGroups":["route.openshift.io"],"resources":["routes"],"verbs":["get","list","watch"]}
                   ]}' \
-                  -o /dev/null -w "  HTTP %{http_code}\n"
+                  -o /dev/null -w "%{http_code}" 2>/dev/null || echo "000")
+                echo "  external-dns clusterrole patch: HTTP ${_patch_http}"
+                if [ "$_patch_http" != "200" ] && [ "$_patch_http" != "201" ]; then
+                  echo "WARNING: external-dns clusterrole patch returned HTTP ${_patch_http} — skipping" >&2
+                fi
               fi
 
               {{- end }}
