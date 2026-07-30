@@ -25,21 +25,6 @@ spec:
               mountPath: /mnt/secrets-store
               readOnly: true
           env:
-            - name: OIDC_BUCKET_NAME
-              valueFrom:
-                secretKeyRef:
-                  name: hypershift-config-env
-                  key: OIDC_BUCKET_NAME
-            - name: OIDC_BUCKET_REGION
-              valueFrom:
-                secretKeyRef:
-                  name: hypershift-config-env
-                  key: OIDC_BUCKET_REGION
-            - name: OIDC_WRITER_ROLE_ARN
-              valueFrom:
-                secretKeyRef:
-                  name: hypershift-config-env
-                  key: OIDC_WRITER_ROLE_ARN
             - name: DNS_ZONE_OPERATOR_ROLE_ARN
               value: "{{ .Values.global.dns_zone_operator_role_arn }}"
           command:
@@ -48,6 +33,11 @@ spec:
             - |
               set -euo pipefail
               mkdir -p /tmp/aws
+
+              # Read OIDC configuration from CSI-mounted Secrets Manager secret
+              OIDC_BUCKET_NAME=$(cat /mnt/secrets-store/oidcBucketName)
+              OIDC_BUCKET_REGION=$(cat /mnt/secrets-store/oidcBucketRegion)
+              OIDC_WRITER_ROLE_ARN=$(cat /mnt/secrets-store/oidcWriterRoleArn)
 
               # Private platform creds — Pod Identity provides MC-account credentials
               echo -e "[default]\n# pod identity handles auth" > /tmp/aws/private-creds
@@ -108,8 +98,8 @@ spec:
                 --private-platform AWS \
                 --aws-private-creds /tmp/aws/private-creds \
                 --aws-private-region {{ .Values.hypershift.region }} \
-                --oidc-storage-provider-s3-bucket-name $(OIDC_BUCKET_NAME) \
-                --oidc-storage-provider-s3-region $(OIDC_BUCKET_REGION) \
+                --oidc-storage-provider-s3-bucket-name "${OIDC_BUCKET_NAME}" \
+                --oidc-storage-provider-s3-region "${OIDC_BUCKET_REGION}" \
                 --oidc-storage-provider-s3-credentials /tmp/aws/oidc-creds \
                 {{- if .Values.hypershift.externalDns.domain }}
                 --external-dns-provider aws \
