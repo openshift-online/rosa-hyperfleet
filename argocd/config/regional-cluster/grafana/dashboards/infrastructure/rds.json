@@ -1,7 +1,7 @@
 {
   "title": "RDS",
   "uid": "rds-overview",
-  "description": "Per-instance RDS metrics for Maestro and HyperFleet PostgreSQL databases. BurstBalance is critical for t-type instances — sustained 0% means CPU is throttled.",
+  "description": "Per-instance RDS metrics for HyperFleet PostgreSQL databases. BurstBalance is critical for t-type instances — sustained 0% means CPU is throttled.",
   "tags": ["aws", "cloudwatch", "rds", "postgresql", "sre"],
   "timezone": "browser",
   "refresh": "1m",

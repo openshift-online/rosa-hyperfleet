@@ -121,9 +121,9 @@ Single `e2e-tests` step — fetch and analyze `<artifacts-url>/e2e-tests/build-l
 
 Single step matching job name — fetch `<artifacts-url>/<job-name>/build-log.txt`.
 
-## Step 5b: Pull Cluster Logs from S3 (MANDATORY for cluster-backed jobs)
+## Step 5b: Pull Environment Dumps from S3 (MANDATORY for cluster-backed jobs)
 
-When e2e tests fail, the CI job collects pod logs from the RC and MC clusters and uploads them to S3. These logs are **not** included in the public Prow artifacts (they may contain secrets), but the S3 URIs are printed in the e2e build log.
+When e2e tests fail, the CI job dumps environment state from the RC and MC clusters and uploads it to S3. RC dumps include both Kubernetes logs and a PostgreSQL database snapshot; MC dumps contain Kubernetes logs only. These dumps are **not** included in the public Prow artifacts (they may contain secrets), but the S3 URIs are printed in the e2e build log.
 
 **Applies to:** `on-demand-e2e`, `nightly-ephemeral`, `nightly-integration` — jobs that provision clusters and produce S3 log archives. **Does not apply to** validation jobs (`terraform-validate`, `helm-lint`, `check-rendered-files`, `check-docs`) which have no cluster logs — those jobs are classified using Prow build logs and git history only.
 
@@ -161,7 +161,7 @@ There will be one URI per cluster (RC + each MC). The bucket names follow the pa
 - RC: `bastion-log-collection-<regional-account-id>-<region>-an`
 - MC: `bastion-log-collection-<management-account-id>-<region>-an`
 
-### Fetching the logs
+### Fetching the dumps
 
 **Always extract tar.gz archives locally for full analysis.** Download to a temp directory, extract, perform broad grep-based analysis across all namespaces, and clean up after:
 
@@ -173,9 +173,9 @@ trap 'rm -rf "$LOGDIR"' EXIT
 # Use separate subdirectories for RC and MC to avoid archive name collisions
 mkdir -p "$LOGDIR/rc" "$LOGDIR/mc"
 
-aws s3 cp s3://bastion-log-collection-<account>-<region>-an/collect-logs-<id>.tar.gz \
+aws s3 cp s3://bastion-log-collection-<account>-<region>-an/dump-env-<id>.tar.gz \
   "$LOGDIR/rc/" --profile <PROFILE> && \
-  tar xzf "$LOGDIR/rc"/collect-logs-*.tar.gz -C "$LOGDIR/rc"
+  tar xzf "$LOGDIR/rc"/dump-env-*.tar.gz -C "$LOGDIR/rc"
 
 # Perform broad analysis: grep across ALL namespaces, not just suspected ones
 grep -rli "error\|fail\|crash\|panic\|fatal\|timeout\|refused\|denied" "$LOGDIR/rc"/inspect-logs/namespaces/ 2>/dev/null
@@ -189,12 +189,12 @@ Fetch logs based on the failure scope determined from Prow artifacts. Use the ap
 LOGDIR=$(mktemp -d /tmp/ci-logs-XXXXXX)
 trap 'rm -rf "$LOGDIR"' EXIT
 mkdir -p "$LOGDIR/rc" "$LOGDIR/mc"
-aws s3 cp s3://bastion-log-collection-720644165472-us-east-1-an/collect-logs-<id>.tar.gz \
+aws s3 cp s3://bastion-log-collection-720644165472-us-east-1-an/dump-env-<id>.tar.gz \
   "$LOGDIR/rc/" --profile chai-rc-ci && \
-  tar xzf "$LOGDIR/rc"/collect-logs-*.tar.gz -C "$LOGDIR/rc"
-aws s3 cp s3://bastion-log-collection-129678139271-us-east-1-an/collect-logs-<id>.tar.gz \
+  tar xzf "$LOGDIR/rc"/dump-env-*.tar.gz -C "$LOGDIR/rc"
+aws s3 cp s3://bastion-log-collection-129678139271-us-east-1-an/dump-env-<id>.tar.gz \
   "$LOGDIR/mc/" --profile chai-mc-ci && \
-  tar xzf "$LOGDIR/mc"/collect-logs-*.tar.gz -C "$LOGDIR/mc"
+  tar xzf "$LOGDIR/mc"/dump-env-*.tar.gz -C "$LOGDIR/mc"
 # Analyze $LOGDIR/rc/inspect-logs/ and $LOGDIR/mc/inspect-logs/
 ```
 
@@ -222,17 +222,24 @@ Classification ceiling is Unclear — cannot claim Genuine or Flake without S3 e
 
 Do **not** stop the investigation — proceed with whatever information is available from the Prow artifacts and git history. However, **without successfully analyzed S3 log evidence, the maximum classification confidence is ⚠️ Unclear.** You cannot classify as Genuine or Flake without having analyzed S3 logs.
 
-### Analyzing the logs
+### Analyzing the dumps
 
-Once extracted, the logs are organized as:
+Once extracted, the dump is organized as:
 
-```
+```text
 inspect-logs/
   namespaces/<namespace>/
-    <resource>.yaml                          # Resource definitions
+    <resource>.yaml                          # Resource definitions (pods, services, etc.)
     pods/<pod-name>/<container>/logs/
       current.log                            # Current container log
       previous.log                           # Previous container log (if restarted)
+  cluster-scoped-resources/                  # Cluster-scoped CRs (nodes, etc.)
+    <group>/<kind>/<name>.yaml
+  <crd-group>/                               # CRD instances collected by oc adm inspect
+    <kind>.yaml                              # e.g., hostedclusters, nodepools, applications
+  db-state/                                  # RC only — hyperfleet-db state dump
+    resource-summary.txt                     # Tabular listing of all kubernetes_resources rows
+    resources/<kind>/<name>.json             # Individual resource objects (spec, status, metadata)
 ```
 
 Key namespaces and what to look for:
@@ -245,6 +252,12 @@ Key namespaces and what to look for:
 | MC      | `maestro-agent`  | Agent MQTT connectivity (CONNACK errors), work agent status |
 | MC      | `argocd`         | Sync failures on MC applications                            |
 | MC      | `hypershift`     | HyperShift operator errors                                  |
+
+**Other dump components** (not Kubernetes namespaces):
+
+| Cluster | Directory   | What to check                                                                         |
+| ------- | ----------- | ------------------------------------------------------------------------------------- |
+| RC      | `db-state/` | Hyperfleet DB contents — resource summary and individual JSON objects (RC dumps only) |
 
 For maestro connectivity issues specifically, check:
 

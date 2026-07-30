@@ -165,7 +165,7 @@ if [[ "$_have_customer_creds" == "true" ]]; then
 
     # Collect cluster logs before HCP cleanup so the HCP namespace is captured.
     if [[ -n "${CLUSTER_PREFIX+set}" ]]; then
-        export PRE_CLEANUP_HOOK="S3_ONLY=true ${REPO_ROOT}/scripts/dev/collect-cluster-logs.sh"
+        export PRE_CLEANUP_HOOK="S3_ONLY=true ${REPO_ROOT}/scripts/dev/dump-env.sh"
     fi
 
     export GINKGO_NO_COLOR=TRUE
@@ -200,7 +200,7 @@ if [[ $platform_rc -ne 0 ]] || [[ $zoa_rc -ne 0 ]] || [[ $monitoring_rc -ne 0 ]]
     # The S3 URIs are printed below for manual retrieval.
     if [[ -n "${CLUSTER_PREFIX+set}" ]]; then
         S3_ONLY=true \
-            "${REPO_ROOT}/scripts/dev/collect-cluster-logs.sh" || true
+            "${REPO_ROOT}/scripts/dev/dump-env.sh" || true
     fi
 fi
 

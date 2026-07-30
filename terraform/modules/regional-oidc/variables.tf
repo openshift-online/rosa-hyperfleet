@@ -16,3 +16,9 @@ variable "mc_ou_path" {
   description = "AWS Organizations OU path for Management Cluster accounts (StringLike condition, supports wildcards)"
   type        = string
 }
+
+variable "force_destroy" {
+  description = "Allow the OIDC S3 bucket to be destroyed even when it contains objects. Enable for ephemeral environments."
+  type        = bool
+  default     = false
+}

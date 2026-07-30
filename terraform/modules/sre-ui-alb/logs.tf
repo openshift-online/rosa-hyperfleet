@@ -19,7 +19,8 @@ data "aws_elb_service_account" "current" {}
 # -----------------------------------------------------------------------------
 
 resource "aws_s3_bucket" "access_logs" {
-  bucket = "${var.regional_id}-sre-alb-logs"
+  bucket        = "${var.regional_id}-sre-alb-logs"
+  force_destroy = true
 
   tags = {
     Name = "${var.regional_id}-sre-alb-logs"

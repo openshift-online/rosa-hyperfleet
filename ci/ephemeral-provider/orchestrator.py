@@ -145,11 +145,6 @@ class EphemeralEnvOrchestrator:
 
         self._setup_aws()
 
-        # Collect CodeBuild logs before teardown destroys infrastructure.
-        # In Prow, teardown runs as a separate step — this captures logs
-        # from the provisioning phase that would otherwise be lost.
-        self.collect_codebuild_logs()
-
         # Purge clusters and resource bundles before infrastructure teardown.
         # Deleting bundles triggers ManifestWork removal on the MC, which is
         # what actually tears down the HostedClusters. Without this, terraform
@@ -415,7 +410,10 @@ class EphemeralEnvOrchestrator:
                     failed.append(pipeline_name)
 
         if failed:
-            self.collect_codebuild_logs()
+            try:
+                self.collect_codebuild_logs()
+            except Exception:
+                log.exception("Failed to collect CodeBuild logs")
             raise RuntimeError(
                 f"{len(failed)} pipeline(s) failed during provisioning: {', '.join(failed)}"
             )
@@ -729,6 +727,7 @@ class EphemeralEnvOrchestrator:
         ]
 
         # Monitor all teardown pipelines concurrently
+        failed = []
         if teardown_pipelines:
             with ThreadPoolExecutor(max_workers=len(teardown_pipelines)) as executor:
                 future_to_pipeline = {
@@ -742,7 +741,16 @@ class EphemeralEnvOrchestrator:
                         future.result()
                     except (RuntimeError, TimeoutError) as e:
                         log.error("Teardown pipeline '%s' failed: %s", pipeline_name, e)
-                        # Continue with teardown even if infrastructure destroy fails
+                        failed.append(pipeline_name)
+
+        if failed:
+            try:
+                self.collect_codebuild_logs()
+            except Exception:
+                log.exception("Failed to collect teardown CodeBuild logs")
+            raise RuntimeError(
+                f"{len(failed)} pipeline(s) failed during teardown: {', '.join(failed)}"
+            )
 
         # Phase 2: Pipeline teardown
         log.info("")
