@@ -291,9 +291,10 @@ resource "aws_ecs_task_definition" "bootstrap" {
                 - CreateNamespace=true
           APP_EOF
 
-          # For MC clusters, wait for hypershift to be Healthy before returning.
-          # The E2E test starts immediately after bootstrap exits; HyperShift must
-          # be fully installed before the work agent can apply HostedCluster manifests.
+          # CI: E2E test runner starts immediately after bootstrap exits, so
+          # HyperShift must be fully installed before work agents apply
+          # HostedCluster manifests. This wait is a CI accommodation — bootstrap
+          # has no production requirement to block on application-level health.
           if [ "$${CLUSTER_TYPE:-}" = "management-cluster" ]; then
             echo "=== Waiting for hypershift Application to be Healthy (up to 30m) ==="
             _HS_DEADLINE=$((SECONDS + 1800))
