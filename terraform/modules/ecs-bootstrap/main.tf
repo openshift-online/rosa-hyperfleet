@@ -177,39 +177,14 @@ resource "aws_ecs_task_definition" "bootstrap" {
           # redisSecretInit is enabled here to create the Redis auth secret;
           # the self-managed ArgoCD app has it disabled and prunes the
           # completed Job on adoption.
-          #
-          # CriticalAddonsOnly tolerations are set both here (via --set, for
-          # any git branch) and in values.yaml (for ArgoCD self-management).
+          # CriticalAddonsOnly tolerations are defined in values.yaml and
+          # picked up automatically by helm install — no --set flags needed.
           helm upgrade --install argocd "$REPO_DIR/argocd/config/shared/argocd" \
             --namespace argocd \
             --set argo-cd.redisSecretInit.enabled=true \
             --set 'argo-cd.redisSecretInit.tolerations[0].key=CriticalAddonsOnly' \
             --set 'argo-cd.redisSecretInit.tolerations[0].operator=Exists' \
             --set 'argo-cd.redisSecretInit.tolerations[0].effect=NoSchedule' \
-            --set 'argo-cd.server.tolerations[0].key=CriticalAddonsOnly' \
-            --set 'argo-cd.server.tolerations[0].operator=Exists' \
-            --set 'argo-cd.server.tolerations[0].effect=NoSchedule' \
-            --set 'argo-cd.controller.tolerations[0].key=CriticalAddonsOnly' \
-            --set 'argo-cd.controller.tolerations[0].operator=Exists' \
-            --set 'argo-cd.controller.tolerations[0].effect=NoSchedule' \
-            --set 'argo-cd.repoServer.tolerations[0].key=CriticalAddonsOnly' \
-            --set 'argo-cd.repoServer.tolerations[0].operator=Exists' \
-            --set 'argo-cd.repoServer.tolerations[0].effect=NoSchedule' \
-            --set 'argo-cd.applicationSet.tolerations[0].key=CriticalAddonsOnly' \
-            --set 'argo-cd.applicationSet.tolerations[0].operator=Exists' \
-            --set 'argo-cd.applicationSet.tolerations[0].effect=NoSchedule' \
-            --set 'argo-cd.dex.tolerations[0].key=CriticalAddonsOnly' \
-            --set 'argo-cd.dex.tolerations[0].operator=Exists' \
-            --set 'argo-cd.dex.tolerations[0].effect=NoSchedule' \
-            --set 'argo-cd.notifications.tolerations[0].key=CriticalAddonsOnly' \
-            --set 'argo-cd.notifications.tolerations[0].operator=Exists' \
-            --set 'argo-cd.notifications.tolerations[0].effect=NoSchedule' \
-            --set 'argo-cd.redis-ha.tolerations[0].key=CriticalAddonsOnly' \
-            --set 'argo-cd.redis-ha.tolerations[0].operator=Exists' \
-            --set 'argo-cd.redis-ha.tolerations[0].effect=NoSchedule' \
-            --set 'argo-cd.redis-ha.haproxy.tolerations[0].key=CriticalAddonsOnly' \
-            --set 'argo-cd.redis-ha.haproxy.tolerations[0].operator=Exists' \
-            --set 'argo-cd.redis-ha.haproxy.tolerations[0].effect=NoSchedule' \
             --set-string 'argo-cd.controller.annotations.argocd\.argoproj\.io/tracking-id=argocd:argoproj.io/Application:argocd/argocd' \
             --set-string 'argo-cd.server.annotations.argocd\.argoproj\.io/tracking-id=argocd:argoproj.io/Application:argocd/argocd' \
             --set-string 'argo-cd.repoServer.annotations.argocd\.argoproj\.io/tracking-id=argocd:argoproj.io/Application:argocd/argocd' \
