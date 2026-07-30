@@ -22,7 +22,7 @@ hyperfleet:
   helmValues:
     image:
       repository: quay.io/psav/hyperfleet-operator
-      tag: "bfe629c"
+      tag: "c756faf"
       pullPolicy: Always
 
     replicaCount: 2
