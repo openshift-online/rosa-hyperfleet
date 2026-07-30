@@ -161,48 +161,11 @@ resource "aws_ecs_task_definition" "bootstrap" {
 
           fi
 
-          # If a previous bootstrap run failed mid-install, the Helm release is
-          # left in 'failed' state. Running helm upgrade on a failed HA ArgoCD
-          # install causes a StatefulSet rolling-update deadlock: redis-ha uses
-          # OrderedReady policy, so pod-0 must be Ready before pod-1 is created,
-          # but pod-0's Sentinel readiness probe requires quorum from pods 1 & 2.
-          # Fix: uninstall the broken release so the next helm upgrade --install
-          # does a clean initial install with all pods created from scratch.
-          if helm status argocd -n argocd 2>/dev/null | grep -q "^STATUS: failed\|^STATUS: pending"; then
-            echo "ArgoCD Helm release is in a broken state, uninstalling for clean reinstall..."
-            if ! helm uninstall argocd -n argocd; then
-              echo "ERROR: helm uninstall argocd failed — cannot recover from broken release" >&2
-              helm status argocd -n argocd >&2 || true
-              exit 1
-            fi
-            kubectl wait --for=delete pod --all -n argocd --timeout=120s 2>/dev/null || true
-          fi
-
-          echo "Installing/upgrading ArgoCD from repo chart..."
+          if ! kubectl get deployment argocd-server -n argocd 2>/dev/null; then
+          echo "Installing ArgoCD from repo chart..."
 
           # Create argocd namespace
           kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
-
-          # Re-stamp Helm release ownership annotations before upgrade.
-          # ArgoCD's default client-side apply strips meta.helm.sh/* annotations
-          # because they are not part of chart templates: the 3-way merge removes
-          # keys present in the last-applied-configuration but absent from the new
-          # desired state. Without these annotations helm upgrade refuses to manage
-          # the resource ("cannot be imported into the current release").
-          # This is a no-op on fresh clusters where no resources exist yet.
-          echo "Re-stamping Helm release ownership annotations on existing argocd resources..."
-          for _RT in \
-            deployments statefulsets services configmaps serviceaccounts \
-            roles rolebindings secrets \
-            poddisruptionbudgets horizontalpodautoscalers networkpolicies \
-            servicemonitors prometheusrules podmonitors; do
-            kubectl get "$_RT" -n argocd -o name 2>/dev/null | while read -r _RES; do
-              kubectl annotate -n argocd "$_RES" \
-                "meta.helm.sh/release-name=argocd" \
-                "meta.helm.sh/release-namespace=argocd" \
-                --overwrite || true
-            done || true
-          done
 
           # Fetch chart dependencies (charts/ is gitignored)
           helm repo add argo https://argoproj.github.io/argo-helm
@@ -260,6 +223,9 @@ resource "aws_ecs_task_definition" "bootstrap" {
           kubectl wait --for=condition=available --timeout=600s deployment/argocd-applicationset-controller -n argocd
 
           echo "✓ ArgoCD is running and ready"
+          else
+            echo "✓ ArgoCD is already installed and running, skipping installation"
+          fi
 
           echo "Creating/updating cluster identity secret with values:"
           echo "  ENVIRONMENT: $ENVIRONMENT"
