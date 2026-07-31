@@ -129,6 +129,11 @@ spec:
               sre:
                 targetGroup:
                   arn: '{{ .metadata.annotations.sre_prometheus_target_group_arn }}'
+
+            kubeApplier:
+              config:
+                sqsQueueUrl: '{{ .metadata.annotations.kube_applier_specs_queue_url }}'
+                snsStatusTopicArn: '{{ .metadata.annotations.kube_applier_status_topic_arn }}'
         path: '{{ .path.path }}'
         repoURL: '{{ .metadata.annotations.git_repo }}'
         targetRevision: '{{ .metadata.annotations.git_revision }}'

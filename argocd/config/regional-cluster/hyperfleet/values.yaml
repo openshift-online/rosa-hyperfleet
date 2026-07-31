@@ -7,10 +7,12 @@ hyperfleet:
 
   project: default
 
+  sqsQueueUrlPrefix: ""
+
   source:
-    repoURL: https://github.com/typeid/hyperfleet-operator.git
-    targetRevision: main
-    path: charts/hyperfleet-operator
+    repoURL: https://github.com/rrp-bot/rosa-hyperfleet-api.git
+    targetRevision: feature/sns-sqs
+    path: hyperfleet-operator/charts
 
   syncPolicy:
     automated:
@@ -19,8 +21,8 @@ hyperfleet:
 
   helmValues:
     image:
-      repository: quay.io/redhat-user-workloads/rosa-tenant/hyperfleet-operator
-      tag: "42e0e77996c25cd4daaf4655f7d882fff0724227"
+      repository: quay.io/psav/hyperfleet-operator
+      tag: "c756faf"
       pullPolicy: Always
 
     replicaCount: 2

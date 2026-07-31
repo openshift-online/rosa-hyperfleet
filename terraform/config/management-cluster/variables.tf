@@ -138,4 +138,3 @@ variable "oidc_cloudfront_domain" {
   type        = string
   default     = ""
 }
-

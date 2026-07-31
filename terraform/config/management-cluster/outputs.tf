@@ -166,3 +166,27 @@ output "kube_applier_role_arn" {
   description = "IAM role ARN for the kube-applier-aws controller"
   value       = module.kube_applier.kube_applier_role_arn
 }
+
+# =============================================================================
+# kube-applier Messaging Outputs
+# Read by bootstrap-argocd.sh to wire the queue URL and topic ARN into the
+# ArgoCD cluster secret annotations, which the ApplicationSet then passes
+# to the kube-applier Helm chart as --sqs-queue-url and --sns-status-topic-arn.
+# Also read by the RC kube-applier-dynamodb buildspec to wire cross-account
+# SNS subscriptions.
+# =============================================================================
+
+output "kube_applier_specs_queue_arn" {
+  description = "ARN of the MC-side specs SQS queue (receives RC specs SNS notifications)."
+  value       = module.kube_applier_mc_messaging.specs_queue_arn
+}
+
+output "kube_applier_specs_queue_url" {
+  description = "URL of the MC-side specs SQS queue (polled by kube-applier for spec change notifications)."
+  value       = module.kube_applier_mc_messaging.specs_queue_url
+}
+
+output "kube_applier_status_topic_arn" {
+  description = "ARN of the MC-side status SNS topic (kube-applier publishes here after writing status)."
+  value       = module.kube_applier_mc_messaging.status_topic_arn
+}

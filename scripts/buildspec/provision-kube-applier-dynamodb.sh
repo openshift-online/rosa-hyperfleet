@@ -43,6 +43,8 @@ export TF_VAR_mc_aws_account_id="${TARGET_ACCOUNT_ID}"
 export TF_VAR_rc_id="${_RC_REGIONAL_ID}"
 TF_VAR_enable_pitr=$(parseBool '.kube_applier_dynamodb_enable_pitr' false "$DEPLOY_CONFIG_FILE")
 export TF_VAR_enable_pitr
+TF_VAR_operator_replica_count=$(jq -r '.operator_replica_count // 3' "$DEPLOY_CONFIG_FILE")
+export TF_VAR_operator_replica_count
 export TF_VAR_app_code="${APP_CODE}"
 export TF_VAR_service_phase="${SERVICE_PHASE}"
 export TF_VAR_cost_center="${COST_CENTER}"

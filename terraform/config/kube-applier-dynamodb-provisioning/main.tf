@@ -90,3 +90,29 @@ resource "aws_iam_role_policy" "hyperfleet_operator_dynamodb" {
     ]
   })
 }
+
+# =============================================================================
+# kube-applier RC-side Messaging (SNS/SQS cross-account notifications)
+#
+# Creates the specs SNS topic in the RC account (the operator publishes here
+# after writing a desire document) and the per-replica status SQS queues
+# (the operator polls its own queue for status notifications from kube-applier).
+#
+# Both modules use predictable ARNs to reference cross-account resources, so
+# there is no dependency on MC Terraform outputs and no count gate. Both sides
+# can be provisioned independently in a single pipeline run.
+#
+# Subscriptions (RC SNS → MC SQS and MC SNS → RC SQS × N) are created by
+# the Register buildspec step, after both modules have run and all four
+# resources are guaranteed to exist.
+# =============================================================================
+
+module "kube_applier_rc_messaging" {
+  source = "../../modules/kube-applier-rc-messaging"
+
+  mc_name                = var.mc_name
+  mc_aws_account_id      = var.mc_aws_account_id
+  rc_id                  = var.rc_id
+  aws_region             = var.region
+  operator_replica_count = var.operator_replica_count
+}
