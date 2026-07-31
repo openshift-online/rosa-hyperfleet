@@ -13,9 +13,12 @@
 # =============================================================================
 # Debugging & Error Handling
 # =============================================================================
-# Trace every command before execution.  The last '+ …' line printed before
-# a crash is the exact command that failed.
-set -x
+
+# Enable bash trace debugging when DEBUG_INIT=1 is set.
+# Usage: DEBUG_INIT=1 make localstack-provision
+if [[ "${DEBUG_INIT:-0}" == "1" ]]; then
+    set -x
+fi
 
 # Catch unset variables (-u) and broken pipes (-o pipefail).
 # Propagate the ERR trap into functions and subshells (-E).
@@ -34,13 +37,10 @@ export AWS_PAGER=""
 
 # ---------------------------------------------------------------------------
 # log MESSAGE…
-#   Print a timestamped message.  Suppresses its own xtrace noise so log
-#   lines are easy to read in the trace output.
+#   Print a timestamped message.
 # ---------------------------------------------------------------------------
 log() {
-    { set +x; } 2>/dev/null
     echo "[$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo '???')] $*"
-    set -x
 }
 
 # ---------------------------------------------------------------------------
