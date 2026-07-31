@@ -1,4 +1,4 @@
-.PHONY: help terraform-fmt terraform-init terraform-validate terraform-upgrade terraform-output-management terraform-output-regional helm-lint check-rendered-files promtool-test ephemeral-provision ephemeral-teardown ephemeral-resync ephemeral-list ephemeral-shell ephemeral-bastion-rc ephemeral-bastion-mc ephemeral-port-forward-rc ephemeral-port-forward-mc ephemeral-port-forward-rc-all ephemeral-port-forward-mc-all ephemeral-sre-ui ephemeral-e2e ephemeral-dump-env int-shell int-bastion-rc int-bastion-mc int-port-forward-rc int-port-forward-mc int-port-forward-rc-all int-port-forward-mc-all int-e2e int-dump-env check-docs check-default-tags pre-push render localstack-up localstack-provision localstack-teardown localstack-shell localstack-status localstack-reset
+.PHONY: help terraform-fmt terraform-init terraform-validate terraform-upgrade terraform-output-management terraform-output-regional helm-lint check-rendered-files promtool-test ephemeral-provision ephemeral-teardown ephemeral-resync ephemeral-list ephemeral-shell ephemeral-bastion-rc ephemeral-bastion-mc ephemeral-port-forward-rc ephemeral-port-forward-mc ephemeral-port-forward-rc-all ephemeral-port-forward-mc-all ephemeral-sre-ui ephemeral-e2e ephemeral-dump-env int-shell int-bastion-rc int-bastion-mc int-port-forward-rc int-port-forward-mc int-port-forward-rc-all int-port-forward-mc-all int-e2e int-dump-env check-docs check-default-tags pre-push render localstack-up localstack-provision localstack-teardown localstack-shell localstack-status localstack-reset localstack-assume-role localstack-eks-kubeconfig localstack-trigger-pipeline
 
 # =============================================================================
 # Local tool management
@@ -294,3 +294,12 @@ localstack-status: ## Show LocalStack service status
 
 localstack-reset: ## Full reset — destroy and recreate LocalStack environment
 	@./scripts/localstack/localstack-env.sh reset
+
+localstack-assume-role: ## Assume an IAM role in a LocalStack account (ACCOUNT=central|rc|mc|customer)
+	@ACCOUNT="$(ACCOUNT)" ./scripts/localstack/localstack-env.sh assume-role
+
+localstack-eks-kubeconfig: ## Update kubeconfig for a LocalStack EKS cluster (CLUSTER=rc-cluster|mc-cluster)
+	@CLUSTER="$(CLUSTER)" ./scripts/localstack/localstack-env.sh eks-kubeconfig
+
+localstack-trigger-pipeline: ## Trigger a CodeBuild/CodePipeline execution (PIPELINE=<name>)
+	@PIPELINE="$(PIPELINE)" REPO="$(REPO)" COMMIT="$(COMMIT)" ./scripts/localstack/localstack-env.sh trigger-pipeline

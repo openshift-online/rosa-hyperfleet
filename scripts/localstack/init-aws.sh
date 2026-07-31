@@ -501,6 +501,11 @@ for i in 1 2 3; do
         --tag-specifications "ResourceType=subnet,Tags=[{Key=Name,Value=localstack-regional-private-${i}}]" \
         --query 'Subnet.SubnetId' --output text) || true
     log "  Created subnet: ${SUBNET_ID:-<failed>} (private-${i})"
+
+    # Save the first private subnet for EKS cluster creation
+    if [[ "${i}" == "1" ]]; then
+        RC_SUBNET_ID="${SUBNET_ID:-}"
+    fi
 done
 
 # Public subnets (3 AZs)
@@ -540,7 +545,79 @@ MC_VPC_ID=$(run_aws_capture "ec2 create-vpc (management)" \
     --query 'Vpc.VpcId' --output text) || true
 log "  Created VPC: ${MC_VPC_ID:-<failed>} (management)"
 
+# MC subnet (needed for EKS cluster creation)
+MC_SUBNET_ID=$(run_aws_capture "ec2 create-subnet (mc-private-1)" \
+    "${AWSLOCAL}" ec2 create-subnet \
+    --vpc-id "${MC_VPC_ID}" \
+    --cidr-block "10.1.1.0/24" \
+    --availability-zone "${AWS_REGION}a" \
+    --tag-specifications "ResourceType=subnet,Tags=[{Key=Name,Value=localstack-mc01-private-1}]" \
+    --query 'Subnet.SubnetId' --output text) || true
+log "  Created subnet: ${MC_SUBNET_ID:-<failed>} (mc-private-1)"
+
 log "  ✅ VPC infrastructure created"
+log ""
+
+# =============================================================================
+# EKS Clusters — k3s-based emulation (LocalStack Pro)
+# =============================================================================
+# LocalStack Pro emulates EKS using k3s containers. These clusters can be
+# used for testing kubectl/helm workflows and kubeconfig generation.
+
+log "--- EKS Clusters ---"
+
+wait_for_service "eks" "${AWSLOCAL}" eks list-clusters
+
+# RC cluster
+if [[ -n "${RC_SUBNET_ID:-}" ]]; then
+    run_aws "eks create-cluster rc-cluster" \
+        "${AWSLOCAL}" eks create-cluster \
+        --name "rc-cluster" \
+        --role-arn "arn:aws:iam::${RC_ACCOUNT}:role/OrganizationAccountAccessRole" \
+        --resources-vpc-config "subnetIds=${RC_SUBNET_ID}" \
+        || true
+    log "  Created EKS cluster: rc-cluster (regional)"
+else
+    log "  WARNING: RC_SUBNET_ID not available, skipping rc-cluster creation"
+fi
+
+# MC cluster
+if [[ -n "${MC_SUBNET_ID:-}" ]]; then
+    run_aws "eks create-cluster mc-cluster" \
+        "${AWSLOCAL}" eks create-cluster \
+        --name "mc-cluster" \
+        --role-arn "arn:aws:iam::${MC_ACCOUNT}:role/OrganizationAccountAccessRole" \
+        --resources-vpc-config "subnetIds=${MC_SUBNET_ID}" \
+        || true
+    log "  Created EKS cluster: mc-cluster (management)"
+else
+    log "  WARNING: MC_SUBNET_ID not available, skipping mc-cluster creation"
+fi
+
+# Wait for clusters to become ACTIVE (k3s containers need time to start)
+for CLUSTER_NAME in "rc-cluster" "mc-cluster"; do
+    log "  Waiting for ${CLUSTER_NAME} to become ACTIVE..."
+    EKS_TIMEOUT=120
+    EKS_ELAPSED=0
+    while true; do
+        CLUSTER_STATUS=$(run_aws_capture "eks describe-cluster ${CLUSTER_NAME}" \
+            "${AWSLOCAL}" eks describe-cluster \
+            --name "${CLUSTER_NAME}" \
+            --query 'cluster.status' --output text) || true
+        if [[ "${CLUSTER_STATUS}" == "ACTIVE" ]]; then
+            log "  ✅ ${CLUSTER_NAME} is ACTIVE"
+            break
+        fi
+        if (( EKS_ELAPSED >= EKS_TIMEOUT )); then
+            log "  WARNING: ${CLUSTER_NAME} not ACTIVE after ${EKS_TIMEOUT}s (status: ${CLUSTER_STATUS:-unknown}), proceeding"
+            break
+        fi
+        sleep 5
+        (( EKS_ELAPSED += 5 )) || true
+    done
+done
+
+log "  ✅ EKS clusters created"
 log ""
 
 # =============================================================================

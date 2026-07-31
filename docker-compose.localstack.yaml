@@ -30,8 +30,9 @@ services:
       - "4566:4566" # LocalStack Gateway
       - "4510-4559:4510-4559" # External service ports
     environment:
-      # Only the AWS services actually used by init-aws.sh — faster startup.
-      - SERVICES=iam,sts,ssm,s3,route53,ec2,dynamodb,kms,secretsmanager,sns,sqs,cloudwatch,codebuild,codepipeline,lambda,eks,apigateway,logs
+      # All AWS services used by the project (alphabetical). Only cloudtrail
+      # and codestar-connections are excluded (not emulated by LocalStack).
+      - SERVICES=acm,apigateway,apigatewayv2,cloudfront,cloudwatch,codebuild,codepipeline,dynamodb,ec2,ecr,ecr-public,ecs,eks,elasticache,elbv2,events,iam,kms,lambda,logs,organizations,rds,route53,s3,secretsmanager,sns,sqs,ssm,sts
       - DEBUG=0
       - PERSISTENCE=1
       # LocalStack Pro auth token (required — see docs/localstack-testing.md)

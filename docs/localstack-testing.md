@@ -155,14 +155,17 @@ multi-account structure:
 
 ## Makefile Targets
 
-| Target                      | Description                          |
-| --------------------------- | ------------------------------------ |
-| `make localstack-up`        | Start LocalStack services            |
-| `make localstack-provision` | Bootstrap the local AWS environment  |
-| `make localstack-teardown`  | Stop and clean up LocalStack         |
-| `make localstack-shell`     | Interactive shell against LocalStack |
-| `make localstack-status`    | Show LocalStack service status       |
-| `make localstack-reset`     | Full reset (destroy + recreate)      |
+| Target                             | Description                                                                    |
+| ---------------------------------- | ------------------------------------------------------------------------------ |
+| `make localstack-up`               | Start LocalStack services                                                      |
+| `make localstack-provision`        | Bootstrap the local AWS environment                                            |
+| `make localstack-teardown`         | Stop and clean up LocalStack                                                   |
+| `make localstack-shell`            | Interactive shell against LocalStack                                           |
+| `make localstack-status`           | Show LocalStack service status                                                 |
+| `make localstack-reset`            | Full reset (destroy + recreate)                                                |
+| `make localstack-assume-role`      | Assume an IAM role in a specific account (`ACCOUNT=central\|rc\|mc\|customer`) |
+| `make localstack-eks-kubeconfig`   | Update kubeconfig for a LocalStack EKS cluster (`CLUSTER=<name>`)              |
+| `make localstack-trigger-pipeline` | Trigger a CodeBuild/CodePipeline execution (`PIPELINE=<name>`)                 |
 
 ## Rendering Configs
 
@@ -256,12 +259,126 @@ If IAM enforcement interferes with a specific test, you can disable it
 temporarily by setting `ENFORCE_IAM=0` in the `docker-compose.localstack.yaml`
 environment section and restarting LocalStack.
 
+## Assuming IAM Roles
+
+The `localstack-assume-role` target lets you assume the
+`OrganizationAccountAccessRole` for any of the four emulated accounts and drops
+you into a subshell with the temporary credentials pre-configured:
+
+```bash
+# Assume the RC account role
+make localstack-assume-role ACCOUNT=rc
+
+# Assume the MC account role
+make localstack-assume-role ACCOUNT=mc
+
+# Assume the customer account role
+make localstack-assume-role ACCOUNT=customer
+
+# Assume the central account role
+make localstack-assume-role ACCOUNT=central
+```
+
+Inside the subshell, the `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and
+`AWS_SESSION_TOKEN` environment variables are set to the temporary credentials
+returned by `sts:AssumeRole`. The prompt changes to indicate which account you
+are in (e.g. `(localstack:rc)`).
+
+Type `exit` to leave the subshell and return to your normal credentials.
+
+### Account Name to ID Mapping
+
+| Name       | Account ID     |
+| ---------- | -------------- |
+| `central`  | `000000000001` |
+| `rc`       | `000000000002` |
+| `mc`       | `000000000003` |
+| `customer` | `000000000004` |
+
+## EKS Clusters (k3s Emulation)
+
+LocalStack Pro emulates EKS using k3s containers. The bootstrap script
+(`init-aws.sh`) creates two EKS clusters automatically:
+
+| Cluster      | Purpose                              | VPC            |
+| ------------ | ------------------------------------ | -------------- |
+| `rc-cluster` | Regional cluster (mirrors real RC)   | Regional VPC   |
+| `mc-cluster` | Management cluster (mirrors real MC) | Management VPC |
+
+### Retrieving Kubeconfig
+
+```bash
+# Get kubeconfig for the RC cluster (default)
+make localstack-eks-kubeconfig
+
+# Get kubeconfig for the MC cluster
+make localstack-eks-kubeconfig CLUSTER=mc-cluster
+
+# Then use kubectl normally
+kubectl get nodes
+kubectl get namespaces
+```
+
+The `localstack-eks-kubeconfig` target calls `awslocal eks update-kubeconfig`,
+which writes a context entry to your `~/.kube/config`. The k3s cluster runs
+inside the LocalStack container and is accessible via the kubeconfig endpoint.
+
+### Limitations
+
+The k3s-based EKS emulation is suitable for testing `kubectl` workflows,
+Helm chart installations, and kubeconfig generation. It is **not** a full EKS
+control plane -- features like managed node groups, Fargate profiles, and IRSA
+(IAM Roles for Service Accounts) are not fully supported.
+
+## Triggering Pipelines
+
+The `localstack-trigger-pipeline` target lets you trigger CodeBuild projects
+or CodePipeline executions against the emulated CI/CD infrastructure:
+
+### CodeBuild
+
+```bash
+# Trigger a CodeBuild project using the current repo as source
+make localstack-trigger-pipeline PIPELINE=localstack-pipeline-provisioner
+
+# Trigger with a specific repo and commit
+make localstack-trigger-pipeline PIPELINE=localstack-pipeline-regional \
+    REPO=https://github.com/openshift-online/rosa-hyperfleet.git \
+    COMMIT=abc123
+
+# The tool will:
+#  1. Package the source directory into a zip archive
+#  2. Upload it to S3 (terraform-state-000000000001/codebuild-source/<name>/source.zip)
+#  3. Start the CodeBuild project with the S3 source override
+#  4. Print the build ID and commands to check status / tail logs
+```
+
+### CodePipeline
+
+```bash
+# Trigger a CodePipeline execution
+make localstack-trigger-pipeline PIPELINE=localstack-pipeline-provisioner
+
+# The tool auto-detects whether the name is a CodeBuild project or CodePipeline.
+# If both exist with the same name, CodeBuild takes priority.
+```
+
+### Available Pipelines
+
+These pipelines are created by `init-aws.sh`:
+
+| Name                              | Type      | Purpose                      |
+| --------------------------------- | --------- | ---------------------------- |
+| `localstack-pipeline-provisioner` | Both      | Central provisioner pipeline |
+| `localstack-pipeline-regional`    | Both      | Regional cluster pipeline    |
+| `localstack-pipeline-mc01`        | CodeBuild | Management cluster pipeline  |
+
 ## Known Limitations
 
-1. **EKS is emulated, not real** -- LocalStack Pro provides EKS API emulation
-   (create/describe/list clusters, node groups, OIDC providers) but does not
-   run actual Kubernetes control planes. Use this for testing Terraform plans
-   and config rendering -- not for deploying workloads into EKS.
+1. **EKS is emulated via k3s** -- LocalStack Pro runs k3s containers to
+   emulate EKS clusters. Basic `kubectl` operations work (get nodes, deploy
+   pods, install Helm charts), but advanced EKS features (managed node groups,
+   Fargate profiles, IRSA) are not fully supported.
 
 2. **No real RDS** -- Aurora/RDS APIs return mock responses. Database
    connectivity testing requires a separate PostgreSQL container.
