@@ -180,6 +180,15 @@ log "--- IAM Roles ---"
 
 wait_for_service "iam" "${AWSLOCAL}" iam list-roles
 
+# Grant the default root user full access so the init script can bootstrap
+# all resources when ENFORCE_IAM=1 is enabled.  The root user in LocalStack's
+# internal account (000000000000) has no policies by default under enforcement.
+log "  Granting AdministratorAccess to root user (for init bootstrap)"
+run_aws "iam attach-root-policy" \
+    "${AWSLOCAL}" iam attach-user-policy \
+    --user-name root \
+    --policy-arn arn:aws:iam::aws:policy/AdministratorAccess || true
+
 # Create OrganizationAccountAccessRole for each account, matching the real
 # cross-account assume-role pattern used by ephemeral-env.sh.
 for ACCOUNT_ID in "${CENTRAL_ACCOUNT}" "${RC_ACCOUNT}" "${MC_ACCOUNT}" "${CUSTOMER_ACCOUNT}"; do
