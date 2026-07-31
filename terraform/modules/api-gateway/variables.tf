@@ -23,12 +23,12 @@ variable "regional_id" {
 }
 
 variable "node_security_group_id" {
-  description = "EKS node/pod security group ID - ALB needs to send traffic to pods via this SG. For EKS Auto Mode, use the cluster_primary_security_group_id."
+  description = "EKS node/pod security group ID - ALB needs to send traffic to pods via this SG"
   type        = string
 }
 
 variable "cluster_name" {
-  description = "EKS cluster name - required for tagging target group with eks:eks-cluster-name tag for Auto Mode IAM permissions"
+  description = "EKS cluster name - used to tag target groups with eks:eks-cluster-name"
   type        = string
 }
 
