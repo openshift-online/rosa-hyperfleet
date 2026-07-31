@@ -8,9 +8,9 @@ hyperfleet:
   project: default
 
   source:
-    repoURL: https://github.com/typeid/hyperfleet-operator.git
-    targetRevision: main
-    path: charts/hyperfleet-operator
+    repoURL: https://github.com/openshift-online/rosa-hyperfleet-api.git
+    targetRevision: f7ec7d59ed8523bc66277cce3f4814e0dee5fa83
+    path: hyperfleet-operator/charts
 
   syncPolicy:
     automated:
@@ -20,7 +20,7 @@ hyperfleet:
   helmValues:
     image:
       repository: quay.io/redhat-user-workloads/rosa-tenant/hyperfleet-operator
-      tag: "42e0e77996c25cd4daaf4655f7d882fff0724227"
+      tag: "f7ec7d59ed8523bc66277cce3f4814e0dee5fa83"
       pullPolicy: Always
 
     replicaCount: 2
