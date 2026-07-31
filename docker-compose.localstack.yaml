@@ -9,6 +9,10 @@
 #
 # Podman users: activate the podman socket first:
 #   systemctl --user enable --now podman.socket
+# then set DOCKER_SOCK to point to your Podman socket, e.g.:
+#   export DOCKER_SOCK="${XDG_RUNTIME_DIR}/podman/podman.sock"
+# or for rootful Podman:
+#   export DOCKER_SOCK=/run/podman/podman.sock
 #
 # Usage:
 #   export LOCALSTACK_AUTH_TOKEN=<your-token>
@@ -30,21 +34,19 @@ services:
       - SERVICES=s3,dynamodb,ssm,sts,iam,route53,cloudformation,codepipeline,codebuild,eks,rds,ecr,ec2,elbv2,apigateway,acm,secretsmanager,kms,cloudwatch,sns,sqs,cloudtrail,elasticache,lambda,ecs,cloudfront,logs
       - DEBUG=0
       - PERSISTENCE=1
-      - DEFAULT_REGION=us-east-1
       # LocalStack Pro auth token (required — see docs/localstack-testing.md)
       - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN:?Set LOCALSTACK_AUTH_TOKEN to your LocalStack Pro API key}
       # IAM policy enforcement — Pro feature, enabled so IAM policies are
       # actually tested against real permission checks.
       - ENFORCE_IAM=1
-      # Use docker-reuse executor for Lambda — reuses containers across
-      # invocations for faster cold starts (requires socket access).
-      - LAMBDA_EXECUTOR=docker-reuse
       # Docker socket for ECS/EKS/Lambda container support.
       # Podman provides a compatible socket; see DOCKER_SOCK below.
       - DOCKER_HOST=unix:///var/run/docker.sock
     volumes:
       - "${LOCALSTACK_VOLUME_DIR:-./.localstack}:/var/lib/localstack:Z"
-      - "${DOCKER_SOCK:-/run/user/1000/podman/podman.sock}:/var/run/docker.sock:Z"
+      # Override DOCKER_SOCK for Podman (see top-of-file comments).
+      # Default is /var/run/docker.sock which works for Docker and rootful Podman.
+      - "${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:Z"
       - "./scripts/localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh:ro,Z"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]

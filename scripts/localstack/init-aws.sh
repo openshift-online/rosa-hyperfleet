@@ -29,6 +29,50 @@ CUSTOMER_ACCOUNT="000000000004"
 # awslocal is pre-installed in the LocalStack container
 AWSLOCAL="awslocal"
 
+# =============================================================================
+# Helpers — service readiness and retry logic
+# =============================================================================
+
+# Wait for a LocalStack service to become ready before using it.
+# Retries the given awslocal command until it succeeds (max 30s).
+wait_for_service() {
+    local service_name="$1"
+    shift
+    local max_wait=30
+    local elapsed=0
+    echo "  Waiting for ${service_name} service..."
+    while ! "$@" --no-cli-pager >/dev/null 2>&1; do
+        if (( elapsed >= max_wait )); then
+            echo "  WARNING: ${service_name} not ready after ${max_wait}s, proceeding anyway" >&2
+            return 0
+        fi
+        sleep 2
+        (( elapsed += 2 ))
+    done
+    echo "  ${service_name} service is ready"
+}
+
+# Retry a command up to N times with a delay between attempts.
+# Usage: retry <max_attempts> <delay_seconds> <command...>
+retry() {
+    local max_attempts="$1"
+    local delay="$2"
+    shift 2
+    local attempt=1
+    while true; do
+        if "$@"; then
+            return 0
+        fi
+        if (( attempt >= max_attempts )); then
+            echo "    WARNING: command failed after ${max_attempts} attempts: $*" >&2
+            return 1
+        fi
+        echo "    Retrying (${attempt}/${max_attempts})..." >&2
+        sleep "${delay}"
+        (( attempt++ ))
+    done
+}
+
 echo "============================================================"
 echo "  ROSA HyperFleet — LocalStack Bootstrap"
 echo "============================================================"
@@ -47,6 +91,8 @@ echo ""
 # =============================================================================
 
 echo "--- IAM Roles ---"
+
+wait_for_service "iam" $AWSLOCAL iam list-roles
 
 # Create OrganizationAccountAccessRole for each account, matching the real
 # cross-account assume-role pattern used by ephemeral-env.sh.
@@ -204,52 +250,54 @@ echo ""
 
 echo "--- SSM Parameters ---"
 
+wait_for_service "ssm" $AWSLOCAL ssm describe-parameters
+
 # Account IDs for the localstack environment (matches ssm:// references in
 # config/defaults.yaml: ssm:///infra/<environment>/<region>/account_id)
-$AWSLOCAL ssm put-parameter \
+retry 3 2 $AWSLOCAL ssm put-parameter \
     --name "/infra/${ENVIRONMENT}/${AWS_REGION}/account_id" \
     --value "${RC_ACCOUNT}" \
     --type String \
-    --overwrite --no-cli-pager 2>/dev/null
+    --overwrite --no-cli-pager 2>/dev/null || true
 echo "  /infra/${ENVIRONMENT}/${AWS_REGION}/account_id = ${RC_ACCOUNT}"
 
-$AWSLOCAL ssm put-parameter \
+retry 3 2 $AWSLOCAL ssm put-parameter \
     --name "/infra/${ENVIRONMENT}/${AWS_REGION}/mc01/account_id" \
     --value "${MC_ACCOUNT}" \
     --type String \
-    --overwrite --no-cli-pager 2>/dev/null
+    --overwrite --no-cli-pager 2>/dev/null || true
 echo "  /infra/${ENVIRONMENT}/${AWS_REGION}/mc01/account_id = ${MC_ACCOUNT}"
 
 # GitHub token placeholder (mirrors /ephemeral-provider/github-token)
-$AWSLOCAL ssm put-parameter \
+retry 3 2 $AWSLOCAL ssm put-parameter \
     --name "/ephemeral-provider/github-token" \
     --value "localstack-mock-github-token" \
     --type SecureString \
-    --overwrite --no-cli-pager 2>/dev/null
+    --overwrite --no-cli-pager 2>/dev/null || true
 echo "  /ephemeral-provider/github-token = <mock>"
 
 # Region OU path (used by bootstrap-central-account.sh)
-$AWSLOCAL ssm put-parameter \
+retry 3 2 $AWSLOCAL ssm put-parameter \
     --name "/infra/region-ou-path" \
     --value "ou-localstack-root/ou-localstack-regions" \
     --type String \
-    --overwrite --no-cli-pager 2>/dev/null
+    --overwrite --no-cli-pager 2>/dev/null || true
 echo "  /infra/region-ou-path = ou-localstack-root/ou-localstack-regions"
 
 # SRE UI allowed CIDRs
-$AWSLOCAL ssm put-parameter \
+retry 3 2 $AWSLOCAL ssm put-parameter \
     --name "/infra/sre-ui-alb/allowed-source-cidrs" \
     --value "0.0.0.0/0" \
     --type String \
-    --overwrite --no-cli-pager 2>/dev/null
+    --overwrite --no-cli-pager 2>/dev/null || true
 echo "  /infra/sre-ui-alb/allowed-source-cidrs = 0.0.0.0/0"
 
 # SNS alerting topic ARN placeholder
-$AWSLOCAL ssm put-parameter \
+retry 3 2 $AWSLOCAL ssm put-parameter \
     --name "/infra/${ENVIRONMENT}/${AWS_REGION}/sns-alerting-topic-arn" \
     --value "arn:aws:sns:${AWS_REGION}:${RC_ACCOUNT}:localstack-alerting" \
     --type String \
-    --overwrite --no-cli-pager 2>/dev/null
+    --overwrite --no-cli-pager 2>/dev/null || true
 echo "  /infra/${ENVIRONMENT}/${AWS_REGION}/sns-alerting-topic-arn"
 
 echo "  ✅ SSM parameters created"
@@ -260,6 +308,8 @@ echo ""
 # =============================================================================
 
 echo "--- Route53 Hosted Zones ---"
+
+wait_for_service "route53" $AWSLOCAL route53 list-hosted-zones
 
 # Environment zone (matches dns.domain in config)
 ENV_ZONE_ID=$($AWSLOCAL route53 create-hosted-zone \
@@ -283,6 +333,8 @@ echo ""
 # =============================================================================
 
 echo "--- S3 Buckets ---"
+
+wait_for_service "s3" $AWSLOCAL s3 ls
 
 # Terraform state buckets (match bootstrap-state.sh naming)
 for BUCKET in \
@@ -314,6 +366,8 @@ echo ""
 
 echo "--- VPC Infrastructure ---"
 
+wait_for_service "ec2" $AWSLOCAL ec2 describe-vpcs
+
 # Regional cluster VPC
 RC_VPC_ID=$($AWSLOCAL ec2 create-vpc \
     --cidr-block "10.0.0.0/16" \
@@ -326,7 +380,7 @@ for i in 1 2 3; do
     SUBNET_ID=$($AWSLOCAL ec2 create-subnet \
         --vpc-id "${RC_VPC_ID}" \
         --cidr-block "10.0.${i}.0/24" \
-        --availability-zone "${AWS_REGION}$(echo $i | tr '123' 'abc')" \
+        --availability-zone "${AWS_REGION}$(echo "$i" | tr '123' 'abc')" \
         --tag-specifications "ResourceType=subnet,Tags=[{Key=Name,Value=localstack-regional-private-${i}}]" \
         --query 'Subnet.SubnetId' --output text --no-cli-pager 2>/dev/null)
     echo "  Created subnet: ${SUBNET_ID} (private-${i})"
@@ -337,7 +391,7 @@ for i in 1 2 3; do
     SUBNET_ID=$($AWSLOCAL ec2 create-subnet \
         --vpc-id "${RC_VPC_ID}" \
         --cidr-block "10.0.1${i}.0/24" \
-        --availability-zone "${AWS_REGION}$(echo $i | tr '123' 'abc')" \
+        --availability-zone "${AWS_REGION}$(echo "$i" | tr '123' 'abc')" \
         --tag-specifications "ResourceType=subnet,Tags=[{Key=Name,Value=localstack-regional-public-${i}}]" \
         --query 'Subnet.SubnetId' --output text --no-cli-pager 2>/dev/null)
     echo "  Created subnet: ${SUBNET_ID} (public-${i})"
@@ -374,6 +428,8 @@ echo ""
 
 echo "--- DynamoDB Tables ---"
 
+wait_for_service "dynamodb" $AWSLOCAL dynamodb list-tables
+
 $AWSLOCAL dynamodb create-table \
     --table-name "localstack-kube-applier" \
     --attribute-definitions \
@@ -395,6 +451,8 @@ echo ""
 
 echo "--- KMS Keys ---"
 
+wait_for_service "kms" $AWSLOCAL kms list-keys
+
 KMS_KEY_ID=$($AWSLOCAL kms create-key \
     --description "LocalStack EKS secrets encryption key" \
     --query 'KeyMetadata.KeyId' --output text --no-cli-pager 2>/dev/null || echo "")
@@ -414,6 +472,8 @@ echo ""
 # =============================================================================
 
 echo "--- Secrets Manager ---"
+
+wait_for_service "secretsmanager" $AWSLOCAL secretsmanager list-secrets
 
 $AWSLOCAL secretsmanager create-secret \
     --name "localstack/argocd-admin" \
@@ -436,6 +496,8 @@ echo ""
 
 echo "--- SNS Topics ---"
 
+wait_for_service "sns" $AWSLOCAL sns list-topics
+
 $AWSLOCAL sns create-topic \
     --name "localstack-alerting" \
     --no-cli-pager 2>/dev/null || true
@@ -449,6 +511,8 @@ echo ""
 # =============================================================================
 
 echo "--- CloudWatch Log Groups ---"
+
+wait_for_service "logs" $AWSLOCAL logs describe-log-groups
 
 for LOG_GROUP in \
     "/aws/eks/localstack-regional/cluster" \
@@ -471,6 +535,8 @@ echo ""
 
 echo "--- CodeBuild Projects ---"
 
+wait_for_service "codebuild" $AWSLOCAL codebuild list-projects
+
 for PROJECT in \
     "localstack-pipeline-provisioner" \
     "localstack-pipeline-regional" \
@@ -489,6 +555,8 @@ echo "  ✅ CodeBuild projects created"
 echo ""
 
 echo "--- CodePipeline Pipelines ---"
+
+wait_for_service "codepipeline" $AWSLOCAL codepipeline list-pipelines
 
 for PIPELINE in "localstack-pipeline-provisioner" "localstack-pipeline-regional"; do
     $AWSLOCAL codepipeline create-pipeline \
