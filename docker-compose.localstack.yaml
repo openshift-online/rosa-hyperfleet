@@ -37,9 +37,10 @@ services:
       - PERSISTENCE=1
       # LocalStack Pro auth token (required — see docs/localstack-testing.md)
       - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN:?Set LOCALSTACK_AUTH_TOKEN to your LocalStack Pro API key}
-      # IAM policy enforcement — Pro feature, enabled so IAM policies are
-      # actually tested against real permission checks.
-      - ENFORCE_IAM=1
+      # IAM policy enforcement — Pro feature, disabled by default because
+      # LocalStack does not evaluate policies on the root user during init.
+      # Enable after bootstrap: LOCALSTACK_ENFORCE_IAM=1 make localstack-up
+      - ENFORCE_IAM=${LOCALSTACK_ENFORCE_IAM:-0}
       # Docker socket for ECS/EKS/Lambda container support.
       # Podman provides a compatible socket; see DOCKER_SOCK below.
       - DOCKER_HOST=unix:///var/run/docker.sock

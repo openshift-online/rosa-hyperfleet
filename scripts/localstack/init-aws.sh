@@ -172,6 +172,17 @@ log "  MC account:       ${MC_ACCOUNT}"
 log "  Customer account: ${CUSTOMER_ACCOUNT}"
 log ""
 
+# Warn if ENFORCE_IAM is enabled — LocalStack does not evaluate policies on
+# the root user, so bootstrap calls will fail with AccessDeniedException.
+if [[ "${ENFORCE_IAM:-0}" == "1" ]]; then
+    log "  ⚠️  WARNING: ENFORCE_IAM=1 is enabled."
+    log "  LocalStack does not evaluate IAM policies on the root user."
+    log "  init-aws.sh may fail with AccessDeniedException."
+    log "  Recommendation: run init with ENFORCE_IAM disabled, then restart"
+    log "  with enforcement enabled for IAM policy testing."
+    log ""
+fi
+
 # =============================================================================
 # IAM Roles — Cross-account role structure
 # =============================================================================
@@ -179,17 +190,6 @@ log ""
 log "--- IAM Roles ---"
 
 wait_for_service "iam" "${AWSLOCAL}" iam list-roles
-
-# LocalStack's managed AdministratorAccess policy does not reliably cover all
-# actions under ENFORCE_IAM (e.g. eks:CreateCluster, iam:PassRole are denied).
-# Work around this by attaching an explicit wildcard inline policy to the root
-# user so the init script can bootstrap all resources without restrictions.
-log "  Granting full access to root user (for init bootstrap)"
-run_aws "iam put-root-bootstrap-policy" \
-    "${AWSLOCAL}" iam put-user-policy \
-    --user-name root \
-    --policy-name LocalStackBootstrapFullAccess \
-    --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}' || true
 
 # Create OrganizationAccountAccessRole for each account, matching the real
 # cross-account assume-role pattern used by ephemeral-env.sh.

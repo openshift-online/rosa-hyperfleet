@@ -203,8 +203,30 @@ terraform apply
 
 ## IAM Enforcement
 
-This environment runs with `ENFORCE_IAM=1`, a LocalStack Pro feature that
-enforces IAM policies on every API call -- just like real AWS. This means:
+IAM policy enforcement (`ENFORCE_IAM`) is **disabled by default**. LocalStack
+Pro's IAM enforcement does not evaluate policies attached to the root user
+(`arn:aws:iam::000000000000:root`), so the `init-aws.sh` bootstrap fails with
+`AccessDeniedException` when enforcement is enabled during first run.
+
+### Enabling IAM Enforcement
+
+After running `init-aws.sh` (which creates IAM users with scoped policies), you
+can restart LocalStack with enforcement enabled to test IAM policies:
+
+```bash
+# Option 1: Start with enforcement from the beginning
+# (init-aws.sh will warn but may fail — use for testing only)
+LOCALSTACK_ENFORCE_IAM=1 make localstack-up
+
+# Option 2 (recommended): Bootstrap first, then enable enforcement
+make localstack-up
+make localstack-provision
+make localstack-teardown
+LOCALSTACK_ENFORCE_IAM=1 make localstack-up
+# State is persisted, so init resources survive the restart
+```
+
+When enforcement is enabled:
 
 - **Credentials matter.** The default `test`/`test` credentials used by
   `awslocal` are mapped to an internal admin account. For scoped testing, use
@@ -252,12 +274,6 @@ AWS_SECRET_ACCESS_KEY=$SECRET_KEY \
 AWS_ENDPOINT_URL=http://localhost:4566 \
     aws s3 mb s3://new-bucket  # fails -- AccessDeniedException
 ```
-
-### Disabling IAM Enforcement
-
-If IAM enforcement interferes with a specific test, you can disable it
-temporarily by setting `ENFORCE_IAM=0` in the `docker-compose.localstack.yaml`
-environment section and restarting LocalStack.
 
 ## Assuming IAM Roles
 
