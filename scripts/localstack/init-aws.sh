@@ -148,6 +148,10 @@ echo ""
 
 echo "--- IAM Users (for IAM enforcement) ---"
 
+# SSM is needed inside create_iam_user() to store access key credentials,
+# so ensure it is ready before creating any IAM users.
+wait_for_service "ssm" $AWSLOCAL ssm describe-parameters
+
 # Helper: create an IAM user, generate access keys, and attach a policy.
 create_iam_user() {
     local user_name="$1"
@@ -372,8 +376,8 @@ wait_for_service "ec2" $AWSLOCAL ec2 describe-vpcs
 RC_VPC_ID=$($AWSLOCAL ec2 create-vpc \
     --cidr-block "10.0.0.0/16" \
     --tag-specifications "ResourceType=vpc,Tags=[{Key=Name,Value=localstack-regional-vpc}]" \
-    --query 'Vpc.VpcId' --output text --no-cli-pager 2>/dev/null)
-echo "  Created VPC: ${RC_VPC_ID} (regional)"
+    --query 'Vpc.VpcId' --output text --no-cli-pager 2>/dev/null) || true
+echo "  Created VPC: ${RC_VPC_ID:-<failed>} (regional)"
 
 # Private subnets (3 AZs)
 for i in 1 2 3; do
@@ -382,8 +386,8 @@ for i in 1 2 3; do
         --cidr-block "10.0.${i}.0/24" \
         --availability-zone "${AWS_REGION}$(echo "$i" | tr '123' 'abc')" \
         --tag-specifications "ResourceType=subnet,Tags=[{Key=Name,Value=localstack-regional-private-${i}}]" \
-        --query 'Subnet.SubnetId' --output text --no-cli-pager 2>/dev/null)
-    echo "  Created subnet: ${SUBNET_ID} (private-${i})"
+        --query 'Subnet.SubnetId' --output text --no-cli-pager 2>/dev/null) || true
+    echo "  Created subnet: ${SUBNET_ID:-<failed>} (private-${i})"
 done
 
 # Public subnets (3 AZs)
@@ -393,8 +397,8 @@ for i in 1 2 3; do
         --cidr-block "10.0.1${i}.0/24" \
         --availability-zone "${AWS_REGION}$(echo "$i" | tr '123' 'abc')" \
         --tag-specifications "ResourceType=subnet,Tags=[{Key=Name,Value=localstack-regional-public-${i}}]" \
-        --query 'Subnet.SubnetId' --output text --no-cli-pager 2>/dev/null)
-    echo "  Created subnet: ${SUBNET_ID} (public-${i})"
+        --query 'Subnet.SubnetId' --output text --no-cli-pager 2>/dev/null) || true
+    echo "  Created subnet: ${SUBNET_ID:-<failed>} (public-${i})"
 done
 
 # Security groups
@@ -402,22 +406,22 @@ RC_SG_ID=$($AWSLOCAL ec2 create-security-group \
     --group-name "localstack-regional-cluster" \
     --description "Regional cluster security group" \
     --vpc-id "${RC_VPC_ID}" \
-    --query 'GroupId' --output text --no-cli-pager 2>/dev/null)
-echo "  Created security group: ${RC_SG_ID} (regional-cluster)"
+    --query 'GroupId' --output text --no-cli-pager 2>/dev/null) || true
+echo "  Created security group: ${RC_SG_ID:-<failed>} (regional-cluster)"
 
 BASTION_SG_ID=$($AWSLOCAL ec2 create-security-group \
     --group-name "localstack-regional-bastion" \
     --description "Regional bastion security group" \
     --vpc-id "${RC_VPC_ID}" \
-    --query 'GroupId' --output text --no-cli-pager 2>/dev/null)
-echo "  Created security group: ${BASTION_SG_ID} (bastion)"
+    --query 'GroupId' --output text --no-cli-pager 2>/dev/null) || true
+echo "  Created security group: ${BASTION_SG_ID:-<failed>} (bastion)"
 
 # Management cluster VPC
 MC_VPC_ID=$($AWSLOCAL ec2 create-vpc \
     --cidr-block "10.1.0.0/16" \
     --tag-specifications "ResourceType=vpc,Tags=[{Key=Name,Value=localstack-mc01-vpc}]" \
-    --query 'Vpc.VpcId' --output text --no-cli-pager 2>/dev/null)
-echo "  Created VPC: ${MC_VPC_ID} (management)"
+    --query 'Vpc.VpcId' --output text --no-cli-pager 2>/dev/null) || true
+echo "  Created VPC: ${MC_VPC_ID:-<failed>} (management)"
 
 echo "  ✅ VPC infrastructure created"
 echo ""
