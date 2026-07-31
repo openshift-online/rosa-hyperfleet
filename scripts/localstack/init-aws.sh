@@ -189,6 +189,16 @@ run_aws "iam attach-root-policy" \
     --user-name root \
     --policy-arn arn:aws:iam::aws:policy/AdministratorAccess || true
 
+# iam:PassRole is checked separately by LocalStack even with AdministratorAccess.
+# Grant it explicitly so the init script can assign roles to CodePipeline/CodeBuild
+# resources across all mock accounts.
+log "  Granting iam:PassRole to root user (cross-account role assignment)"
+run_aws "iam put-root-passrole-policy" \
+    "${AWSLOCAL}" iam put-user-policy \
+    --user-name root \
+    --policy-name AllowPassRole \
+    --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"iam:PassRole","Resource":"*"}]}' || true
+
 # Create OrganizationAccountAccessRole for each account, matching the real
 # cross-account assume-role pattern used by ephemeral-env.sh.
 for ACCOUNT_ID in "${CENTRAL_ACCOUNT}" "${RC_ACCOUNT}" "${MC_ACCOUNT}" "${CUSTOMER_ACCOUNT}"; do
