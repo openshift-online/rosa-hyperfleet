@@ -29,6 +29,9 @@ set -Euo pipefail
 # inside an if / || / && guard).  Prints the exact source file and line.
 trap 'echo ">>> ERR trap: ${BASH_SOURCE[0]:-$0} line ${LINENO}, exit code $?" >&2' ERR
 
+# Disable the AWS CLI pager globally (works with both CLI v1 and v2).
+export AWS_PAGER=""
+
 # ---------------------------------------------------------------------------
 # log MESSAGE…
 #   Print a timestamped message.  Suppresses its own xtrace noise so log
@@ -51,11 +54,12 @@ run_aws() {
     local stderr_file
     stderr_file=$(mktemp /tmp/init-aws-err.XXXXXX)
 
-    if "$@" 2>"${stderr_file}"; then
+    local rc=0
+    "$@" 2>"${stderr_file}" || rc=$?
+    if (( rc == 0 )); then
         rm -f "${stderr_file}"
         return 0
     fi
-    local rc=$?
     log "FAILED [exit ${rc}]: ${desc}"
     log "  command: $*"
     if [ -s "${stderr_file}" ]; then
@@ -77,12 +81,13 @@ run_aws_capture() {
     local stderr_file stdout_result
     stderr_file=$(mktemp /tmp/init-aws-err.XXXXXX)
 
-    if stdout_result=$("$@" 2>"${stderr_file}"); then
+    local rc=0
+    stdout_result=$("$@" 2>"${stderr_file}") || rc=$?
+    if (( rc == 0 )); then
         rm -f "${stderr_file}"
         printf '%s' "${stdout_result}"
         return 0
     fi
-    local rc=$?
     log "FAILED [exit ${rc}]: ${desc}"
     log "  command: $*"
     if [ -s "${stderr_file}" ]; then
@@ -121,8 +126,7 @@ wait_for_service() {
     shift
     local max_wait=30
     local elapsed=0
-    log "  Waiting for ${service_name} service..."
-    while ! "$@" --no-cli-pager >/dev/null 2>&1; do
+    while ! "$@" >/dev/null 2>&1; do
         if (( elapsed >= max_wait )); then
             log "  WARNING: ${service_name} not ready after ${max_wait}s, proceeding anyway"
             return 0
@@ -130,7 +134,6 @@ wait_for_service() {
         sleep 2
         (( elapsed += 2 )) || true
     done
-    log "  ${service_name} service is ready (waited ${elapsed}s)"
 }
 
 # Retry a command up to N times with a delay between attempts.
@@ -151,7 +154,6 @@ retry() {
             log "    FAILED after ${max_attempts} attempts (last exit=${rc}): $*"
             return 1
         fi
-        log "    Attempt ${attempt}/${max_attempts} failed (exit=${rc}), retrying in ${delay}s..."
         sleep "${delay}"
         (( attempt++ )) || true
     done
@@ -202,7 +204,7 @@ EOF
         --role-name "${ROLE_NAME}" \
         --assume-role-policy-document "${TRUST_POLICY}" \
         --tags "Key=Account,Value=${ACCOUNT_ID}" \
-        --no-cli-pager || true
+        || true
 
     # Attach AdministratorAccess — with ENFORCE_IAM=1 enabled, this policy
     # is actively enforced by LocalStack Pro.
@@ -210,7 +212,7 @@ EOF
         "${AWSLOCAL}" iam attach-role-policy \
         --role-name "${ROLE_NAME}" \
         --policy-arn "arn:aws:iam::aws:policy/AdministratorAccess" \
-        --no-cli-pager || true
+        || true
 done
 
 # Pipeline execution roles used by CodeBuild/CodePipeline
@@ -220,7 +222,7 @@ for ROLE_SUFFIX in "pipeline-provisioner" "pipeline-regional" "pipeline-mc"; do
         "${AWSLOCAL}" iam create-role \
         --role-name "${ROLE_SUFFIX}" \
         --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":["codebuild.amazonaws.com","codepipeline.amazonaws.com"]},"Action":"sts:AssumeRole"}]}' \
-        --no-cli-pager || true
+        || true
 done
 
 log "  ✅ IAM roles created"
@@ -251,7 +253,7 @@ create_iam_user() {
         "${AWSLOCAL}" iam create-user \
         --user-name "${user_name}" \
         --tags "Key=Description,Value=${description}" \
-        --no-cli-pager || true
+        || true
 
     # Create access keys (idempotent — if keys exist, skip)
     local key_output=""
@@ -259,7 +261,7 @@ create_iam_user() {
         "${AWSLOCAL}" iam create-access-key \
         --user-name "${user_name}" \
         --query 'AccessKey.[AccessKeyId,SecretAccessKey]' \
-        --output text --no-cli-pager) || true
+        --output text) || true
 
     if [ -n "${key_output}" ]; then
         local access_key secret_key
@@ -274,20 +276,20 @@ create_iam_user() {
             --name "/localstack/iam/${user_name}/access-key-id" \
             --value "${access_key}" \
             --type SecureString \
-            --overwrite --no-cli-pager || true
+            --overwrite || true
         run_aws "ssm put-parameter /localstack/iam/${user_name}/secret-access-key" \
             "${AWSLOCAL}" ssm put-parameter \
             --name "/localstack/iam/${user_name}/secret-access-key" \
             --value "${secret_key}" \
             --type SecureString \
-            --overwrite --no-cli-pager || true
+            --overwrite || true
     fi
 
     run_aws "iam attach-user-policy ${user_name}" \
         "${AWSLOCAL}" iam attach-user-policy \
         --user-name "${user_name}" \
         --policy-arn "${policy_arn}" \
-        --no-cli-pager || true
+        || true
     echo "    Policy: ${policy_arn}"
 }
 
@@ -332,7 +334,7 @@ run_aws "iam create-policy localstack-readonly" \
             }
         ]
     }' \
-    --no-cli-pager || true
+    || true
 
 create_iam_user "localstack-readonly" \
     "${READONLY_POLICY_ARN}" \
@@ -357,7 +359,7 @@ retry 3 2 run_aws "ssm put-parameter /infra/${ENVIRONMENT}/${AWS_REGION}/account
     --name "/infra/${ENVIRONMENT}/${AWS_REGION}/account_id" \
     --value "${RC_ACCOUNT}" \
     --type String \
-    --overwrite --no-cli-pager || true
+    --overwrite || true
 echo "  /infra/${ENVIRONMENT}/${AWS_REGION}/account_id = ${RC_ACCOUNT}"
 
 log "  Putting SSM param: /infra/${ENVIRONMENT}/${AWS_REGION}/mc01/account_id"
@@ -366,7 +368,7 @@ retry 3 2 run_aws "ssm put-parameter /infra/${ENVIRONMENT}/${AWS_REGION}/mc01/ac
     --name "/infra/${ENVIRONMENT}/${AWS_REGION}/mc01/account_id" \
     --value "${MC_ACCOUNT}" \
     --type String \
-    --overwrite --no-cli-pager || true
+    --overwrite || true
 echo "  /infra/${ENVIRONMENT}/${AWS_REGION}/mc01/account_id = ${MC_ACCOUNT}"
 
 # GitHub token placeholder (mirrors /ephemeral-provider/github-token)
@@ -376,7 +378,7 @@ retry 3 2 run_aws "ssm put-parameter /ephemeral-provider/github-token" \
     --name "/ephemeral-provider/github-token" \
     --value "localstack-mock-github-token" \
     --type SecureString \
-    --overwrite --no-cli-pager || true
+    --overwrite || true
 echo "  /ephemeral-provider/github-token = <mock>"
 
 # Region OU path (used by bootstrap-central-account.sh)
@@ -386,7 +388,7 @@ retry 3 2 run_aws "ssm put-parameter /infra/region-ou-path" \
     --name "/infra/region-ou-path" \
     --value "ou-localstack-root/ou-localstack-regions" \
     --type String \
-    --overwrite --no-cli-pager || true
+    --overwrite || true
 echo "  /infra/region-ou-path = ou-localstack-root/ou-localstack-regions"
 
 # SRE UI allowed CIDRs
@@ -396,7 +398,7 @@ retry 3 2 run_aws "ssm put-parameter /infra/sre-ui-alb/allowed-source-cidrs" \
     --name "/infra/sre-ui-alb/allowed-source-cidrs" \
     --value "0.0.0.0/0" \
     --type String \
-    --overwrite --no-cli-pager || true
+    --overwrite || true
 echo "  /infra/sre-ui-alb/allowed-source-cidrs = 0.0.0.0/0"
 
 # SNS alerting topic ARN placeholder
@@ -406,7 +408,7 @@ retry 3 2 run_aws "ssm put-parameter /infra/${ENVIRONMENT}/${AWS_REGION}/sns-ale
     --name "/infra/${ENVIRONMENT}/${AWS_REGION}/sns-alerting-topic-arn" \
     --value "arn:aws:sns:${AWS_REGION}:${RC_ACCOUNT}:localstack-alerting" \
     --type String \
-    --overwrite --no-cli-pager || true
+    --overwrite || true
 echo "  /infra/${ENVIRONMENT}/${AWS_REGION}/sns-alerting-topic-arn"
 
 log "  ✅ SSM parameters created"
@@ -425,7 +427,7 @@ ENV_ZONE_ID=$(run_aws_capture "route53 create-hosted-zone ${DOMAIN}" \
     "${AWSLOCAL}" route53 create-hosted-zone \
     --name "${DOMAIN}" \
     --caller-reference "localstack-env-$(date +%s)" \
-    --query 'HostedZone.Id' --output text --no-cli-pager) || true
+    --query 'HostedZone.Id' --output text) || true
 log "  Created zone: ${DOMAIN} (${ENV_ZONE_ID:-<failed>})"
 
 # Regional zone (deployment_name.domain)
@@ -433,7 +435,7 @@ REGIONAL_ZONE_ID=$(run_aws_capture "route53 create-hosted-zone ${AWS_REGION}.${D
     "${AWSLOCAL}" route53 create-hosted-zone \
     --name "${AWS_REGION}.${DOMAIN}" \
     --caller-reference "localstack-regional-$(date +%s)" \
-    --query 'HostedZone.Id' --output text --no-cli-pager) || true
+    --query 'HostedZone.Id' --output text) || true
 log "  Created zone: ${AWS_REGION}.${DOMAIN} (${REGIONAL_ZONE_ID:-<failed>})"
 
 log "  ✅ Route53 zones created"
@@ -454,7 +456,7 @@ for BUCKET in \
     "terraform-state-${MC_ACCOUNT}-${AWS_REGION}" \
     "hypershift-mc-${AWS_REGION}"; do
     run_aws "s3 mb ${BUCKET}" \
-        "${AWSLOCAL}" s3 mb "s3://${BUCKET}" --no-cli-pager || true
+        "${AWSLOCAL}" s3 mb "s3://${BUCKET}" || true
     log "  Created bucket: ${BUCKET}"
 done
 
@@ -467,7 +469,7 @@ for BUCKET in \
         "${AWSLOCAL}" s3api put-bucket-versioning \
         --bucket "${BUCKET}" \
         --versioning-configuration Status=Enabled \
-        --no-cli-pager || true
+        || true
 done
 
 log "  ✅ S3 buckets created"
@@ -486,7 +488,7 @@ RC_VPC_ID=$(run_aws_capture "ec2 create-vpc (regional)" \
     "${AWSLOCAL}" ec2 create-vpc \
     --cidr-block "10.0.0.0/16" \
     --tag-specifications "ResourceType=vpc,Tags=[{Key=Name,Value=localstack-regional-vpc}]" \
-    --query 'Vpc.VpcId' --output text --no-cli-pager) || true
+    --query 'Vpc.VpcId' --output text) || true
 log "  Created VPC: ${RC_VPC_ID:-<failed>} (regional)"
 
 # Private subnets (3 AZs)
@@ -497,7 +499,7 @@ for i in 1 2 3; do
         --cidr-block "10.0.${i}.0/24" \
         --availability-zone "${AWS_REGION}$(echo "$i" | tr '123' 'abc')" \
         --tag-specifications "ResourceType=subnet,Tags=[{Key=Name,Value=localstack-regional-private-${i}}]" \
-        --query 'Subnet.SubnetId' --output text --no-cli-pager) || true
+        --query 'Subnet.SubnetId' --output text) || true
     log "  Created subnet: ${SUBNET_ID:-<failed>} (private-${i})"
 done
 
@@ -509,7 +511,7 @@ for i in 1 2 3; do
         --cidr-block "10.0.1${i}.0/24" \
         --availability-zone "${AWS_REGION}$(echo "$i" | tr '123' 'abc')" \
         --tag-specifications "ResourceType=subnet,Tags=[{Key=Name,Value=localstack-regional-public-${i}}]" \
-        --query 'Subnet.SubnetId' --output text --no-cli-pager) || true
+        --query 'Subnet.SubnetId' --output text) || true
     log "  Created subnet: ${SUBNET_ID:-<failed>} (public-${i})"
 done
 
@@ -519,7 +521,7 @@ RC_SG_ID=$(run_aws_capture "ec2 create-security-group (regional-cluster)" \
     --group-name "localstack-regional-cluster" \
     --description "Regional cluster security group" \
     --vpc-id "${RC_VPC_ID}" \
-    --query 'GroupId' --output text --no-cli-pager) || true
+    --query 'GroupId' --output text) || true
 log "  Created security group: ${RC_SG_ID:-<failed>} (regional-cluster)"
 
 BASTION_SG_ID=$(run_aws_capture "ec2 create-security-group (bastion)" \
@@ -527,7 +529,7 @@ BASTION_SG_ID=$(run_aws_capture "ec2 create-security-group (bastion)" \
     --group-name "localstack-regional-bastion" \
     --description "Regional bastion security group" \
     --vpc-id "${RC_VPC_ID}" \
-    --query 'GroupId' --output text --no-cli-pager) || true
+    --query 'GroupId' --output text) || true
 log "  Created security group: ${BASTION_SG_ID:-<failed>} (bastion)"
 
 # Management cluster VPC
@@ -535,7 +537,7 @@ MC_VPC_ID=$(run_aws_capture "ec2 create-vpc (management)" \
     "${AWSLOCAL}" ec2 create-vpc \
     --cidr-block "10.1.0.0/16" \
     --tag-specifications "ResourceType=vpc,Tags=[{Key=Name,Value=localstack-mc01-vpc}]" \
-    --query 'Vpc.VpcId' --output text --no-cli-pager) || true
+    --query 'Vpc.VpcId' --output text) || true
 log "  Created VPC: ${MC_VPC_ID:-<failed>} (management)"
 
 log "  ✅ VPC infrastructure created"
@@ -559,7 +561,7 @@ run_aws "dynamodb create-table localstack-kube-applier" \
         AttributeName=pk,KeyType=HASH \
         AttributeName=sk,KeyType=RANGE \
     --billing-mode PAY_PER_REQUEST \
-    --no-cli-pager || true
+    || true
 log "  Created table: localstack-kube-applier"
 
 log "  ✅ DynamoDB tables created"
@@ -576,13 +578,13 @@ wait_for_service "kms" "${AWSLOCAL}" kms list-keys
 KMS_KEY_ID=$(run_aws_capture "kms create-key (EKS secrets)" \
     "${AWSLOCAL}" kms create-key \
     --description "LocalStack EKS secrets encryption key" \
-    --query 'KeyMetadata.KeyId' --output text --no-cli-pager) || true
+    --query 'KeyMetadata.KeyId' --output text) || true
 if [ -n "${KMS_KEY_ID}" ]; then
     run_aws "kms create-alias alias/localstack-eks-secrets" \
         "${AWSLOCAL}" kms create-alias \
         --alias-name "alias/localstack-eks-secrets" \
         --target-key-id "${KMS_KEY_ID}" \
-        --no-cli-pager || true
+        || true
     log "  Created key: ${KMS_KEY_ID} (alias/localstack-eks-secrets)"
 fi
 
@@ -601,14 +603,14 @@ run_aws "secretsmanager create-secret localstack/argocd-admin" \
     "${AWSLOCAL}" secretsmanager create-secret \
     --name "localstack/argocd-admin" \
     --secret-string '{"username":"admin","password":"localstack-admin"}' \
-    --no-cli-pager || true
+    || true
 log "  Created secret: localstack/argocd-admin"
 
 run_aws "secretsmanager create-secret localstack/hyperfleet-db" \
     "${AWSLOCAL}" secretsmanager create-secret \
     --name "localstack/hyperfleet-db" \
     --secret-string '{"username":"hyperfleet","password":"localstack-db-password","host":"localhost","port":"5432","dbname":"hyperfleet"}' \
-    --no-cli-pager || true
+    || true
 log "  Created secret: localstack/hyperfleet-db"
 
 log "  ✅ Secrets created"
@@ -625,7 +627,7 @@ wait_for_service "sns" "${AWSLOCAL}" sns list-topics
 run_aws "sns create-topic localstack-alerting" \
     "${AWSLOCAL}" sns create-topic \
     --name "localstack-alerting" \
-    --no-cli-pager || true
+    || true
 log "  Created topic: localstack-alerting"
 
 log "  ✅ SNS topics created"
@@ -648,7 +650,7 @@ for LOG_GROUP in \
     run_aws "logs create-log-group ${LOG_GROUP}" \
         "${AWSLOCAL}" logs create-log-group \
         --log-group-name "${LOG_GROUP}" \
-        --no-cli-pager || true
+        || true
     log "  Created log group: ${LOG_GROUP}"
 done
 
@@ -674,7 +676,7 @@ for PROJECT in \
         --artifacts '{"type":"NO_ARTIFACTS"}' \
         --environment '{"type":"LINUX_CONTAINER","image":"aws/codebuild/standard:7.0","computeType":"BUILD_GENERAL1_SMALL"}' \
         --service-role "arn:aws:iam::${CENTRAL_ACCOUNT}:role/pipeline-provisioner" \
-        --no-cli-pager || true
+        || true
     log "  Created project: ${PROJECT}"
 done
 
@@ -713,7 +715,7 @@ for PIPELINE in "localstack-pipeline-provisioner" "localstack-pipeline-regional"
             ],
             \"artifactStore\": {\"type\": \"S3\", \"location\": \"terraform-state-${CENTRAL_ACCOUNT}\"}
         }" \
-        --no-cli-pager || true
+        || true
     log "  Created pipeline: ${PIPELINE}"
 done
 

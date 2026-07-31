@@ -30,8 +30,8 @@ services:
       - "4566:4566" # LocalStack Gateway
       - "4510-4559:4510-4559" # External service ports
     environment:
-      # Enable all AWS services used by the ROSA HyperFleet platform.
-      - SERVICES=s3,dynamodb,ssm,sts,iam,route53,cloudformation,codepipeline,codebuild,eks,rds,ecr,ec2,elbv2,apigateway,acm,secretsmanager,kms,cloudwatch,sns,sqs,cloudtrail,elasticache,lambda,ecs,cloudfront,logs
+      # Only the AWS services actually used by init-aws.sh — faster startup.
+      - SERVICES=iam,sts,ssm,s3,route53,ec2,dynamodb,kms,secretsmanager,sns,sqs,cloudwatch,codebuild,codepipeline,lambda,eks,apigateway,logs
       - DEBUG=0
       - PERSISTENCE=1
       # LocalStack Pro auth token (required — see docs/localstack-testing.md)
