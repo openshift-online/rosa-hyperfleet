@@ -34,10 +34,15 @@ spec:
         environment: '{{ .metadata.labels.environment }}'
         region_deployment: '{{ .metadata.labels.region_deployment }}'
         aws_region: '{{ .metadata.labels.aws_region }}'
+      annotations:
+        # Sync wave ordering: Karpenter must install before eks-nodepool
+        # (NodePool CRDs must exist before NodePool resources are created)
+        argocd.argoproj.io/sync-wave: '{{ if eq .path.basename "karpenter" }}0{{ else if eq .path.basename "eks-nodepool" }}10{{ else }}5{{ end }}'
     spec:
       project: default
       destination:
-        namespace: '{{ .path.basename }}'
+        # Karpenter must be installed in kube-system namespace
+        namespace: '{{ if eq .path.basename "karpenter" }}kube-system{{ else }}{{ .path.basename }}{{ end }}'
         server: '{{ .server }}'
       syncPolicy:
         automated:
@@ -151,6 +156,13 @@ spec:
                   arn: '{{ .metadata.annotations.sre_prometheus_target_group_arn }}'
             aws-load-balancer-controller:
               clusterName: '{{ .metadata.labels.cluster_name }}'
+            karpenter:
+              settings:
+                clusterName: '{{ .metadata.labels.cluster_name }}'
+                interruptionQueue: '{{ .metadata.labels.cluster_name }}-karpenter'
+              serviceAccount:
+                annotations:
+                  eks.amazonaws.com/role-arn: '{{ .metadata.annotations.karpenter_controller_role_arn }}'
             hyperfleetApi:
               aws:
                 region: '{{ .metadata.labels.aws_region }}'

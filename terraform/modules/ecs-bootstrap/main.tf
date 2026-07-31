@@ -137,7 +137,7 @@ resource "aws_ecs_task_definition" "bootstrap" {
           aws eks update-kubeconfig --name $CLUSTER_NAME
 
           # Wait for coredns and metrics-server (on the bootstrap node group)
-          # before installing Karpenter and ArgoCD.
+          # before installing ArgoCD.
           for ADDON in coredns metrics-server; do
             echo "Waiting for $ADDON to be active..."
             aws eks wait addon-active \
@@ -146,53 +146,6 @@ resource "aws_ecs_task_definition" "bootstrap" {
               --region "$AWS_REGION"
             echo "✓ $ADDON active"
           done
-
-          if [ -n "$${KARPENTER_CONTROLLER_ROLE_ARN:-}" ]; then
-            # Install Karpenter before seeding the NodePool: the NodePool and
-            # EC2NodeClass CRDs (karpenter.sh/v1, karpenter.k8s.aws/v1) don't
-            # exist until Karpenter is installed. ArgoCD adopts this release
-            # via its self-managed Karpenter Application after bootstrap.
-            if ! helm status karpenter -n kube-system 2>/dev/null | grep -q "^STATUS: deployed"; then
-              echo "Installing Karpenter $KARPENTER_VERSION..."
-              if [ -z "$${KARPENTER_QUEUE_URL:-}" ]; then
-                echo "ERROR: KARPENTER_QUEUE_URL is not set — required when KARPENTER_CONTROLLER_ROLE_ARN is provided" >&2
-                exit 1
-              fi
-              _KARPENTER_QUEUE_NAME=$(basename "$KARPENTER_QUEUE_URL")
-              helm upgrade --install karpenter \
-                oci://public.ecr.aws/karpenter/karpenter \
-                --version "$KARPENTER_VERSION" \
-                --namespace kube-system \
-                --set "settings.clusterName=$CLUSTER_NAME" \
-                --set "settings.interruptionQueue=$_KARPENTER_QUEUE_NAME" \
-                --set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=$KARPENTER_CONTROLLER_ROLE_ARN" \
-                --set 'tolerations[0].key=CriticalAddonsOnly' \
-                --set 'tolerations[0].operator=Exists' \
-                --set 'tolerations[0].effect=NoSchedule' \
-                --wait --timeout=5m
-              echo "✓ Karpenter installed"
-            else
-              echo "✓ Karpenter already deployed, skipping"
-            fi
-
-            # Seed the FIPS NodePool only on first bootstrap. On subsequent
-            # runs (resync), ArgoCD owns this resource via the eks-nodepool
-            # chart — re-applying it creates SSA ownership conflicts.
-            if ! kubectl get nodepool workloads 2>/dev/null; then
-              echo "Applying FIPS EC2NodeClass and workloads NodePool from chart..."
-              _NODEPOOL_VALUES="$REPO_DIR/deploy/$ENVIRONMENT/$REGION_DEPLOYMENT/argocd-values-$CLUSTER_TYPE.yaml"
-              _VALUES_FLAG=""
-              [ -f "$_NODEPOOL_VALUES" ] && _VALUES_FLAG="-f $_NODEPOOL_VALUES"
-              helm template eks-nodepool "$REPO_DIR/argocd/config/$CLUSTER_TYPE/eks-nodepool" \
-                --set global.cluster_name="$CLUSTER_NAME" \
-                $_VALUES_FLAG \
-                | kubectl apply --server-side -f -
-              echo "✓ FIPS EC2NodeClass and NodePool applied"
-            else
-              echo "✓ FIPS NodePool already exists, skipping (managed by ArgoCD)"
-            fi
-
-          fi
 
           if ! kubectl get deployment argocd-server -n argocd 2>/dev/null; then
           echo "Installing ArgoCD from repo chart..."
@@ -286,6 +239,7 @@ resource "aws_ecs_task_definition" "bootstrap" {
               sre_alb_dns_name: "$SRE_ALB_DNS_NAME"
               sre_domain: "$SRE_DOMAIN"
               redis_endpoint: "$REDIS_ENDPOINT"
+              karpenter_controller_role_arn: "$KARPENTER_CONTROLLER_ROLE_ARN"
           type: Opaque
           stringData:
             name: in-cluster
@@ -323,6 +277,10 @@ resource "aws_ecs_task_definition" "bootstrap" {
               syncOptions:
                 - CreateNamespace=true
           APP_EOF
+
+          # ArgoCD will install Karpenter and create the NodePool via Applications.
+          # No ECS seeding needed - ApplicationSet sync waves ensure Karpenter
+          # installs before eks-nodepool Application syncs.
 
           # CI: E2E test runner starts immediately after bootstrap exits, so
           # HyperShift must be fully installed before work agents apply
