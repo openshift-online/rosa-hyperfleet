@@ -76,7 +76,10 @@ resource "aws_kms_key" "messaging" {
         Resource = "*"
       },
       {
-        # SNS must be able to encrypt/decrypt when delivering messages to SQS
+        # SNS must be able to encrypt/decrypt when delivering messages to SQS.
+        # For cross-account delivery (MC SNS → RC SQS), SNS acts on behalf of
+        # the MC account, so aws:SourceAccount will be the MC account ID.
+        # Both RC and MC account IDs are required.
         Sid    = "AllowSNSDelivery"
         Effect = "Allow"
         Principal = {
@@ -89,7 +92,10 @@ resource "aws_kms_key" "messaging" {
         Resource = "*"
         Condition = {
           StringEquals = {
-            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+            "aws:SourceAccount" = [
+              data.aws_caller_identity.current.account_id,
+              var.mc_aws_account_id,
+            ]
           }
         }
       },
