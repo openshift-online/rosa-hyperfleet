@@ -180,24 +180,16 @@ log "--- IAM Roles ---"
 
 wait_for_service "iam" "${AWSLOCAL}" iam list-roles
 
-# Grant the default root user full access so the init script can bootstrap
-# all resources when ENFORCE_IAM=1 is enabled.  The root user in LocalStack's
-# internal account (000000000000) has no policies by default under enforcement.
-log "  Granting AdministratorAccess to root user (for init bootstrap)"
-run_aws "iam attach-root-policy" \
-    "${AWSLOCAL}" iam attach-user-policy \
-    --user-name root \
-    --policy-arn arn:aws:iam::aws:policy/AdministratorAccess || true
-
-# iam:PassRole is checked separately by LocalStack even with AdministratorAccess.
-# Grant it explicitly so the init script can assign roles to CodePipeline/CodeBuild
-# resources across all mock accounts.
-log "  Granting iam:PassRole to root user (cross-account role assignment)"
-run_aws "iam put-root-passrole-policy" \
+# LocalStack's managed AdministratorAccess policy does not reliably cover all
+# actions under ENFORCE_IAM (e.g. eks:CreateCluster, iam:PassRole are denied).
+# Work around this by attaching an explicit wildcard inline policy to the root
+# user so the init script can bootstrap all resources without restrictions.
+log "  Granting full access to root user (for init bootstrap)"
+run_aws "iam put-root-bootstrap-policy" \
     "${AWSLOCAL}" iam put-user-policy \
     --user-name root \
-    --policy-name AllowPassRole \
-    --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"iam:PassRole","Resource":"*"}]}' || true
+    --policy-name LocalStackBootstrapFullAccess \
+    --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}' || true
 
 # Create OrganizationAccountAccessRole for each account, matching the real
 # cross-account assume-role pattern used by ephemeral-env.sh.
