@@ -179,7 +179,21 @@ module "regional_cluster" {
 }
 
 # =============================================================================
-# ECS Bootstrap - depends on VPC + EKS
+# ECS Bootstrap - Installation Mechanism for Fully Private Cluster
+#
+# The regional_cluster module above creates a fully private EKS cluster with a
+# karpenter-bootstrap managed node group (2× t3.medium) where Karpenter and
+# ArgoCD will run. However, Terraform cannot reach the private cluster API to
+# install software via the helm provider.
+#
+# This ecs_bootstrap module creates ECS Fargate infrastructure that runs in the
+# cluster's VPC and can reach the private EKS API. A one-time bootstrap task
+# performs `helm install` of Karpenter and ArgoCD onto the bootstrap nodes, then
+# exits. After bootstrap, Karpenter and ArgoCD continue running on the managed
+# node group, and the ECS infrastructure remains available for future audited
+# SRE operations.
+#
+# See docs/design/fully-private-eks-bootstrap.md for the full architecture.
 # =============================================================================
 
 module "ecs_bootstrap" {

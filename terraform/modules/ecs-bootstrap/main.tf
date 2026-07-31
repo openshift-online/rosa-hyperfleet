@@ -1,5 +1,24 @@
+# =============================================================================
 # ECS Bootstrap Module for ArgoCD
-# Provides ECS Fargate infrastructure for external bootstrap execution
+#
+# IMPORTANT: This module provides the INSTALLATION MECHANISM for Karpenter and
+# ArgoCD in fully private EKS clusters. It does NOT host the runtime workloads.
+#
+# The Problem: Terraform can provision EKS clusters but cannot reach fully
+# private cluster APIs to install software via the helm provider.
+#
+# The Solution: ECS Fargate tasks run in the cluster's VPC with network access
+# to the private EKS API. A one-time bootstrap task performs `helm install` of
+# Karpenter and ArgoCD onto the karpenter-bootstrap managed node group (defined
+# in the eks-cluster module). After installation completes, the ECS task exits.
+#
+# Runtime: Karpenter and ArgoCD run on the karpenter-bootstrap node group
+# (2× t3.medium with CriticalAddonsOnly taint) for the lifetime of the cluster.
+#
+# See docs/design/fully-private-eks-bootstrap.md for the full architecture and
+# rationale for choosing ECS over alternatives (public→private transition, node
+# group user data scripts, etc.).
+# =============================================================================
 
 locals {
   bootstrap_container_name = "bootstrap"
@@ -69,7 +88,21 @@ resource "aws_cloudwatch_log_group" "bootstrap" {
   depends_on = [aws_kms_key.bootstrap_logs]
 }
 
-# ECS Task Definition for bootstrap execution
+# -----------------------------------------------------------------------------
+# ECS Task Definition for Bootstrap Execution
+#
+# This task definition runs a one-time container that:
+# 1. Connects to the private EKS cluster API (via VPC networking)
+# 2. Installs Karpenter controller (helm install) onto karpenter-bootstrap nodes
+# 3. Installs ArgoCD (helm install) onto karpenter-bootstrap nodes
+# 4. Creates the root ArgoCD Application for GitOps self-management
+# 5. Exits
+#
+# After this task completes, Karpenter and ArgoCD continue running on the
+# karpenter-bootstrap managed node group. This task is NOT the runtime - it's
+# the installer. The ECS infrastructure remains available for future audited
+# SRE operations (resync, break-glass access, disaster recovery).
+# -----------------------------------------------------------------------------
 resource "aws_ecs_task_definition" "bootstrap" {
   family                   = "${var.cluster_id}-bootstrap"
   network_mode             = "awsvpc"

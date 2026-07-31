@@ -192,6 +192,14 @@ resource "aws_eks_addon" "pod_identity" {
 # before any Karpenter-provisioned nodes exist. This breaks the bootstrap
 # deadlock: Karpenter cannot provision nodes for itself.
 #
+# IMPORTANT: This node group is WHERE Karpenter and ArgoCD run at runtime. The
+# ecs-bootstrap module provides the HOW (installation mechanism). Because this
+# cluster is fully private, Terraform cannot reach the EKS API to install ArgoCD
+# via the helm provider. The ECS task runs in the VPC with EKS API access and
+# performs the initial `helm install` of Karpenter and ArgoCD onto these nodes.
+# After bootstrap, this node group continues to host Karpenter + ArgoCD for the
+# lifetime of the cluster. See docs/design/fully-private-eks-bootstrap.md.
+#
 # No custom launch template: EKS managed node groups set IMDSv2 hop limit to 2
 # by default for AL2023, and managed node group auth is handled automatically
 # by EKS regardless of node name format.
