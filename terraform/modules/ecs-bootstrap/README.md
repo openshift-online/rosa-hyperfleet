@@ -39,10 +39,12 @@ The ECS task executes the following steps in order:
 1. **Clone repository**: Checks out the configured git branch
 2. **Configure kubectl**: Updates kubeconfig for the private EKS cluster
 3. **Wait for addons**: Polls until CoreDNS and metrics-server are Active on the `karpenter-bootstrap` node group
-4. **Install Karpenter** (when `karpenter_controller_role_arn` is set): Installs Karpenter via Helm from ECR public; skipped if already deployed
-5. **Apply EC2NodeClass and NodePool**: Applies the FIPS `EC2NodeClass` and cluster-type-specific workloads `NodePool` from the `eks-nodepool` chart; always applied (idempotent) so any stale spec is corrected
-6. **Prewarm validation**: Schedules a lightweight pod, waits up to 8 minutes for Karpenter to provision an EC2 node and bring it Ready. Failure prints diagnostic output (NodeClass, NodePool, NodeClaims, Karpenter logs) and exits — ECS retries the task automatically
-7. **Install ArgoCD**: Installs ArgoCD via Helm and creates the Application of Applications for GitOps self-management
+4. **Install ArgoCD**: Installs ArgoCD via Helm and creates the Application of Applications for GitOps self-management
+
+After ECS bootstrap completes, ArgoCD takes over cluster management:
+
+1. **Install Karpenter** (sync wave 0): ArgoCD deploys the `karpenter` Application, installing Karpenter via Helm
+2. **Create eks-nodepool Application** (sync wave 10): ArgoCD deploys the `eks-nodepool` Application, which applies the FIPS `EC2NodeClass` and cluster-type-specific workloads `NodePool`
 
 ## Security Features
 

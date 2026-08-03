@@ -273,6 +273,11 @@ resource "aws_eks_addon" "aws_secrets_store_csi_driver_provider" {
       syncSecret = {
         enabled = true
       }
+      tolerations = [{
+        key      = "CriticalAddonsOnly"
+        operator = "Exists"
+        effect   = "NoSchedule"
+      }]
     }
   })
 
