@@ -28,8 +28,7 @@ were available for the Karpenter controller ServiceAccount:
 set during `helm install` via `serviceAccount.annotations`). EKS Pod Identity support in Karpenter
 requires a separate admission webhook and additional configuration that the upstream chart does not
 handle automatically. Using IRSA for Karpenter matches the upstream recommended installation
-pattern, minimizes bootstrap complexity, and avoids a separate admission controller dependency
-during the ECS bootstrap task.
+pattern and simplifies the ArgoCD Application configuration.
 
 All other platform workloads (Thanos, Loki, Maestro Agent, AWS Load Balancer Controller, ZOA
 jobs) use EKS Pod Identity exclusively.

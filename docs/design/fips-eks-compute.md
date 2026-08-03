@@ -55,14 +55,14 @@ operating system — specifically Bottlerocket with FIPS mode enabled.
 
 - **Justification**: The `karpenter-bootstrap` managed node group (t3.medium, 2 nodes,
   `CriticalAddonsOnly` taint) provides stable, pre-provisioned capacity for Karpenter itself and
-  EKS system addons. This eliminates the bootstrap chicken-and-egg problem: Karpenter is installed
-  first (on the bootstrap node group), then the FIPS `EC2NodeClass` and `NodePool` are applied,
-  then a prewarm pod validates EC2 provisioning before ArgoCD is installed.
+  EKS system addons. This eliminates the bootstrap chicken-and-egg problem: ECS bootstrap installs
+  ArgoCD, then ArgoCD installs Karpenter (sync wave 0) and creates the FIPS `EC2NodeClass` and
+  `NodePool` (sync wave 10) via GitOps Applications.
 
-- **Evidence**: The prewarm step in the ECS bootstrap task explicitly provisions one Karpenter node
-  and waits up to 8 minutes for it to become Ready before proceeding to ArgoCD installation. This
-  surfaces EC2 API rate limiting and IAM role sequencing issues as early ECS task failures
-  (retried automatically by ECS) rather than silent cascades post-ArgoCD.
+- **Evidence**: ArgoCD sync wave ordering ensures Karpenter controller and CRDs are installed
+  before the eks-nodepool Application syncs. The ApplicationSet injects cluster-specific values
+  (clusterName, interruptionQueue, IRSA role ARN) into the Karpenter Helm chart, and the
+  eks-nodepool chart creates the FIPS `EC2NodeClass` and workloads `NodePool`.
 
 - **Tradeoff**: The `karpenter-bootstrap` node group runs non-FIPS standard Amazon Linux 2023 (AL2023) nodes.
   These nodes host only Karpenter controller, CoreDNS, and metrics-server — EKS system
@@ -77,12 +77,12 @@ operating system — specifically Bottlerocket with FIPS mode enabled.
 - Platform and application workloads run on Bottlerocket with FIPS-validated cryptographic
   modules, satisfying FedRAMP High/Moderate cryptographic requirements for customer-bearing
   compute.
-- Bootstrap is reliable: the bootstrap node group provisions nodes immediately, Karpenter installs
-  cleanly, and the prewarm pod validates EC2 provisioning before ArgoCD is involved.
-- OSS Karpenter can be independently upgraded via Helm without waiting for AWS EKS Auto Mode
-  support cycles.
-- The FIPS `EC2NodeClass` and `NodePool` are applied by the ECS bootstrap task and subsequently
-  adopted by ArgoCD on first sync, making them GitOps-managed.
+- Bootstrap is reliable: the bootstrap node group provisions nodes immediately, ArgoCD installs
+  cleanly, and sync wave ordering guarantees Karpenter is ready before NodePool creation.
+- OSS Karpenter can be independently upgraded via Helm chart version changes in the ArgoCD
+  Application without waiting for AWS EKS Auto Mode support cycles.
+- The FIPS `EC2NodeClass` and `NodePool` are managed exclusively by ArgoCD via the eks-nodepool
+  Application, providing full GitOps lifecycle (version control, drift detection, self-healing).
 
 ### Negative
 
@@ -126,9 +126,11 @@ operating system — specifically Bottlerocket with FIPS mode enabled.
 
 ### Operability
 
-- The FIPS `EC2NodeClass` and `NodePool` are created by the ECS bootstrap task on first run and
-  subsequently managed by ArgoCD. Day-2 changes are made via GitOps — no manual `kubectl apply`.
-- Adding a new cluster type requires adding an `eks-nodepool` Helm chart entry for the new
-  `cluster_type`, which the bootstrap task selects via the `CLUSTER_TYPE` environment variable.
+- The FIPS `EC2NodeClass` and `NodePool` are managed by ArgoCD via the eks-nodepool Application.
+  Day-2 changes are made via GitOps — edit the chart in `argocd/config/<cluster-type>/eks-nodepool/`
+  and ArgoCD syncs the change automatically.
+- Adding a new cluster type requires creating an `argocd/config/<cluster-type>/eks-nodepool/`
+  directory with appropriate `EC2NodeClass` and `NodePool` manifests. The ApplicationSet
+  automatically generates an Application for any directory under `argocd/config/<cluster-type>/`.
 - EC2 interruption events (spot reclamation, instance retirement) are handled by Karpenter via
   an SQS queue wired to EventBridge rules provisioned by the `eks-cluster` module.
