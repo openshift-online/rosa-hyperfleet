@@ -6,8 +6,9 @@
 
 All EKS clusters use OSS Karpenter v1 (1.13.0) for node provisioning. A dedicated
 `karpenter-bootstrap` managed node group provides stable capacity for the Karpenter controller.
-The Karpenter controller IAM role uses IRSA (IAM Roles for Service Accounts) rather than EKS Pod
-Identity because Karpenter predates EKS Pod Identity GA support.
+The Karpenter controller IAM role uses IRSA (IAM Roles for Service Accounts). While EKS Pod
+Identity is the ZOA platform standard, IRSA was chosen for this repository as it is fully
+supported by AWS and simplifies the Karpenter Helm chart configuration.
 
 ## Context
 
@@ -24,11 +25,11 @@ were available for the Karpenter controller ServiceAccount:
 
 **Chosen**: IRSA for the Karpenter controller; EKS Pod Identity for all other workloads.
 
-**Rationale**: Karpenter v1 (1.13.0) ships with built-in IRSA support (ServiceAccount annotation
-set during `helm install` via `serviceAccount.annotations`). EKS Pod Identity support in Karpenter
-requires a separate admission webhook and additional configuration that the upstream chart does not
-handle automatically. Using IRSA for Karpenter matches the upstream recommended installation
-pattern and simplifies the ArgoCD Application configuration.
+**Rationale**: IRSA was chosen for this repository because Karpenter v1 (1.13.0) ships with
+built-in IRSA support via the `serviceAccount.annotations` Helm value. EKS Pod Identity is the ZOA
+platform standard and remains supported by AWS alongside IRSA. While AWS recommends EKS Pod
+Identity for new workloads, IRSA simplifies the Helm chart configuration for this repository by
+avoiding additional Pod Identity association resources in Terraform.
 
 All other platform workloads (Thanos, Loki, Maestro Agent, AWS Load Balancer Controller, ZOA
 jobs) use EKS Pod Identity exclusively.
@@ -79,7 +80,7 @@ The `eks-cluster` module provisions:
 
 ### Positive
 
-- IRSA is the upstream-recommended Karpenter auth mechanism; no additional admission controllers required
+- IRSA is fully supported by AWS and requires only the cluster's OIDC provider; no additional resources needed
 - Karpenter controller role trust policy is scoped to a single ServiceAccount — no broader cluster-level access
 - SQS interruption handling enables graceful draining before spot reclamation or instance retirement
 - OSS Karpenter can be upgraded independently via Helm without AWS EKS Auto Mode release cycles

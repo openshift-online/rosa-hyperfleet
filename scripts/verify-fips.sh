@@ -127,9 +127,17 @@ print_workload_summary() {
 check_kubernetes_objects() {
   header "Kubernetes: NodeClass / NodePool"
 
-  if ! kubectl get crd nodeclasses.karpenter.k8s.aws >/dev/null 2>&1; then
-    skip "NodeClass CRD not found — skipping (Karpenter not installed)"
-    return
+  local crd_check
+  crd_check=$(kubectl get crd nodeclasses.karpenter.k8s.aws 2>&1)
+  local crd_status=$?
+  if [[ $crd_status -ne 0 ]]; then
+    if echo "$crd_check" | grep -qiE 'not found|no resources found'; then
+      skip "NodeClass CRD not found — skipping (Karpenter not installed)"
+      return
+    else
+      fail "kubectl get crd failed: $crd_check"
+      return
+    fi
   fi
 
   echo ""

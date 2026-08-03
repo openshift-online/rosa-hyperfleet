@@ -39,6 +39,10 @@ kube-prometheus-stack:
         memory: 256Mi
 
   kube-state-metrics:
+    tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+        effect: NoSchedule
     rbac:
       extraRules:
         - apiGroups: ["hypershift.openshift.io"]
@@ -89,6 +93,10 @@ kube-prometheus-stack:
 
   prometheus:
     prometheusSpec:
+      tolerations:
+        - key: CriticalAddonsOnly
+          operator: Exists
+          effect: NoSchedule
       replicas: 2
       retention: "14d"
       retentionSize: "85GB"

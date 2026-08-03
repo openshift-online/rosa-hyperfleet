@@ -221,6 +221,27 @@ resource "aws_iam_role_policy" "aws_lbc" {
         }
       },
       {
+        Sid    = "ELBAddTagsOnCreate"
+        Effect = "Allow"
+        Action = ["elasticloadbalancing:AddTags"]
+        Resource = [
+          "arn:${data.aws_partition.current.partition}:elasticloadbalancing:*:*:targetgroup/*/*",
+          "arn:${data.aws_partition.current.partition}:elasticloadbalancing:*:*:loadbalancer/net/*/*",
+          "arn:${data.aws_partition.current.partition}:elasticloadbalancing:*:*:loadbalancer/app/*/*",
+        ]
+        Condition = {
+          StringEquals = {
+            "elasticloadbalancing:CreateAction" = [
+              "CreateTargetGroup",
+              "CreateLoadBalancer"
+            ]
+          }
+          Null = {
+            "aws:RequestTag/elbv2.k8s.aws/cluster" = "false"
+          }
+        }
+      },
+      {
         Sid    = "ELBCreateListenerAndRule"
         Effect = "Allow"
         Action = [
