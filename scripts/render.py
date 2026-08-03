@@ -368,6 +368,8 @@ CONTEXT_VARS = {
     "application_values", "region_configs", "eph_prefix",
     "delete", "delete_pipeline", "mc_key", "region",
     "pinned", "mc_account_ids", "ci",
+    # Go template keywords (appear in escaped Go template strings)
+    "else", "end",
 }
 
 _DOC_RE = re.compile(r"^\s*#\s*(?:#\s*)?@doc\s+(\S+)\s+(.+)$", re.MULTILINE)
