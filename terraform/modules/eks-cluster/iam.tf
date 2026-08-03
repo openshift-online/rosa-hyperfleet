@@ -112,6 +112,7 @@ resource "aws_iam_role" "karpenter_controller" {
 }
 
 resource "aws_iam_role_policy" "karpenter_controller" {
+  #checkov:skip=CKV_AWS_355: EC2 Describe actions (DescribeAvailabilityZones, DescribeImages, DescribeInstances, etc.) and pricing:GetProducts do not support resource-level ARN restrictions; Resource="*" is required.
   name = "karpenter-controller"
   role = aws_iam_role.karpenter_controller.id
 
