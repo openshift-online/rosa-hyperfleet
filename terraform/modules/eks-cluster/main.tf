@@ -133,7 +133,7 @@ resource "aws_eks_cluster" "main" {
       INSTANCE_IDS=$(aws ec2 describe-instances \
         --region "$REGION" \
         --filters \
-          "Name=tag:aws:eks:cluster-name,Values=$CLUSTER_NAME" \
+          "Name=tag:kubernetes.io/cluster/$CLUSTER_NAME,Values=owned" \
           "Name=tag-key,Values=karpenter.sh/nodeclaim" \
           "Name=instance-state-name,Values=pending,running,stopping,stopped" \
         --query 'Reservations[].Instances[].InstanceId' \

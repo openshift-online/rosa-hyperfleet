@@ -110,12 +110,12 @@ while true; do
 
     ELAPSED=$(($(date +%s) - START_TIME))
     REMAINING=$((DEADLINE_SECONDS - ELAPSED))
-    echo "/live returned $HTTP_CODE (attempt $RETRY_COUNT, ${REMAINING}s remaining), retrying in ${RETRY_DELAY}s..."
 
     SLEEP_TIME=$REMAINING
     if [ $SLEEP_TIME -gt $RETRY_DELAY ]; then
         SLEEP_TIME=$RETRY_DELAY
     fi
+    echo "/live returned $HTTP_CODE (attempt $RETRY_COUNT, ${REMAINING}s remaining), retrying in ${SLEEP_TIME}s..."
     if [ $SLEEP_TIME -le 0 ]; then
         break
     fi
