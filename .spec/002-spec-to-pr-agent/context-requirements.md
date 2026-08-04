@@ -7,7 +7,7 @@ An agentic workflow that takes a feature specification (from a JIRA ticket or de
 ## Codebase Research Findings
 
 - **Existing agents**: adversary, architect, ci-troubleshooter, code-reviewer, documentation-updater, scope-creep-craig, tech-spec-beck
-- **Ephemeral env targets**: `ephemeral-{provision,teardown,resync,swap-branch,list,shell,bastion-rc,bastion-mc,port-forward-*,e2e,collect-logs}`
+- **Ephemeral env targets**: `ephemeral-{provision,teardown,resync,swap-branch,list,shell,bastion-rc,bastion-mc,port-forward-*,e2e,dump-env}`
 - **E2E testing**: Tests live in `rosa-hyperfleet-api` repo, run via `ci/e2e-tests.sh`, use `make ephemeral-e2e ID=<env-id>`
 - **Component repos**: platform-api, maestro-agent, maestro-server, hyperfleet-adapter, hyperfleet-api, hyperfleet-sentinel
 - **CLI proxy**: Credential-isolating sidecar for `gh` CLI with deny list for destructive commands
@@ -69,7 +69,7 @@ An agentic workflow that takes a feature specification (from a JIRA ticket or de
 
 ### Ephemeral Environment Script (`scripts/dev/ephemeral-env.sh`)
 
-- Commands: provision, teardown, resync, swap-branch, shell, bastion, port-forward, e2e, collect-logs, list
+- Commands: provision, teardown, resync, swap-branch, shell, bastion, port-forward, e2e, dump-env, list
 - State tracking: `.ephemeral-envs` file with KEY=VALUE pairs (ID, REPO, BRANCH, STATE, REGION, API_URL, CI_BRANCH, CREATED)
 - Credentials: Fetched from Vault via OIDC, never persisted to disk
 - Container-based execution with AWS credentials and API URL injection

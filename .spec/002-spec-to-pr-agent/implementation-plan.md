@@ -293,7 +293,7 @@ Parse the user's request from: $ARGUMENTS
 - resync: `make ephemeral-resync ID=<id>`
 - list: `make ephemeral-list`
 - e2e: `make ephemeral-e2e ID=<id>`
-- collect-logs: `make ephemeral-collect-logs ID=<id>`
+- dump-env: `make ephemeral-dump-env ID=<id>`
 - shell: `make ephemeral-shell ID=<id>`
 - swap-branch: `make ephemeral-swap-branch ID=<id> BRANCH=<branch>`
   ...

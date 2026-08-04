@@ -2,7 +2,7 @@ FROM registry.access.redhat.com/ubi9/ubi-minimal:9.7-1770267347
 
 # Tool versions - update these and rebuild to upgrade
 ARG KUBECTL_VERSION=v1.31.0
-ARG HELM_VERSION=v3.16.0
+ARG HELM_VERSION=v3.21.3
 ARG K9S_VERSION=v0.32.5
 ARG STERN_VERSION=1.30.0
 ARG YQ_VERSION=v4.44.3

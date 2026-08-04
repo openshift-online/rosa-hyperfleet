@@ -385,9 +385,13 @@ _TPL_PATTERNS = [
 ]
 # Matches bracket-string access: {{ var['key'].rest }} → var.key.rest
 _TPL_BRACKET_PATTERN = re.compile(r"\{\{[\s-]*([a-zA-Z_]\w*)\['([^']+)'\]([\w.]*)")
-# Matches escaped Go template strings: {{ '{{ ... }}' }} or {% '{{ ... }}' %}
+# Matches escaped Go template strings wrapped in single or double quotes:
+#   {{ '{{ ... }}' }},  {{ "{{ ... }}" }},  {% '{{ ... }}' %},  {% "{{ ... }}" %}
 # These contain Go template keywords (if/else/end) that should not be treated as Jinja2 variables.
-_ESCAPED_GO_TEMPLATE_RE = re.compile(r"\{\{[\s-]*'[^']*\{\{[^}]*\}\}[^']*'[\s-]*\}\}|\{%[\s-]*'[^']*\{\{[^}]*\}\}[^']*'[\s-]*%\}")
+_ESCAPED_GO_TEMPLATE_RE = re.compile(
+    r"""\{\{[\s-]*(?:'[^']*\{\{[^}]*\}\}[^']*'|"[^"]*\{\{[^}]*\}\}[^"]*")[\s-]*\}\}"""
+    r"""|\{%[\s-]*(?:'[^']*\{\{[^}]*\}\}[^']*'|"[^"]*\{\{[^}]*\}\}[^"]*")[\s-]*%\}"""
+)
 
 
 def scan_annotations(content: str) -> dict[str, dict[str, Any]]:

@@ -80,7 +80,7 @@ The `eks-cluster` module provisions:
 
 ### Positive
 
-- IRSA is fully supported by AWS and requires only the cluster's OIDC provider; no additional resources needed
+- IRSA is fully supported by AWS and requires the cluster's OIDC provider; no EKS Pod Identity association resource is needed
 - Karpenter controller role trust policy is scoped to a single ServiceAccount — no broader cluster-level access
 - SQS interruption handling enables graceful draining before spot reclamation or instance retirement
 - OSS Karpenter can be upgraded independently via Helm without AWS EKS Auto Mode release cycles

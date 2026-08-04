@@ -2206,6 +2206,23 @@ class TestScanTemplateVariables:
         result = scan_template_variables(tpl_dir)
         assert result["dns.domain"] == ["sub/test.j2"]
 
+    def test_ignores_double_quoted_go_template(self, tmp_path):
+        tpl_dir = tmp_path / "templates"
+        tpl_dir.mkdir()
+        # Go template keyword inside a double-quoted string literal must not be reported
+        (tpl_dir / "test.j2").write_text('{{ "{{ else }}" }}')
+        result = scan_template_variables(tpl_dir)
+        assert "else" not in result
+
+    def test_ignores_single_quoted_go_template_else_end(self, tmp_path):
+        tpl_dir = tmp_path / "templates"
+        tpl_dir.mkdir()
+        # Go template else/end keywords inside a single-quoted string literal must not be reported
+        (tpl_dir / "test.j2").write_text("{{ '{{ if .foo }}X{{ else }}Y{{ end }}' }}")
+        result = scan_template_variables(tpl_dir)
+        assert "else" not in result
+        assert "end" not in result
+
 
 class TestCollectLeafPaths:
     def test_flat_dict(self):

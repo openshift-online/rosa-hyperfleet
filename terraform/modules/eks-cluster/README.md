@@ -98,7 +98,7 @@ module "regional_cluster" {
 | `private_subnet_cidrs`          | CIDR blocks for private subnets                                                                                                                          | `list(string)` | `["10.0.0.0/18", "10.0.64.0/18", "10.0.128.0/18"]`      | no       |
 | `public_subnet_cidrs`           | CIDR blocks for public subnets                                                                                                                           | `list(string)` | `["10.0.192.0/22", "10.0.196.0/22", "10.0.200.0/22"]`   | no       |
 | `enable_pod_security_standards` | Enable Pod Security Standards                                                                                                                            | `bool`         | `true`                                                  | no       |
-| `ami_kms_key_arn`               | ARN of the Red Hat KMS key encrypting FIPS AMI EBS snapshots. When set, adds `kms:Decrypt` and `kms:CreateGrant` to Karpenter node and controller roles. | `string`       | `""`                                                    | no       |
+| `ami_kms_key_arn`               | ARN of the Red Hat KMS key encrypting FIPS AMI EBS snapshots. When set, grants `kms:CreateGrant` and `kms:DescribeKey` to the Karpenter controller role only. | `string`       | `""`                                                    | no       |
 | `bootstrap_enabled`             | Enable ArgoCD bootstrap for GitOps management                                                                                                            | `bool`         | `true`                                                  | no       |
 | `argocd_namespace`              | Kubernetes namespace for ArgoCD installation                                                                                                             | `string`       | `"argocd"`                                              | no       |
 | `argocd_chart_version`          | ArgoCD Helm chart version                                                                                                                                | `string`       | `"9.3.0"`                                               | no       |
@@ -117,7 +117,7 @@ module "regional_cluster" {
 | `cluster_security_group_id`            | EKS cluster security group ID                                                            |
 | `karpenter_controller_role_arn`        | IAM role ARN for Karpenter controller (IRSA)                                             |
 | `karpenter_queue_url`                  | SQS queue URL for Karpenter EC2 interruption handling                                    |
-| `karpenter_node_instance_profile_name` | Instance profile name for Karpenter-provisioned nodes (matches `EC2NodeClass.spec.role`) |
+| `karpenter_node_instance_profile_name` | Instance profile name for Karpenter-provisioned nodes (matches `EC2NodeClass.spec.instanceProfile`) |
 | `bootstrap_report`                     | Bootstrap process information and status                                                 |
 
 ## Bootstrap Functionality
