@@ -54,7 +54,7 @@ Build a **Spec-to-PR Agent** — a Python-based orchestrator using the Claude Ag
   - **swap-branch**: Switch an environment to a different branch/repo
   - **list**: Display all tracked environments with status
   - **e2e**: Run end-to-end tests against an environment
-  - **dump-env**: Dump environment state (Kubernetes logs and DB state) from clusters
+  - **collect-logs**: Gather Kubernetes logs from clusters
   - **shell**: Open an interactive shell with credentials
   - **bastion**: Connect to RC/MC cluster bastions
   - **port-forward**: Tunnel Kubernetes services (Maestro, ArgoCD, Prometheus, Grafana)

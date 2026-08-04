@@ -82,3 +82,20 @@ variable "redis_endpoint" {
   default     = ""
 }
 
+variable "karpenter_controller_role_arn" {
+  description = "IAM role ARN for the Karpenter controller (IRSA). Required when the EKS cluster uses OSS Karpenter."
+  type        = string
+  default     = ""
+}
+
+variable "karpenter_queue_url" {
+  description = "SQS queue URL for Karpenter interruption handling."
+  type        = string
+  default     = ""
+}
+
+variable "karpenter_version" {
+  description = "Karpenter Helm chart version to install during bootstrap."
+  type        = string
+  default     = "1.13.0"
+}

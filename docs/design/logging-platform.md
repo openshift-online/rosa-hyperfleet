@@ -29,7 +29,7 @@ We evaluated deploying the same stack that RHOBS uses internally:
 
 **Constraints**:
 
-- EKS Auto Mode (no OpenShift operators available)
+- EKS with OSS Karpenter (no OpenShift operators available)
 - EKS Pod Identity for IAM auth — no static credentials
 - KMS encryption at rest (S3 bucket-level default, transparent to Loki)
 - Minimize locally-maintained operator code

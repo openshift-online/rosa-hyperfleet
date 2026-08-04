@@ -1,15 +1,18 @@
-apiVersion: eks.amazonaws.com/v1
-kind: NodeClass
+{{- $clusterName := required "global.cluster_name must be set via ApplicationSet valuesObject" .Values.global.cluster_name -}}
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
 metadata:
   name: fips
 spec:
-  role: "{{ .Values.global.cluster_name }}-auto-node-role"
+  amiSelectorTerms:
+    - alias: bottlerocket@latest
+  instanceProfile: {{ $clusterName }}-karpenter-node-role
   subnetSelectorTerms:
     - tags:
-        "kubernetes.io/cluster/{{ .Values.global.cluster_name }}": owned
+        kubernetes.io/cluster/{{ $clusterName }}: owned
   securityGroupSelectorTerms:
     - tags:
-        aws:eks:cluster-name: "{{ .Values.global.cluster_name }}"
-  advancedSecurity:
-    fips: true
-    kernelLockdown: Integrity
+        aws:eks:cluster-name: {{ $clusterName }}
+  metadataOptions:
+    httpTokens: required
+    httpPutResponseHopLimit: 2
