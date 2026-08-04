@@ -2209,17 +2209,24 @@ class TestScanTemplateVariables:
     def test_ignores_double_quoted_go_template(self, tmp_path):
         tpl_dir = tmp_path / "templates"
         tpl_dir.mkdir()
-        # Go template keyword inside a double-quoted string literal must not be reported
-        (tpl_dir / "test.j2").write_text('{{ "{{ else }}" }}')
+        # Go template keywords inside a double-quoted string literal must not be reported,
+        # but real Jinja variables should be detected
+        (tpl_dir / "test.j2").write_text('{{ real_var }} and {{ "{{ if .foo }}X{{ else }}Y{{ end }}" }}')
         result = scan_template_variables(tpl_dir)
+        assert result == {"real_var": ["test.j2"]}
+        assert "if" not in result
         assert "else" not in result
+        assert "end" not in result
 
     def test_ignores_single_quoted_go_template_else_end(self, tmp_path):
         tpl_dir = tmp_path / "templates"
         tpl_dir.mkdir()
-        # Go template else/end keywords inside a single-quoted string literal must not be reported
-        (tpl_dir / "test.j2").write_text("{{ '{{ if .foo }}X{{ else }}Y{{ end }}' }}")
+        # Go template keywords inside a single-quoted string literal must not be reported,
+        # but real Jinja variables should be detected
+        (tpl_dir / "test.j2").write_text("{{ another_var }} and {{ '{{ if .foo }}X{{ else }}Y{{ end }}' }}")
         result = scan_template_variables(tpl_dir)
+        assert result == {"another_var": ["test.j2"]}
+        assert "if" not in result
         assert "else" not in result
         assert "end" not in result
 

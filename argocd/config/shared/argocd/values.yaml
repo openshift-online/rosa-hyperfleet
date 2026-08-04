@@ -172,6 +172,7 @@ argo-cd:
   # Redis HA configuration (enabled via ha.enabled=true above).
   # redis-ha is a subchart and does not inherit global.tolerations.
   redis-ha:
+    enabled: true
     tolerations:
       - key: CriticalAddonsOnly
         operator: Exists
