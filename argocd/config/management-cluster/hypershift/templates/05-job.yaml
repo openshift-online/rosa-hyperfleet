@@ -90,7 +90,7 @@ spec:
 
               _hs_install_rc=0
               echo "Running hypershift install..."
-              hypershift install \
+              _hs_out=$(hypershift install \
                 --namespace hypershift \
                 --enable-conversion-webhook=false \
                 --hypershift-image {{ .Values.hypershift.hypershift.image }} \
@@ -107,20 +107,30 @@ spec:
                 --external-dns-secret external-dns \
                 --external-dns-image {{ .Values.hypershift.externalDns.image }} \
                 {{- end }}
-                || _hs_install_rc=$?
+                2>&1) || _hs_install_rc=$?
+              echo "$_hs_out"
               echo "hypershift install exit code: $_hs_install_rc"
-              if [ $_hs_install_rc -ne 0 ]; then
+              if [ "$_hs_install_rc" -ne 0 ]; then
                 # The aws-iam-auth build of hypershift-operator has a known post-apply
-                # internal shell error that fires after all resources are applied. Check
-                # whether the namespace exists to distinguish this from a real failure.
+                # internal shell error that fires after all resources are applied.
+                # Check captured output for resource-apply failures first — these are
+                # genuine errors, not the known benign post-apply issue.
+                if echo "$_hs_out" | grep -qiE \
+                     "failed to (apply|create|patch|update|install)|unable to (apply|create|get|list)|error from server|connection refused"; then
+                  echo "ERROR: hypershift install failed with resource apply error (exit $_hs_install_rc)" >&2
+                  exit "$_hs_install_rc"
+                fi
+                # Corroborate with namespace presence. backoffLimit=1 means on retry
+                # the namespace may already exist from a prior attempt, so the output
+                # check above is the primary gate; namespace presence is secondary.
                 _hs_ns_http=$(curl -s --cacert "$_CA" -H "Authorization: Bearer $_TOKEN" \
                   "$_API/api/v1/namespaces/hypershift" -o /dev/null -w "%{http_code}" 2>/dev/null || echo "000")
                 echo "hypershift namespace check: HTTP ${_hs_ns_http}"
                 if [ "$_hs_ns_http" != "200" ]; then
                   echo "ERROR: hypershift install failed (exit $_hs_install_rc) and HyperShift namespace not found (HTTP ${_hs_ns_http})" >&2
-                  exit $_hs_install_rc
+                  exit "$_hs_install_rc"
                 fi
-                echo "WARNING: hypershift install exited $_hs_install_rc but HyperShift namespace exists — resources applied (known post-apply issue in aws-iam-auth build)"
+                echo "WARNING: hypershift install exited $_hs_install_rc but HyperShift namespace exists and no apply errors detected — resources applied (known post-apply issue in aws-iam-auth build)"
               fi
               {{- if .Values.hypershift.externalDns.domain }}
               # TODO(hypershift): Upstream --aws-assume-role + Pod Identity support
