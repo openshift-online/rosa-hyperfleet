@@ -42,12 +42,15 @@ RUN curl -sL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp
 RUN curl -sL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl && \
     chmod +x /usr/local/bin/kubectl
 
-# Install helm (SHA-256 verified)
+# Install helm (SHA-256 verified with retry logic)
+ARG CURL_RETRY=3
+ARG CURL_RETRY_DELAY=2
+ARG CURL_MAX_TIME=300
 RUN set -euo pipefail && \
     HELM_PACKAGE="helm-${HELM_VERSION}-linux-amd64.tar.gz" && \
     HELM_BASE_URL="https://get.helm.sh" && \
-    curl -sSfO "${HELM_BASE_URL}/${HELM_PACKAGE}" && \
-    curl -sSfO "${HELM_BASE_URL}/${HELM_PACKAGE}.sha256sum" && \
+    curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -sSfO "${HELM_BASE_URL}/${HELM_PACKAGE}" && \
+    curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -sSfO "${HELM_BASE_URL}/${HELM_PACKAGE}.sha256sum" && \
     sha256sum -c "${HELM_PACKAGE}.sha256sum" && \
     tar -xzf "${HELM_PACKAGE}" -C /tmp && \
     mv /tmp/linux-amd64/helm /usr/local/bin/helm && \
