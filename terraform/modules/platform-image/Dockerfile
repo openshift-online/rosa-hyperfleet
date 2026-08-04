@@ -42,11 +42,17 @@ RUN curl -sL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp
 RUN curl -sL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl && \
     chmod +x /usr/local/bin/kubectl
 
-# Install helm
-RUN curl -sL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" | tar -xz -C /tmp && \
+# Install helm (SHA-256 verified)
+RUN set -euo pipefail && \
+    HELM_PACKAGE="helm-${HELM_VERSION}-linux-amd64.tar.gz" && \
+    HELM_BASE_URL="https://get.helm.sh" && \
+    curl -sSfO "${HELM_BASE_URL}/${HELM_PACKAGE}" && \
+    curl -sSfO "${HELM_BASE_URL}/${HELM_PACKAGE}.sha256sum" && \
+    sha256sum -c "${HELM_PACKAGE}.sha256sum" && \
+    tar -xzf "${HELM_PACKAGE}" -C /tmp && \
     mv /tmp/linux-amd64/helm /usr/local/bin/helm && \
     chmod +x /usr/local/bin/helm && \
-    rm -rf /tmp/linux-amd64
+    rm -rf /tmp/linux-amd64 "${HELM_PACKAGE}" "${HELM_PACKAGE}.sha256sum"
 
 # Install k9s
 RUN curl -sL "https://github.com/derailed/k9s/releases/download/${K9S_VERSION}/k9s_Linux_amd64.tar.gz" | tar -xz -C /tmp && \
