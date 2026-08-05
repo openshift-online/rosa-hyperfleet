@@ -82,3 +82,8 @@ variable "redis_endpoint" {
   default     = ""
 }
 
+variable "karpenter_controller_role_arn" {
+  description = "IAM role ARN for the Karpenter controller (IRSA). Required when the EKS cluster uses OSS Karpenter."
+  type        = string
+  default     = ""
+}
