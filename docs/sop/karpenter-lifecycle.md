@@ -101,16 +101,16 @@ controller IAM role has permission to read from this queue.
 
 ## Auto Mode vs OSS Karpenter
 
-| Behavior                  | EKS Auto Mode (removed)                             | OSS Karpenter (current)                                                                             |
-| ------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| **Node provisioning**     | AWS-managed; compute optimized by default           | Operator-defined `NodePool` and `EC2NodeClass` CRs                                                  |
-| **Instance selection**    | AWS selects instance family automatically           | Declared in `NodePool` requirements; engineers control family/arch/capacity type                    |
-| **Node images**           | AWS manages AMI selection and updates               | Bottlerocket AMI alias `bottlerocket@latest`; configured on both MC and RC EC2NodeClass resources   |
-| **GitOps ownership**      | No Karpenter Application; AWS reconciles internally | `argocd/config/<cluster-type>/karpenter/` chart, ArgoCD-managed                                     |
-| **Lifecycle management**  | Auto Mode lifecycle controller (AWS)                | Karpenter `NodePool` disruption budget and expiry settings                                          |
-| **Interruption handling** | AWS-managed                                         | SQS queue + Karpenter interruption handler                                                          |
-| **Version upgrades**      | EKS console / API flag                              | Update `Chart.yaml` version → ArgoCD syncs                                                          |
-| **Drift detection**       | None (AWS owns config)                              | ArgoCD detects drift; selfHeal=true corrects it                                                     |
-| **Kubernetes API**        | Cluster API blocks Auto Mode specific operations    | Standard Karpenter CRs; no special API restrictions                                                 |
-| **Bootstrap dependency**  | Auto Mode enabled at cluster creation; no ECS step  | ECS task installs ArgoCD; ArgoCD installs Karpenter at wave 0                                       |
-| **Compute node taint**    | No bootstrap group required                         | `karpenter-bootstrap` node group required (ArgoCD + Karpenter must run before workload nodes exist) |
+| Behavior                  | EKS Auto Mode (removed)                             | OSS Karpenter (current)                                                                                                         |
+| ------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **Node provisioning**     | AWS-managed; compute optimized by default           | Operator-defined `NodePool` and `EC2NodeClass` CRs                                                                              |
+| **Instance selection**    | AWS selects instance family automatically           | Declared in `NodePool` requirements; engineers control family/arch/capacity type                                                |
+| **Node images**           | AWS manages AMI selection and updates               | Bottlerocket AMI alias `bottlerocket@latest` (RHEL with FIPS mode planned); configured on both MC and RC EC2NodeClass resources |
+| **GitOps ownership**      | No Karpenter Application; AWS reconciles internally | `argocd/config/<cluster-type>/karpenter/` chart, ArgoCD-managed                                                                 |
+| **Lifecycle management**  | Auto Mode lifecycle controller (AWS)                | Karpenter `NodePool` disruption budget and expiry settings                                                                      |
+| **Interruption handling** | AWS-managed                                         | SQS queue + Karpenter interruption handler                                                                                      |
+| **Version upgrades**      | EKS console / API flag                              | Update `Chart.yaml` version → ArgoCD syncs                                                                                      |
+| **Drift detection**       | None (AWS owns config)                              | ArgoCD detects drift; selfHeal=true corrects it                                                                                 |
+| **Kubernetes API**        | Cluster API blocks Auto Mode specific operations    | Standard Karpenter CRs; no special API restrictions                                                                             |
+| **Bootstrap dependency**  | Auto Mode enabled at cluster creation; no ECS step  | ECS task installs ArgoCD; ArgoCD installs Karpenter at wave 0                                                                   |
+| **Compute node taint**    | No bootstrap group required                         | `karpenter-bootstrap` node group required (ArgoCD + Karpenter must run before workload nodes exist)                             |

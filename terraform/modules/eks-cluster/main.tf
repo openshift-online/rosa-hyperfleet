@@ -122,25 +122,36 @@ resource "aws_eks_cluster" "main" {
   # Terminate Karpenter-provisioned EC2 instances before the cluster is deleted.
   # Karpenter nodes are not in Terraform state, so they survive EKS deletion and
   # block VPC/subnet teardown with DependencyViolation due to lingering ENIs.
-  # on_failure = continue so a missing AWS CLI or zero instances doesn't abort destroy.
   provisioner "local-exec" {
     when       = destroy
-    on_failure = continue
+    on_failure = fail
     command    = <<-EOT
+      set -euo pipefail
+
+      # Preflight: verify AWS CLI and kubectl are available
+      if ! command -v aws >/dev/null 2>&1; then
+        echo "ERROR: aws CLI not found — install awscli to proceed" >&2
+        exit 1
+      fi
+      if ! command -v kubectl >/dev/null 2>&1; then
+        echo "ERROR: kubectl not found — install kubectl to proceed" >&2
+        exit 1
+      fi
+
       CLUSTER_NAME="${self.name}"
       REGION=$(echo "${self.arn}" | cut -d: -f4)
       echo "Stopping Karpenter provisioning for cluster: $CLUSTER_NAME"
 
-      # Stop Karpenter from creating new nodes by deleting the NodePool.
-      # This prevents Karpenter from racing to replace instances as we terminate them.
-      # Failures are ignored (cluster may already be degraded during destroy).
-      aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$REGION" 2>/dev/null || true
-      kubectl delete nodepools --all --timeout=30s 2>/dev/null || true
+      # Try updating kubeconfig; if cluster is already gone, skip graceful cleanup
+      if ! aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$REGION" 2>/dev/null; then
+        echo "Cluster already deleted or unreachable — proceeding to EC2 instance termination"
+      else
+        # Stop Karpenter from creating new nodes by deleting the NodePool
+        kubectl delete nodepools --all --timeout=30s 2>/dev/null || true
+        sleep 10
+      fi
 
-      # Wait briefly for Karpenter to stop provisioning and for nodes to drain.
-      sleep 10
-
-      # Query for remaining Karpenter-managed instances.
+      # Query for remaining Karpenter-managed instances
       echo "Terminating Karpenter EC2 instances for cluster: $CLUSTER_NAME"
       INSTANCE_IDS=$(aws ec2 describe-instances \
         --region "$REGION" \
@@ -150,10 +161,12 @@ resource "aws_eks_cluster" "main" {
           "Name=instance-state-name,Values=pending,running,stopping,stopped" \
         --query 'Reservations[].Instances[].InstanceId' \
         --output text)
+
       if [ -z "$INSTANCE_IDS" ]; then
         echo "No Karpenter-managed instances found."
         exit 0
       fi
+
       echo "Terminating: $INSTANCE_IDS"
       aws ec2 terminate-instances --region "$REGION" --instance-ids $INSTANCE_IDS
       aws ec2 wait instance-terminated --region "$REGION" --instance-ids $INSTANCE_IDS

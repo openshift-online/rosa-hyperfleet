@@ -10,7 +10,7 @@ Creates private EKS clusters with security-first configuration and standardized 
 - **GitOps Bootstrap**: Automated ArgoCD installation via ECS Fargate task for self-management
 - **Security Hardening**: KMS encryption, IMDSv2 enforcement, and network segmentation
 - **High Availability**: Multi-AZ NAT Gateways for fault-tolerant egress connectivity
-- **OSS Karpenter**: Node provisioning via Karpenter v1 with FIPS-validated EC2NodeClass
+- **OSS Karpenter**: Node provisioning via Karpenter v1 with custom EC2NodeClass (FIPS support planned for RHEL AMI work)
 
 ## Security & Scalability Enhancements
 
@@ -127,12 +127,11 @@ When `bootstrap_enabled` is `true`, the module automatically installs Karpenter 
 1. **ECS Fargate Task**: Executes within cluster VPC for secure bootstrap operations
 2. **Tool Installation**: Downloads kubectl, helm, and AWS CLI at runtime
 3. **Addon Wait**: Waits for CoreDNS and metrics-server to become Active on the `karpenter-bootstrap` node group
-4. **Karpenter Install**: Installs Karpenter via Helm from ECR public (`oci://public.ecr.aws/karpenter/karpenter`)
-5. **FIPS Node Setup**: Applies FIPS `EC2NodeClass` (`fips`) and cluster-type-specific workloads `NodePool`
-6. **Prewarm Validation**: Provisions one Karpenter node and waits for it to be Ready before continuing
-7. **ArgoCD Installation**: Installs ArgoCD via Helm with cluster-only access
-8. **GitOps Configuration**: Creates Application of Applications for self-management
-9. **Synchronous Execution**: Bootstrap completes during `terraform apply` with visible logs
+4. **ArgoCD Installation**: Installs ArgoCD via Helm with cluster-only access
+5. **GitOps Configuration**: Creates Application of Applications for self-management
+6. **Synchronous Execution**: Bootstrap completes during `terraform apply` with visible logs
+
+After bootstrap, ArgoCD manages Karpenter installation (sync wave 0) and node provisioning configuration (sync wave 10). See the bootstrap sequence in [Karpenter Lifecycle SOP](../../../docs/sop/karpenter-lifecycle.md).
 
 ### Karpenter Infrastructure
 
@@ -144,7 +143,7 @@ The module provisions Karpenter-based compute:
 - **SQS queue**: Receives EC2 interruption events (spot reclamation, instance health, rebalance) for graceful node draining.
 - **EventBridge rules**: Four rules forward EC2 lifecycle events to the SQS queue.
 
-For the FIPS node strategy, including why Auto Mode was replaced with OSS Karpenter, see [FIPS-Only EKS Compute](../../../docs/design/fips-eks-compute.md). For Karpenter IAM role design, see [Karpenter Node Provisioning](../../../docs/design/karpenter-node-provisioning.md).
+For the node provisioning strategy, including why Auto Mode was replaced with OSS Karpenter, see [FIPS-Only EKS Compute](../../../docs/design/fips-eks-compute.md). For Karpenter IAM role design, see [Karpenter Node Provisioning](../../../docs/design/karpenter-node-provisioning.md). FIPS-validated compute will be delivered as part of the RHEL AMI work.
 
 ## Requirements
 

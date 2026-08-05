@@ -1,9 +1,0 @@
-apiVersion: v2
-name: karpenter
-description: OSS Karpenter controller for node provisioning
-type: application
-version: 1.0.0
-dependencies:
-  - name: karpenter
-    version: 1.13.0
-    repository: oci://public.ecr.aws/karpenter

@@ -63,9 +63,15 @@ spec:
               # The hypershift-operator image does not include kubectl; use curl
               # against the in-cluster API server to check CRD existence.
               _crd_ready() {
-                curl -sf --cacert "$_CA" -H "Authorization: Bearer $_TOKEN" \
+                local _err
+                _err=$(curl -sSf --cacert "$_CA" -H "Authorization: Bearer $_TOKEN" \
                   "$_API/apis/apiextensions.k8s.io/v1/customresourcedefinitions/$1" \
-                  -o /dev/null 2>&1
+                  -o /dev/null 2>&1)
+                local _rc=$?
+                if [ $_rc -ne 0 ]; then
+                  echo "WARNING: CRD check for $1 failed (exit $_rc): $_err" >&2
+                fi
+                return $_rc
               }
 
               # Prometheus Operator CRDs must exist before hypershift install applies
@@ -110,27 +116,32 @@ spec:
                 2>&1) || _hs_install_rc=$?
               echo "$_hs_out"
               echo "hypershift install exit code: $_hs_install_rc"
+
               if [ "$_hs_install_rc" -ne 0 ]; then
                 # The aws-iam-auth build of hypershift-operator has a known post-apply
-                # internal shell error that fires after all resources are applied.
-                # Check captured output for resource-apply failures first — these are
-                # genuine errors, not the known benign post-apply issue.
-                if echo "$_hs_out" | grep -qiE \
-                     "failed to (apply|create|patch|update|install)|unable to (apply|create|get|list)|error from server|connection refused"; then
-                  echo "ERROR: hypershift install failed with resource apply error (exit $_hs_install_rc)" >&2
+                # internal shell error (exit 2) that fires after all resources are applied.
+                # Fail-by-default: only allow the specific known benign case.
+
+                # Check if this matches the known benign post-apply signature
+                if echo "$_hs_out" | grep -qF "applied (aws-iam-auth fork)"; then
+                  # Verify namespace exists as secondary corroboration
+                  _hs_ns_http=$(curl -s --cacert "$_CA" -H "Authorization: Bearer $_TOKEN" \
+                    "$_API/api/v1/namespaces/hypershift" -o /dev/null -w "%{http_code}" 2>/dev/null || echo "000")
+                  echo "hypershift namespace check: HTTP ${_hs_ns_http}"
+
+                  if [ "$_hs_ns_http" = "200" ]; then
+                    echo "WARNING: hypershift install exited $_hs_install_rc (known benign post-apply issue in aws-iam-auth build)"
+                  else
+                    echo "ERROR: hypershift install failed (exit $_hs_install_rc) and namespace check failed (HTTP ${_hs_ns_http})" >&2
+                    exit "$_hs_install_rc"
+                  fi
+                else
+                  # Unknown error — fail immediately
+                  echo "ERROR: hypershift install failed (exit $_hs_install_rc)" >&2
+                  echo "Output:" >&2
+                  echo "$_hs_out" >&2
                   exit "$_hs_install_rc"
                 fi
-                # Corroborate with namespace presence. backoffLimit=1 means on retry
-                # the namespace may already exist from a prior attempt, so the output
-                # check above is the primary gate; namespace presence is secondary.
-                _hs_ns_http=$(curl -s --cacert "$_CA" -H "Authorization: Bearer $_TOKEN" \
-                  "$_API/api/v1/namespaces/hypershift" -o /dev/null -w "%{http_code}" 2>/dev/null || echo "000")
-                echo "hypershift namespace check: HTTP ${_hs_ns_http}"
-                if [ "$_hs_ns_http" != "200" ]; then
-                  echo "ERROR: hypershift install failed (exit $_hs_install_rc) and HyperShift namespace not found (HTTP ${_hs_ns_http})" >&2
-                  exit "$_hs_install_rc"
-                fi
-                echo "WARNING: hypershift install exited $_hs_install_rc but HyperShift namespace exists and no apply errors detected — resources applied (known post-apply issue in aws-iam-auth build)"
               fi
               {{- if .Values.hypershift.externalDns.domain }}
               # TODO(hypershift): Upstream --aws-assume-role + Pod Identity support

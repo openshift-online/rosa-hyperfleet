@@ -83,8 +83,7 @@ module "ecs_bootstrap" {
   repository_url    = var.repository_url
   repository_branch = var.repository_branch
 
-  karpenter_controller_role_arn = module.management_cluster.karpenter_controller_role_arn != null ? module.management_cluster.karpenter_controller_role_arn : ""
-  karpenter_queue_url           = module.management_cluster.karpenter_queue_url != null ? module.management_cluster.karpenter_queue_url : ""
+  karpenter_controller_role_arn = module.management_cluster.karpenter_controller_role_arn
 }
 
 # =============================================================================

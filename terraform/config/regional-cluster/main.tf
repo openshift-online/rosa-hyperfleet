@@ -218,8 +218,7 @@ module "ecs_bootstrap" {
   rc_aws_account_id = var.target_account_id
   redis_endpoint    = var.enable_rate_limit_redis ? "${module.elasticache_valkey[0].endpoint}:${module.elasticache_valkey[0].port}" : ""
 
-  karpenter_controller_role_arn = module.regional_cluster.karpenter_controller_role_arn != null ? module.regional_cluster.karpenter_controller_role_arn : ""
-  karpenter_queue_url           = module.regional_cluster.karpenter_queue_url != null ? module.regional_cluster.karpenter_queue_url : ""
+  karpenter_controller_role_arn = module.regional_cluster.karpenter_controller_role_arn
 }
 
 # =============================================================================

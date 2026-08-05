@@ -4,31 +4,35 @@
 
 ## Summary
 
-All EKS clusters in the ROSA HyperFleet use OSS Karpenter v1 with a FIPS-validated
-`EC2NodeClass` (`fips`) and a cluster-type-specific `NodePool` for platform and application
-workloads. A dedicated `karpenter-bootstrap` managed node group (t3.medium, 2 nodes, tainted
-`CriticalAddonsOnly`) provides stable capacity for Karpenter itself, CoreDNS, and metrics-server.
-All other workloads land on Karpenter-provisioned nodes using FIPS Bottlerocket AMIs.
+All EKS clusters in the ROSA HyperFleet use OSS Karpenter v1 with an `EC2NodeClass` (`fips`)
+and a cluster-type-specific `NodePool` for platform and application workloads. A dedicated
+`karpenter-bootstrap` managed node group (t3.medium, 2 nodes, tainted `CriticalAddonsOnly`)
+provides stable capacity for Karpenter itself, CoreDNS, and metrics-server. All other workloads
+land on Karpenter-provisioned nodes.
+
+**Note**: FIPS-validated compute (RHEL nodes with FIPS mode enabled) is planned for a future
+iteration. Current implementation uses standard Bottlerocket AMIs via the `bottlerocket@latest`
+alias. FIPS enablement will be delivered as part of the RHEL AMI work.
 
 ## Context
 
 FedRAMP High/Moderate authorization requires that all cryptographic operations use FIPS 140-2 or
 FIPS 140-3 validated modules. On EKS, this means workload compute must run a FIPS-validated
-operating system — specifically Bottlerocket with FIPS mode enabled.
+operating system. The ROSA HyperFleet will use RHEL-based nodes with FIPS mode enabled via
+userData configuration once the RHEL AMI work is complete.
 
 - **Problem Statement**: EKS Auto Mode's built-in node pools (`system` and `general-purpose`)
-  provision standard (non-FIPS) Bottlerocket AMIs and cannot be patched to use a custom
-  `EC2NodeClass`. AWS auto-reverts any modifications to built-in pools within minutes. The
+  provision standard Bottlerocket AMIs and cannot be patched to use custom `EC2NodeClass`
+  configurations. AWS auto-reverts any modifications to built-in pools within minutes. The
   bootstrap deadlock caused by disabling all pools (`node_pools = []`) and repeated
   `UnauthorizedNodeRole` failures with the embedded Karpenter made Auto Mode operationally
-  fragile for FIPS requirements.
+  fragile for custom node configurations.
 - **Constraints**:
-  - EKS nodes providing FIPS-validated compute must run Bottlerocket with `advancedSecurity.fips: true`
   - The cluster bootstrap runs inside an ECS Fargate task in a private subnet with no public
     cluster API access. See [ECS Fargate Bootstrap for Fully Private EKS Clusters](./fully-private-eks-bootstrap.md).
   - Karpenter controller must run on stable, pre-provisioned nodes — it cannot schedule itself
-- **Assumptions**: All clusters run OSS Karpenter (`enable_karpenter = true`, the default). EKS
-  Auto Mode is disabled.
+  - FIPS-validated compute requires RHEL nodes with FIPS mode enabled at boot time (planned)
+- **Assumptions**: All clusters run OSS Karpenter. EKS Auto Mode is disabled.
 
 ## Alternatives Considered
 
@@ -48,46 +52,49 @@ operating system — specifically Bottlerocket with FIPS mode enabled.
 
 4. **OSS Karpenter with dedicated bootstrap node group**: Provides a stable, pre-provisioned node
    group (tainted `CriticalAddonsOnly`) for Karpenter controller, CoreDNS, and metrics-server.
-   Karpenter provisions all other nodes on demand using FIPS `EC2NodeClass`. Fully
-   FIPS-compliant for customer-bearing workloads. **Chosen.**
+   Karpenter provisions all other nodes on demand using custom `EC2NodeClass`. Enables future
+   FIPS compliance for customer-bearing workloads via RHEL AMI configuration. **Chosen.**
 
 ## Design Rationale
 
 - **Justification**: The `karpenter-bootstrap` managed node group (t3.medium, 2 nodes,
   `CriticalAddonsOnly` taint) provides stable, pre-provisioned capacity for Karpenter itself and
   EKS system addons. This eliminates the bootstrap chicken-and-egg problem: ECS bootstrap installs
-  ArgoCD, then ArgoCD installs Karpenter (sync wave 0) and creates the FIPS `EC2NodeClass` and
+  ArgoCD, then ArgoCD installs Karpenter (sync wave 0) and creates the `EC2NodeClass` and
   `NodePool` (sync wave 10) via GitOps Applications.
 
 - **Evidence**: ArgoCD sync wave ordering ensures Karpenter controller and CRDs are installed
   before the eks-nodepool Application syncs. The ApplicationSet injects cluster-specific values
   (clusterName, interruptionQueue, IRSA role ARN) into the Karpenter Helm chart, and the
-  eks-nodepool chart creates the FIPS `EC2NodeClass` and workloads `NodePool`.
+  eks-nodepool chart creates the `EC2NodeClass` and workloads `NodePool`.
 
-- **Tradeoff**: The `karpenter-bootstrap` node group runs non-FIPS standard Amazon Linux 2023 (AL2023) nodes.
+- **Tradeoff**: The `karpenter-bootstrap` node group runs standard Amazon Linux 2023 (AL2023) nodes.
   These nodes host only Karpenter controller, CoreDNS, and metrics-server — EKS system
   infrastructure, not customer-bearing workloads. Platform and application workloads run
-  exclusively on FIPS Karpenter-provisioned nodes. This scope boundary is an accepted tradeoff
-  for operational reliability.
+  exclusively on Karpenter-provisioned nodes, which will be migrated to FIPS-enabled RHEL nodes
+  as part of the RHEL AMI work. This scope boundary is an accepted tradeoff for operational
+  reliability.
 
 ## Consequences
 
 ### Positive
 
-- Platform and application workloads run on Bottlerocket with FIPS-validated cryptographic
-  modules, satisfying FedRAMP High/Moderate cryptographic requirements for customer-bearing
-  compute.
+- OSS Karpenter architecture enables future FIPS compliance: RHEL nodes with FIPS mode can be
+  configured via `EC2NodeClass` userData once the RHEL AMI work is complete, satisfying FedRAMP
+  High/Moderate cryptographic requirements for customer-bearing compute.
 - Bootstrap is reliable: the bootstrap node group provisions nodes immediately, ArgoCD installs
   cleanly, and sync wave ordering guarantees Karpenter is ready before NodePool creation.
 - OSS Karpenter can be independently upgraded via Helm chart version changes in the ArgoCD
   Application without waiting for AWS EKS Auto Mode support cycles.
-- The FIPS `EC2NodeClass` and `NodePool` are managed exclusively by ArgoCD via the eks-nodepool
+- The `EC2NodeClass` and `NodePool` are managed exclusively by ArgoCD via the eks-nodepool
   Application, providing full GitOps lifecycle (version control, drift detection, self-healing).
 
 ### Negative
 
-- Karpenter controller, CoreDNS, and metrics-server run on non-FIPS t3.medium nodes. These are
-  AWS-managed system addons, not customer-bearing workloads, but they are not FIPS-validated.
+- Karpenter controller, CoreDNS, and metrics-server run on standard AL2023 t3.medium nodes. These
+  are AWS-managed system addons, not customer-bearing workloads.
+- Platform and application workloads currently run on standard Bottlerocket nodes. FIPS-validated
+  compute (RHEL with FIPS mode enabled) will be delivered as part of the RHEL AMI work.
 - Two IAM roles are required: `karpenter-node-role` (for Karpenter-provisioned nodes) and a
   lightweight role for the `karpenter-bootstrap` node group (not used directly by workloads).
 
@@ -95,28 +102,29 @@ operating system — specifically Bottlerocket with FIPS mode enabled.
 
 ### Reliability
 
-- **Scalability**: The FIPS `NodePool` handles all platform and application workloads. Karpenter
-  scales reactively on pending pods using EC2 instance provisioning.
+- **Scalability**: The workloads `NodePool` handles all platform and application workloads.
+  Karpenter scales reactively on pending pods using EC2 instance provisioning.
 - **Observability**: Karpenter NodeClaims are visible via `kubectl get nodeclaims`. CloudWatch
-  logs for the ECS bootstrap task provide a full audit trail including the prewarm validation.
+  logs for the ECS bootstrap task provide a full audit trail.
 - **Resiliency**: The `karpenter-bootstrap` node group is a fixed-size managed node group (2
   nodes); AWS manages availability. Karpenter nodes are ephemeral and replaced automatically.
 
 ### Security
 
-- Platform and application workload nodes run with `advancedSecurity.fips: true` and
-  `kernelLockdown: Integrity`, satisfying FIPS 140-2/140-3 requirements for SC-13.
-- The FIPS `EC2NodeClass` selects subnets and security groups via cluster-owned tags, ensuring
-  nodes land in the correct private subnets with correct network policies.
+- The `EC2NodeClass` selects subnets and security groups via cluster-owned tags, ensuring nodes
+  land in the correct private subnets with correct network policies.
 - Karpenter controller IAM role uses IRSA (ServiceAccount annotation on `kube-system/karpenter`)
   with least-privilege SQS, EC2, and IAM instance profile permissions.
 - Karpenter node IAM role (`${cluster_id}-karpenter-node-role`) is referenced directly in the
   `EC2NodeClass`, scoping node permissions to a cluster-specific role.
+- FIPS-validated cryptographic modules (RHEL with FIPS mode enabled) will be configured via
+  `EC2NodeClass` userData once the RHEL AMI work is complete, satisfying FIPS 140-2/140-3
+  requirements for SC-13.
 
 ### Performance
 
-- FIPS-mode Bottlerocket has negligible performance overhead for general-purpose workloads.
 - `consolidateAfter: 60s` on the workloads `NodePool` enables rapid scale-down of idle capacity.
+- Future FIPS-mode RHEL nodes will have minimal performance overhead for general-purpose workloads.
 
 ### Cost
 
@@ -126,7 +134,7 @@ operating system — specifically Bottlerocket with FIPS mode enabled.
 
 ### Operability
 
-- The FIPS `EC2NodeClass` and `NodePool` are managed by ArgoCD via the eks-nodepool Application.
+- The `EC2NodeClass` and `NodePool` are managed by ArgoCD via the eks-nodepool Application.
   Day-2 changes are made via GitOps — edit the chart in `argocd/config/<cluster-type>/eks-nodepool/`
   and ArgoCD syncs the change automatically.
 - Adding a new cluster type requires creating an `argocd/config/<cluster-type>/eks-nodepool/`
@@ -134,3 +142,5 @@ operating system — specifically Bottlerocket with FIPS mode enabled.
   automatically generates an Application for any directory under `argocd/config/<cluster-type>/`.
 - EC2 interruption events (spot reclamation, instance retirement) are handled by Karpenter via
   an SQS queue wired to EventBridge rules provisioned by the `eks-cluster` module.
+- FIPS configuration will be added to the `EC2NodeClass` userData field once RHEL AMI support
+  is implemented.
