@@ -9,6 +9,11 @@ ARG YQ_VERSION=v4.44.3
 ARG OC_VERSION=4.16.0
 ARG TERRAFORM_VERSION=1.14.3
 
+# Global curl retry and timeout settings for improved download reliability
+ARG CURL_RETRY=3
+ARG CURL_RETRY_DELAY=2
+ARG CURL_MAX_TIME=300
+
 # Install base packages
 RUN microdnf install -y \
       tar \
@@ -33,25 +38,16 @@ RUN microdnf install -y \
     rm -rf /var/cache/yum
 
 # Install AWS CLI v2
-ARG CURL_RETRY
-ARG CURL_RETRY_DELAY
-ARG CURL_MAX_TIME
 RUN curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -sSfL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip" && \
     unzip -q /tmp/awscliv2.zip -d /tmp && \
     /tmp/aws/install && \
     rm -rf /tmp/aws /tmp/awscliv2.zip
 
 # Install kubectl
-ARG CURL_RETRY
-ARG CURL_RETRY_DELAY
-ARG CURL_MAX_TIME
 RUN curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -sSfL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl && \
     chmod +x /usr/local/bin/kubectl
 
 # Install helm (SHA-256 verified with retry logic)
-ARG CURL_RETRY=3
-ARG CURL_RETRY_DELAY=2
-ARG CURL_MAX_TIME=300
 RUN set -euo pipefail && \
     HELM_PACKAGE="helm-${HELM_VERSION}-linux-amd64.tar.gz" && \
     HELM_BASE_URL="https://get.helm.sh" && \
@@ -64,41 +60,29 @@ RUN set -euo pipefail && \
     rm -rf /tmp/linux-amd64 "${HELM_PACKAGE}" "${HELM_PACKAGE}.sha256sum"
 
 # Install k9s
-ARG CURL_RETRY
-ARG CURL_RETRY_DELAY
-ARG CURL_MAX_TIME
-RUN curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -sSfL "https://github.com/derailed/k9s/releases/download/${K9S_VERSION}/k9s_Linux_amd64.tar.gz" | tar -xz -C /tmp && \
+RUN set -euo pipefail && \
+    curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -sSfL "https://github.com/derailed/k9s/releases/download/${K9S_VERSION}/k9s_Linux_amd64.tar.gz" | tar -xz -C /tmp && \
     mv /tmp/k9s /usr/local/bin/k9s && \
     chmod +x /usr/local/bin/k9s
 
 # Install stern
-ARG CURL_RETRY
-ARG CURL_RETRY_DELAY
-ARG CURL_MAX_TIME
-RUN curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -sSfL "https://github.com/stern/stern/releases/download/v${STERN_VERSION}/stern_${STERN_VERSION}_linux_amd64.tar.gz" | tar -xz -C /tmp && \
+RUN set -euo pipefail && \
+    curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -sSfL "https://github.com/stern/stern/releases/download/v${STERN_VERSION}/stern_${STERN_VERSION}_linux_amd64.tar.gz" | tar -xz -C /tmp && \
     mv /tmp/stern /usr/local/bin/stern && \
     chmod +x /usr/local/bin/stern
 
 # Install yq
-ARG CURL_RETRY
-ARG CURL_RETRY_DELAY
-ARG CURL_MAX_TIME
 RUN curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -sSfL "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" -o /usr/local/bin/yq && \
     chmod +x /usr/local/bin/yq
 
 # Install OpenShift CLI (oc)
-ARG CURL_RETRY
-ARG CURL_RETRY_DELAY
-ARG CURL_MAX_TIME
-RUN curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -sSfL "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/${OC_VERSION}/openshift-client-linux.tar.gz" | tar -xz -C /tmp && \
+RUN set -euo pipefail && \
+    curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -sSfL "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/${OC_VERSION}/openshift-client-linux.tar.gz" | tar -xz -C /tmp && \
     mv /tmp/oc /usr/local/bin/oc && \
     chmod +x /usr/local/bin/oc && \
     rm -f /tmp/kubectl /tmp/README.md
 
 # Install Terraform (GPG-verified)
-ARG CURL_RETRY
-ARG CURL_RETRY_DELAY
-ARG CURL_MAX_TIME
 RUN set -euo pipefail && \
     TF_PACKAGE="terraform_${TERRAFORM_VERSION}_linux_amd64.zip" && \
     TF_BASE_URL="https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}" && \
