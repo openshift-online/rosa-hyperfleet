@@ -118,7 +118,7 @@ echo ""
 
 # Build the image
 echo "Building platform image from ${DOCKERFILE}..."
-$CONTAINER_RUNTIME build --platform linux/amd64 -t "${ECR_URL}:${IMAGE_TAG}" "$DOCKERFILE_DIR"
+$CONTAINER_RUNTIME build --pull --platform linux/amd64 -t "${ECR_URL}:${IMAGE_TAG}" "$DOCKERFILE_DIR"
 echo ""
 
 # Push the image
