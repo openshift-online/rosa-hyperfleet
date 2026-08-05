@@ -313,13 +313,6 @@ resource "aws_api_gateway_gateway_response" "default_4xx" {
     "gatewayresponse.header.Warning"                   = "'${local.system_use_notification}'"
     "gatewayresponse.header.X-System-Use-Notification" = "'${local.system_use_notification}'"
   }
-
-  response_templates = {
-    "application/json" = jsonencode({
-      message               = "Request Error"
-      systemUseNotification = local.system_use_notification
-    })
-  }
 }
 
 # -----------------------------------------------------------------------------

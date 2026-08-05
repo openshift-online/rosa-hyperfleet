@@ -127,34 +127,17 @@ print_workload_summary() {
 check_kubernetes_objects() {
   header "Kubernetes: NodeClass / NodePool"
 
-  # EKS Auto Mode uses nodeclasses.eks.amazonaws.com; upstream Karpenter uses
-  # nodeclasses.karpenter.k8s.aws. The advancedSecurity FIPS fields only exist
-  # on the EKS Auto Mode variant.
-  local has_eks_auto=false has_karpenter=false
-  kubectl get crd nodeclasses.eks.amazonaws.com >/dev/null 2>&1 && has_eks_auto=true
-  kubectl get crd nodeclasses.karpenter.k8s.aws  >/dev/null 2>&1 && has_karpenter=true
-
-  if [[ "$has_eks_auto" == "false" && "$has_karpenter" == "false" ]]; then
-    skip "NodeClass CRD not found — skipping (not an EKS Auto Mode or Karpenter cluster)"
-    return
-  fi
-
-  if [[ "$has_eks_auto" == "true" ]]; then
-    if kubectl get nodeclass fips \
-        -o jsonpath='{.spec.advancedSecurity.fips}' 2>/dev/null | grep -q "true"; then
-      pass "NodeClass 'fips': advancedSecurity.fips=true"
+  local crd_check
+  local crd_status=0
+  crd_check=$(kubectl get crd ec2nodeclasses.karpenter.k8s.aws 2>&1) || crd_status=$?
+  if [[ $crd_status -ne 0 ]]; then
+    if echo "$crd_check" | grep -qiE 'not found|no resources found'; then
+      skip "NodeClass CRD not found — skipping (Karpenter not installed)"
+      return
     else
-      fail "NodeClass 'fips': advancedSecurity.fips=true"
+      fail "kubectl get crd failed: $crd_check"
+      return
     fi
-
-    if kubectl get nodeclass fips \
-        -o jsonpath='{.spec.advancedSecurity.kernelLockdown}' 2>/dev/null | grep -q "Integrity"; then
-      pass "NodeClass 'fips': advancedSecurity.kernelLockdown=Integrity"
-    else
-      fail "NodeClass 'fips': advancedSecurity.kernelLockdown=Integrity"
-    fi
-  else
-    skip "advancedSecurity FIPS checks require nodeclasses.eks.amazonaws.com — skipping (upstream Karpenter detected)"
   fi
 
   echo ""

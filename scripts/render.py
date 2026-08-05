@@ -361,6 +361,9 @@ def build_mc_list(
 # -- Documentation ------------------------------------------------------------
 
 # Variables injected by render.py, not from config files.
+# Note: Go template keywords (if/else/end) that appear in escaped Go template strings
+# (e.g., {{ '{{ if ... }}X{{ else }}Y{{ end }}' }}) are automatically filtered by
+# scan_template_variables() and do not need to be listed here.
 CONTEXT_VARS = {
     "environment", "aws_region",
     "account_id", "management_clusters",
@@ -382,6 +385,13 @@ _TPL_PATTERNS = [
 ]
 # Matches bracket-string access: {{ var['key'].rest }} → var.key.rest
 _TPL_BRACKET_PATTERN = re.compile(r"\{\{[\s-]*([a-zA-Z_]\w*)\['([^']+)'\]([\w.]*)")
+# Matches escaped Go template strings wrapped in single or double quotes:
+#   {{ '{{ ... }}' }},  {{ "{{ ... }}" }},  {% '{{ ... }}' %},  {% "{{ ... }}" %}
+# These contain Go template keywords (if/else/end) that should not be treated as Jinja2 variables.
+_ESCAPED_GO_TEMPLATE_RE = re.compile(
+    r"""\{\{[\s-]*(?:'[^']*\{\{[^}]*\}\}[^']*'|"[^"]*\{\{[^}]*\}\}[^"]*")[\s-]*\}\}"""
+    r"""|\{%[\s-]*(?:'[^']*\{\{[^}]*\}\}[^']*'|"[^"]*\{\{[^}]*\}\}[^"]*")[\s-]*%\}"""
+)
 
 
 def scan_annotations(content: str) -> dict[str, dict[str, Any]]:
@@ -399,13 +409,30 @@ def scan_annotations(content: str) -> dict[str, dict[str, Any]]:
 
 
 def scan_template_variables(templates_dir: Path) -> dict[str, list[str]]:
-    """Scan templates for variable references. Returns {var: [template_paths]}."""
+    """Scan templates for variable references. Returns {var: [template_paths]}.
+
+    Variables inside escaped Go template strings (e.g., {{ '{{ if ... }}X{{ else }}Y{{ end }}' }})
+    are filtered out, as they are Go template keywords, not Jinja2 variables.
+    """
     var_to_templates: dict[str, list[str]] = {}
     for tpl in sorted(templates_dir.rglob("*.j2")):
         rel = str(tpl.relative_to(templates_dir))
         content = tpl.read_text()
+
+        # Build a set of character ranges to skip (escaped Go template strings)
+        skip_ranges: list[tuple[int, int]] = []
+        for match in _ESCAPED_GO_TEMPLATE_RE.finditer(content):
+            skip_ranges.append((match.start(), match.end()))
+
+        def _is_inside_escaped_go_template(pos: int) -> bool:
+            """Check if a position falls inside an escaped Go template string."""
+            return any(start <= pos < end for start, end in skip_ranges)
+
         for pattern in _TPL_PATTERNS:
             for match in pattern.finditer(content):
+                # Skip variables inside escaped Go template strings
+                if _is_inside_escaped_go_template(match.start()):
+                    continue
                 var = match.group(1)
                 if var.startswith("_") or var.split(".")[0] in ("true", "false", "none", "loop"):
                     continue
@@ -414,6 +441,9 @@ def scan_template_variables(templates_dir: Path) -> dict[str, list[str]]:
                 if rel not in var_to_templates[var]:
                     var_to_templates[var].append(rel)
         for match in _TPL_BRACKET_PATTERN.finditer(content):
+            # Skip variables inside escaped Go template strings
+            if _is_inside_escaped_go_template(match.start()):
+                continue
             var = match.group(1) + "." + match.group(2) + match.group(3)
             if var.startswith("_"):
                 continue

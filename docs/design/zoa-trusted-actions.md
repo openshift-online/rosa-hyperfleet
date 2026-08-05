@@ -834,7 +834,7 @@ Operator (zoa run) → Platform API → creates Manifest CR in PostgreSQL (hyper
 
 2. **Single shared ServiceAccount**: One SA (`zoa-job-runner`) for all TAs. Rejected because Kubernetes audit logs only show SA identity — all TAs would be indistinguishable at the K8s audit level. Additionally, a shared SA bound to N possible Roles means parallel executions share permissions — any running TA would have access to RBAC granted for a different concurrent TA.
 
-3. **IRSA (IAM Roles for Service Accounts)**: Allows per-SA roles via annotations. Rejected because IRSA is not fully supported in EKS Auto Mode and is being deprecated in favor of Pod Identity.
+3. **IRSA (IAM Roles for Service Accounts)**: Allows per-SA roles via annotations. Rejected because EKS Pod Identity is the ZOA platform standard auth mechanism for workload SAs and simplifies IAM configuration by eliminating per-cluster OIDC provider management. IRSA remains supported by AWS but was not chosen for this feature.
 
 4. **Sidecar container for S3 upload**: A separate container watches `/artifacts` and uploads. Rejected because sidecars add complexity around container ordering and completion detection. Additionally, containers in the same Pod share the same ServiceAccount — the runner would inherit S3 write permissions, breaking the isolation between operational actions and output transport.
 

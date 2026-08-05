@@ -26,8 +26,7 @@ causing ArgoCD ServerSideApply failures when field names changed.
 - UBI9 base images with automated security scanning (Clair, ClamAV, Snyk)
 - Minimize locally-maintained operator code
 
-**Assumptions**: Management clusters send metrics via Prometheus `remote_write`. EKS Auto Mode remains
-the compute strategy. Raw retention is 90d; downsampled retention is 180d (5m) and 365d (1h).
+**Assumptions**: Management clusters send metrics via Prometheus `remote_write`. OSS Karpenter is the compute strategy. Raw retention is 90d; downsampled retention is 180d (5m) and 365d (1h).
 
 ## Decision
 

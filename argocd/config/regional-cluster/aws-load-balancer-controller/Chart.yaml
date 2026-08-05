@@ -1,0 +1,10 @@
+apiVersion: v2
+name: aws-load-balancer-controller
+description: AWS Load Balancer Controller — provides TargetGroupBinding CRDs for OSS Karpenter clusters
+type: application
+version: 0.1.0
+
+dependencies:
+  - name: aws-load-balancer-controller
+    version: 1.17.1
+    repository: https://aws.github.io/eks-charts

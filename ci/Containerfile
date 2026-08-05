@@ -14,7 +14,7 @@ RUN if [ -n "${PROXY_CA_CERT}" ]; then \
 
 # Tool versions
 ARG TERRAFORM_VERSION=1.14.3
-ARG HELM_VERSION=v3.16.0
+ARG HELM_VERSION=v3.21.3
 ARG UV_VERSION=0.6.0
 ARG AWS_CLI_VERSION=2.34.19
 ARG PRETTIER_VERSION=3.8.1
@@ -79,12 +79,25 @@ RUN arch=$(uname -m) && \
     rm -f "${TF_PACKAGE}" "terraform_${TERRAFORM_VERSION}_SHA256SUMS" \
         "terraform_${TERRAFORM_VERSION}_SHA256SUMS.sig"
 
-# Helm 3 (pinned release tag; get-helm-3 verifies checksums by default)
+# Helm 3 (SHA-256 verified with retry logic)
 ARG CURL_RETRY
 ARG CURL_RETRY_DELAY
 ARG CURL_MAX_TIME
-RUN curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -fsSL "https://raw.githubusercontent.com/helm/helm/${HELM_VERSION}/scripts/get-helm-3" \
-    | DESIRED_VERSION="${HELM_VERSION}" VERIFY_CHECKSUM=true bash
+RUN arch=$(uname -m) && \
+    case "${arch}" in \
+        x86_64)  arch="amd64" ;; \
+        aarch64) arch="arm64" ;; \
+    esac && \
+    HELM_PACKAGE="helm-${HELM_VERSION}-linux-${arch}.tar.gz" && \
+    HELM_BASE_URL="https://get.helm.sh" && \
+    curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -fsSLO "${HELM_BASE_URL}/${HELM_PACKAGE}" && \
+    curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -fsSLO "${HELM_BASE_URL}/${HELM_PACKAGE}.sha256sum" && \
+    sha256sum -c "${HELM_PACKAGE}.sha256sum" && \
+    tar -xzf "${HELM_PACKAGE}" -C /tmp && \
+    mv /tmp/linux-${arch}/helm /usr/local/bin/helm && \
+    chmod +x /usr/local/bin/helm && \
+    rm -rf /tmp/linux-${arch} "${HELM_PACKAGE}" "${HELM_PACKAGE}.sha256sum" && \
+    helm version
 
 # uv (Python package manager - pinned version, installer verifies binary checksum)
 ARG CURL_RETRY

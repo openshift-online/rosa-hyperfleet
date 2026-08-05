@@ -1,6 +1,6 @@
 resource "aws_s3_bucket" "oidc" {
   bucket        = local.bucket_name
-  force_destroy = var.force_destroy
+  force_destroy = false
 
   tags = {
     Name = local.bucket_name
