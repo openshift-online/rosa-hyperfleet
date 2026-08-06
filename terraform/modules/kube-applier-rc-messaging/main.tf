@@ -5,27 +5,29 @@
 # events to SQS queues via EventBridge Pipes — replacing the previous
 # SNS-based notification paths.
 #
-# Specs path  (RC → MC): Two EventBridge Pipes (one per specs table) source
-#   INSERT/MODIFY events from the RC specs DynamoDB streams and deliver them
-#   to the MC-side specs SQS queue. kube-applier polls this queue for
-#   immediate reconciliation instead of waiting for its safety-net poll.
+# Specs path  (RC → RC SQS → kube-applier cross-account): Two EventBridge
+#   Pipes (one per specs table) source INSERT/MODIFY events from the RC specs
+#   DynamoDB streams and deliver them to a per-MC specs SQS queue in the RC
+#   account. kube-applier polls this queue cross-account using its existing
+#   Pod Identity role. Cross-account pipes are not supported by EventBridge
+#   Pipes, so both the pipe and its target queue live in the RC account.
 #
-# Status path (RC → RC): 2×N EventBridge Pipes (two status tables × N
+# Status path (RC → RC SQS): 2×N EventBridge Pipes (two status tables × N
 #   operator replicas) deliver status INSERT/MODIFY events to each operator
 #   pod's own SQS queue. Each pod drains only its own queue, preserving the
 #   no-competing-consumers design.
 #
-# Resource naming:
-#   Status SQS queues:      ${rc_id}-hyperfleet-operator-{0..N-1} (RC account)
+# Resource naming (all RC account):
+#   Specs SQS queue:        ${mc_name}-specs-notifications
+#   Status SQS queues:      ${rc_id}-hyperfleet-operator-{0..N-1}
 #   Specs Pipe IAM role:    ${mc_name}-specs-pipe
 #   Status Pipe IAM role:   ${mc_name}-status-pipe
-#   KMS key alias:          alias/${mc_name}-kube-applier-messaging (RC account)
+#   KMS key alias:          alias/${mc_name}-kube-applier-messaging
 #
-# Incremental IAM pattern:
-#   Like the existing ${mc_name}-dynamodb-access policy, this module attaches
-#   a per-MC inline policy (${mc_name}-messaging-access) to the shared
-#   ${rc_id}-hyperfleet-operator role. Each MC pipeline run adds its own
-#   policy, so parallel per-MC state files never collide.
+# Deterministic ARN/URL pattern:
+#   All queue ARNs and URLs are constructable from (mc_name, rc_id, region,
+#   account_id) without cross-stack output passing, matching the pattern used
+#   for DynamoDB resource policies.
 # =============================================================================
 
 data "aws_caller_identity" "current" {}
@@ -47,9 +49,9 @@ locals {
   # IAM role for the hyperfleet-operator (RC account, shared across all MCs)
   hyperfleet_operator_role_name = "${var.rc_id}-hyperfleet-operator"
 
-  # MC specs SQS queue ARN — predictable, constructed from known values.
-  # The Pipes target this cross-account queue to notify kube-applier.
-  mc_specs_queue_arn = "arn:aws:sqs:${var.aws_region}:${var.mc_aws_account_id}:${var.mc_name}-specs-notifications"
+  # IAM role for kube-applier (MC account). Deterministic — constructed from
+  # known inputs so no cross-account output passing is required.
+  kube_applier_role_arn = "arn:${data.aws_partition.current.partition}:iam::${var.mc_aws_account_id}:role/${var.mc_name}-kube-applier"
 }
 
 # =============================================================================
@@ -91,6 +93,27 @@ resource "aws_kms_key" "messaging" {
           }
         }
       },
+      {
+        # kube-applier runs in the MC account and polls the specs queue
+        # cross-account. It needs Decrypt access to read messages.
+        # Use MC account root + PrincipalArn condition so this stanza is
+        # valid at key-creation time even before the role exists.
+        Sid    = "AllowKubeApplierDecrypt"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:${data.aws_partition.current.partition}:iam::${var.mc_aws_account_id}:root"
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey*",
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:PrincipalArn" = local.kube_applier_role_arn
+          }
+        }
+      },
     ]
   })
 
@@ -102,6 +125,57 @@ resource "aws_kms_key" "messaging" {
 resource "aws_kms_alias" "messaging" {
   name          = "alias/${var.mc_name}-kube-applier-messaging"
   target_key_id = aws_kms_key.messaging.key_id
+}
+
+# =============================================================================
+# Specs SQS Queue (specs path receiver — RC EventBridge Pipe → RC SQS)
+#
+# One queue per MC. kube-applier polls this queue cross-account; competing
+# consumers on spec work items are fine (unlike status, which is per-replica).
+# The queue lives in the RC account so the EventBridge Pipe can target it
+# without cross-account restrictions.
+# =============================================================================
+
+resource "aws_sqs_queue" "specs" {
+  name                       = "${var.mc_name}-specs-notifications"
+  kms_master_key_id          = aws_kms_key.messaging.id
+  message_retention_seconds  = 300
+  visibility_timeout_seconds = 30
+  receive_wait_time_seconds  = 20
+
+  tags = merge(local.common_tags, {
+    Name      = "${var.mc_name}-specs-notifications"
+    Direction = "specs-rc-to-rc"
+  })
+}
+
+# Allow the kube-applier role (MC account) to poll this queue cross-account.
+# Same account-root + PrincipalArn pattern to keep the policy valid before
+# the role exists.
+resource "aws_sqs_queue_policy" "specs" {
+  queue_url = aws_sqs_queue.specs.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "AllowKubeApplierReceive"
+      Effect = "Allow"
+      Principal = {
+        AWS = "arn:${data.aws_partition.current.partition}:iam::${var.mc_aws_account_id}:root"
+      }
+      Action = [
+        "sqs:ReceiveMessage",
+        "sqs:DeleteMessage",
+        "sqs:GetQueueAttributes",
+      ]
+      Resource = aws_sqs_queue.specs.arn
+      Condition = {
+        StringEquals = {
+          "aws:PrincipalArn" = local.kube_applier_role_arn
+        }
+      }
+    }]
+  })
 }
 
 # =============================================================================
@@ -117,9 +191,9 @@ resource "aws_sqs_queue" "status" {
 
   name                       = "${var.rc_id}-hyperfleet-operator-${count.index}"
   kms_master_key_id          = aws_kms_key.messaging.id
-  message_retention_seconds  = 300 # 5 minutes — notifications are ephemeral wake-up signals
+  message_retention_seconds  = 300
   visibility_timeout_seconds = 30
-  receive_wait_time_seconds  = 20 # long-polling
+  receive_wait_time_seconds  = 20
 
   tags = merge(local.common_tags, {
     Name      = "${var.rc_id}-hyperfleet-operator-${count.index}"
@@ -128,16 +202,11 @@ resource "aws_sqs_queue" "status" {
   })
 }
 
-# Status queues are in the same account as the Pipes — no cross-account queue
-# policy is required. The status Pipe role's IAM policy grants sqs:SendMessage
-# via identity-based policy, which is sufficient for same-account delivery.
+# Status queues are same-account as the Pipes — no queue policy needed.
+# The status Pipe role's identity-based policy grants sqs:SendMessage directly.
 
 # =============================================================================
 # IAM: extend hyperfleet-operator role with messaging permissions (per-MC)
-#
-# Follows the same incremental pattern as ${mc_name}-dynamodb-access: each MC
-# pipeline run attaches its own named policy to the shared operator role.
-# Parallel per-MC state files never collide because policy names are unique.
 # =============================================================================
 
 resource "aws_iam_role_policy" "hyperfleet_operator_messaging" {
@@ -171,13 +240,7 @@ resource "aws_iam_role_policy" "hyperfleet_operator_messaging" {
 }
 
 # =============================================================================
-# EventBridge Pipe IAM — Specs path (RC DynamoDB → MC SQS)
-#
-# The specs Pipe role reads from the RC specs DynamoDB streams and writes to
-# the MC-side specs SQS queue. The cross-account SQS write is authorised by
-# the queue resource policy in the MC account (AllowSpecsPipeDelivery).
-# The KMS grant for encrypting messages into the MC SQS queue is in the MC
-# KMS key policy (AllowSpecsPipeDelivery stanza).
+# EventBridge Pipe IAM — Specs path (RC DynamoDB → RC SQS)
 # =============================================================================
 
 resource "aws_iam_role" "specs_pipe" {
@@ -227,52 +290,61 @@ resource "aws_iam_role_policy" "specs_pipe" {
         ]
       },
       {
-        Sid    = "WriteToMCSpecsQueue"
+        Sid      = "WriteToSpecsQueue"
+        Effect   = "Allow"
+        Action   = "sqs:SendMessage"
+        Resource = aws_sqs_queue.specs.arn
+      },
+      {
+        Sid    = "SpecsQueueKMSAccess"
         Effect = "Allow"
-        Action = "sqs:SendMessage"
-        Resource = local.mc_specs_queue_arn
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey*",
+        ]
+        Resource = aws_kms_key.messaging.arn
       },
     ]
   })
 }
 
 # =============================================================================
-# EventBridge Pipes — Specs path (one pipe per specs table → MC SQS)
+# EventBridge Pipes — Specs path (one pipe per specs table → RC SQS)
 # =============================================================================
 
 resource "aws_pipes_pipe" "specs_applydesires" {
   name     = "${var.mc_name}-specs-applydesires"
   role_arn = aws_iam_role.specs_pipe.arn
   source   = var.specs_applydesires_stream_arn
-  target   = local.mc_specs_queue_arn
+  target   = aws_sqs_queue.specs.arn
 
   source_parameters {
     dynamodb_stream_parameters {
       starting_position = "LATEST"
       batch_size        = 10
+    }
 
-      filter_criteria {
-        filter {
-          pattern = jsonencode({
-            eventName = ["INSERT", "MODIFY"]
-          })
-        }
+    filter_criteria {
+      filter {
+        pattern = jsonencode({
+          eventName = ["INSERT", "MODIFY"]
+        })
       }
     }
   }
 
   target_parameters {
-    sqs_queue_parameters {
-      message_body = jsonencode({
-        documentID  = "<$.dynamodb.Keys.documentID.S>"
-        tableSuffix = "-applydesires"
-      })
-    }
+    input_template = jsonencode({
+      documentID  = "<$.dynamodb.Keys.documentID.S>"
+      tableSuffix = "-applydesires"
+    })
+
+    sqs_queue_parameters {}
   }
 
   tags = merge(local.common_tags, {
     Name      = "${var.mc_name}-specs-applydesires"
-    Direction = "specs-rc-to-mc"
+    Direction = "specs-rc-to-rc"
   })
 }
 
@@ -280,44 +352,40 @@ resource "aws_pipes_pipe" "specs_readdesires" {
   name     = "${var.mc_name}-specs-readdesires"
   role_arn = aws_iam_role.specs_pipe.arn
   source   = var.specs_readdesires_stream_arn
-  target   = local.mc_specs_queue_arn
+  target   = aws_sqs_queue.specs.arn
 
   source_parameters {
     dynamodb_stream_parameters {
       starting_position = "LATEST"
       batch_size        = 10
+    }
 
-      filter_criteria {
-        filter {
-          pattern = jsonencode({
-            eventName = ["INSERT", "MODIFY"]
-          })
-        }
+    filter_criteria {
+      filter {
+        pattern = jsonencode({
+          eventName = ["INSERT", "MODIFY"]
+        })
       }
     }
   }
 
   target_parameters {
-    sqs_queue_parameters {
-      message_body = jsonencode({
-        documentID  = "<$.dynamodb.Keys.documentID.S>"
-        tableSuffix = "-readdesires"
-      })
-    }
+    input_template = jsonencode({
+      documentID  = "<$.dynamodb.Keys.documentID.S>"
+      tableSuffix = "-readdesires"
+    })
+
+    sqs_queue_parameters {}
   }
 
   tags = merge(local.common_tags, {
     Name      = "${var.mc_name}-specs-readdesires"
-    Direction = "specs-rc-to-mc"
+    Direction = "specs-rc-to-rc"
   })
 }
 
 # =============================================================================
 # EventBridge Pipe IAM — Status path (RC DynamoDB → RC SQS)
-#
-# The status Pipe role reads from the RC status DynamoDB streams and writes to
-# the RC-side operator status SQS queues. All resources are in the same account
-# so no cross-account resource policies are needed on the queues.
 # =============================================================================
 
 resource "aws_iam_role" "status_pipe" {
@@ -367,9 +435,9 @@ resource "aws_iam_role_policy" "status_pipe" {
         ]
       },
       {
-        Sid    = "WriteToStatusQueues"
-        Effect = "Allow"
-        Action = "sqs:SendMessage"
+        Sid      = "WriteToStatusQueues"
+        Effect   = "Allow"
+        Action   = "sqs:SendMessage"
         Resource = aws_sqs_queue.status[*].arn
       },
       {
@@ -387,10 +455,6 @@ resource "aws_iam_role_policy" "status_pipe" {
 
 # =============================================================================
 # EventBridge Pipes — Status path (2×N pipes: two tables × N replicas)
-#
-# Each operator replica has its own SQS queue. Each status table has its own
-# set of N pipes (one per replica) so every replica receives every status
-# change notification for its owned document IDs.
 # =============================================================================
 
 resource "aws_pipes_pipe" "status_applydesires" {
@@ -404,24 +468,24 @@ resource "aws_pipes_pipe" "status_applydesires" {
     dynamodb_stream_parameters {
       starting_position = "LATEST"
       batch_size        = 10
+    }
 
-      filter_criteria {
-        filter {
-          pattern = jsonencode({
-            eventName = ["INSERT", "MODIFY"]
-          })
-        }
+    filter_criteria {
+      filter {
+        pattern = jsonencode({
+          eventName = ["INSERT", "MODIFY"]
+        })
       }
     }
   }
 
   target_parameters {
-    sqs_queue_parameters {
-      message_body = jsonencode({
-        documentID  = "<$.dynamodb.Keys.documentID.S>"
-        tableSuffix = "-applydesires"
-      })
-    }
+    input_template = jsonencode({
+      documentID  = "<$.dynamodb.Keys.documentID.S>"
+      tableSuffix = "-applydesires"
+    })
+
+    sqs_queue_parameters {}
   }
 
   tags = merge(local.common_tags, {
@@ -442,24 +506,24 @@ resource "aws_pipes_pipe" "status_readdesires" {
     dynamodb_stream_parameters {
       starting_position = "LATEST"
       batch_size        = 10
+    }
 
-      filter_criteria {
-        filter {
-          pattern = jsonencode({
-            eventName = ["INSERT", "MODIFY"]
-          })
-        }
+    filter_criteria {
+      filter {
+        pattern = jsonencode({
+          eventName = ["INSERT", "MODIFY"]
+        })
       }
     }
   }
 
   target_parameters {
-    sqs_queue_parameters {
-      message_body = jsonencode({
-        documentID  = "<$.dynamodb.Keys.documentID.S>"
-        tableSuffix = "-readdesires"
-      })
-    }
+    input_template = jsonencode({
+      documentID  = "<$.dynamodb.Keys.documentID.S>"
+      tableSuffix = "-readdesires"
+    })
+
+    sqs_queue_parameters {}
   }
 
   tags = merge(local.common_tags, {
