@@ -38,3 +38,8 @@ output "status_sqs_queue_urls" {
   description = "URLs of the RC-account operator status SQS queues (one per replica)."
   value       = module.kube_applier_rc_messaging.status_queue_urls
 }
+
+output "specs_sqs_queue_url" {
+  description = "URL of the RC-account specs SQS queue polled by kube-applier cross-account."
+  value       = module.kube_applier_rc_messaging.specs_queue_url
+}

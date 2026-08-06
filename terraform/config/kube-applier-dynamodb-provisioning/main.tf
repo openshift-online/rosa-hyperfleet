@@ -97,13 +97,12 @@ resource "aws_iam_role_policy" "hyperfleet_operator_dynamodb" {
 # Creates EventBridge Pipes in the RC account that deliver DynamoDB stream
 # change events directly to SQS queues — replacing the previous SNS topics.
 #
-# Specs path (RC DynamoDB → MC SQS): two Pipes, one per specs table, deliver
-#   INSERT/MODIFY events to the MC-side specs SQS queue so kube-applier is
-#   woken immediately on new desire documents.
+# Specs path (RC DynamoDB → RC SQS ← kube-applier cross-account): two Pipes,
+#   one per specs table, deliver INSERT/MODIFY events to a per-MC specs SQS
+#   queue in the RC account. kube-applier polls this queue cross-account.
 #
 # Status path (RC DynamoDB → RC SQS): 2×N Pipes (two tables × N replicas)
-#   deliver INSERT/MODIFY events to each operator replica's own SQS queue,
-#   replacing the previous MC SNS → RC SQS path.
+#   deliver INSERT/MODIFY events to each operator replica's own SQS queue.
 # =============================================================================
 
 module "kube_applier_rc_messaging" {

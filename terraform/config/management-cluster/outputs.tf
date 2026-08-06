@@ -174,12 +174,7 @@ output "kube_applier_role_arn" {
 # Helm chart as --sqs-queue-url.
 # =============================================================================
 
-output "kube_applier_specs_queue_arn" {
-  description = "ARN of the MC-side specs SQS queue (receives RC EventBridge Pipe notifications)."
-  value       = module.kube_applier_mc_messaging.specs_queue_arn
-}
-
 output "kube_applier_specs_queue_url" {
-  description = "URL of the MC-side specs SQS queue (polled by kube-applier for spec change notifications)."
-  value       = module.kube_applier_mc_messaging.specs_queue_url
+  description = "URL of the RC-side specs SQS queue polled by kube-applier cross-account for spec change notifications."
+  value       = "https://sqs.${var.region}.amazonaws.com/${var.regional_aws_account_id}/${var.management_id}-specs-notifications"
 }

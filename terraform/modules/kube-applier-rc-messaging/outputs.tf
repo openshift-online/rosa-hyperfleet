@@ -3,13 +3,23 @@
 # =============================================================================
 
 output "specs_pipe_applydesires_arn" {
-  description = "ARN of the EventBridge Pipe delivering specs-applydesires changes to the MC SQS queue"
+  description = "ARN of the EventBridge Pipe delivering specs-applydesires changes to the RC specs SQS queue"
   value       = aws_pipes_pipe.specs_applydesires.arn
 }
 
 output "specs_pipe_readdesires_arn" {
-  description = "ARN of the EventBridge Pipe delivering specs-readdesires changes to the MC SQS queue"
+  description = "ARN of the EventBridge Pipe delivering specs-readdesires changes to the RC specs SQS queue"
   value       = aws_pipes_pipe.specs_readdesires.arn
+}
+
+output "specs_queue_url" {
+  description = "URL of the RC-side specs SQS queue polled by kube-applier (cross-account)"
+  value       = aws_sqs_queue.specs.url
+}
+
+output "specs_queue_arn" {
+  description = "ARN of the RC-side specs SQS queue"
+  value       = aws_sqs_queue.specs.arn
 }
 
 output "status_pipe_role_arn" {

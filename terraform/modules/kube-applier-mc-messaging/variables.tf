@@ -13,18 +13,13 @@ variable "mc_name" {
 }
 
 variable "rc_aws_account_id" {
-  description = "AWS account ID of the regional cluster. Used to scope IAM and queue policies."
+  description = "AWS account ID of the regional cluster. Used to construct deterministic RC-side SQS and KMS ARNs."
   type        = string
 
   validation {
     condition     = can(regex("^[0-9]{12}$", var.rc_aws_account_id))
     error_message = "rc_aws_account_id must be a 12-digit AWS account ID"
   }
-}
-
-variable "eks_cluster_name" {
-  description = "Name of the EKS management cluster. Used for the Pod Identity association."
-  type        = string
 }
 
 variable "aws_region" {

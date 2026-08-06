@@ -69,7 +69,7 @@ module "ecs_bootstrap" {
   repository_url    = var.repository_url
   repository_branch = var.repository_branch
 
-  kube_applier_specs_queue_url  = module.kube_applier_mc_messaging.specs_queue_url
+  kube_applier_specs_queue_url  = "https://sqs.${var.region}.amazonaws.com/${var.regional_aws_account_id}/${var.management_id}-specs-notifications"
 }
 
 # =============================================================================
@@ -209,6 +209,5 @@ module "kube_applier_mc_messaging" {
 
   mc_name           = var.management_id
   rc_aws_account_id = var.regional_aws_account_id
-  eks_cluster_name  = module.management_cluster.cluster_name
   aws_region        = var.region
 }
