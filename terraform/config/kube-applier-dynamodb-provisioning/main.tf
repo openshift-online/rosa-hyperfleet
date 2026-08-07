@@ -90,3 +90,32 @@ resource "aws_iam_role_policy" "hyperfleet_operator_dynamodb" {
     ]
   })
 }
+
+# =============================================================================
+# kube-applier RC-side Messaging (EventBridge Pipes + SQS)
+#
+# Creates EventBridge Pipes in the RC account that deliver DynamoDB stream
+# change events directly to SQS queues — replacing the previous SNS topics.
+#
+# Specs path (RC DynamoDB → RC SQS ← kube-applier cross-account): two Pipes,
+#   one per specs table, deliver INSERT/MODIFY events to a per-MC specs SQS
+#   queue in the RC account. kube-applier polls this queue cross-account.
+#
+# Status path (RC DynamoDB → RC SQS): 2×N Pipes (two tables × N replicas)
+#   deliver INSERT/MODIFY events to each operator replica's own SQS queue.
+# =============================================================================
+
+module "kube_applier_rc_messaging" {
+  source = "../../modules/kube-applier-rc-messaging"
+
+  mc_name                = var.mc_name
+  mc_aws_account_id      = var.mc_aws_account_id
+  rc_id                  = var.rc_id
+  aws_region             = var.region
+  operator_replica_count = var.operator_replica_count
+
+  specs_applydesires_stream_arn  = module.kube_applier_dynamodb.specs_applydesires_stream_arn
+  specs_readdesires_stream_arn   = module.kube_applier_dynamodb.specs_readdesires_stream_arn
+  status_applydesires_stream_arn = module.kube_applier_dynamodb.status_applydesires_stream_arn
+  status_readdesires_stream_arn  = module.kube_applier_dynamodb.status_readdesires_stream_arn
+}

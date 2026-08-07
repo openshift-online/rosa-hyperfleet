@@ -7,9 +7,11 @@ hyperfleet:
 
   project: default
 
+  sqsQueueUrlPrefix: ""
+
   source:
-    repoURL: https://github.com/openshift-online/rosa-hyperfleet-api.git
-    targetRevision: f7ec7d59ed8523bc66277cce3f4814e0dee5fa83
+    repoURL: https://github.com/rrp-bot/rosa-hyperfleet-api.git
+    targetRevision: feature/eventbridge-pipes
     path: hyperfleet-operator/charts
 
   syncPolicy:
@@ -19,8 +21,8 @@ hyperfleet:
 
   helmValues:
     image:
-      repository: quay.io/redhat-user-workloads/rosa-tenant/hyperfleet-operator
-      tag: "f7ec7d59ed8523bc66277cce3f4814e0dee5fa83"
+      repository: quay.io/psav/hyperfleet-operator
+      tag: "8172b92"
       pullPolicy: Always
 
     replicaCount: 2

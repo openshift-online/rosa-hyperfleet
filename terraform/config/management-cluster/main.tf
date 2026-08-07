@@ -68,6 +68,8 @@ module "ecs_bootstrap" {
 
   repository_url    = var.repository_url
   repository_branch = var.repository_branch
+
+  kube_applier_specs_queue_url  = "https://sqs.${var.region}.amazonaws.com/${var.regional_aws_account_id}/${var.management_id}-specs-notifications"
 }
 
 # =============================================================================
@@ -184,6 +186,23 @@ module "kube_applier" {
 
   management_id     = var.management_id
   eks_cluster_name  = module.management_cluster.cluster_name
+  rc_aws_account_id = var.regional_aws_account_id
+  aws_region        = var.region
+}
+
+# =============================================================================
+# kube-applier MC-side Messaging (cross-account IAM for RC SQS)
+#
+# Extends the MC-account kube-applier IAM role with cross-account SQS receive
+# and KMS decrypt permissions so it can poll the RC-side specs queue. All SQS
+# queues and EventBridge Pipes are provisioned in the RC account by the
+# kube-applier-dynamodb-provisioning pipeline.
+# =============================================================================
+
+module "kube_applier_mc_messaging" {
+  source = "../../modules/kube-applier-mc-messaging"
+
+  mc_name           = var.management_id
   rc_aws_account_id = var.regional_aws_account_id
   aws_region        = var.region
 }

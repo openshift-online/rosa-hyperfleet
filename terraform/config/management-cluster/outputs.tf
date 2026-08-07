@@ -166,3 +166,15 @@ output "kube_applier_role_arn" {
   description = "IAM role ARN for the kube-applier-aws controller"
   value       = module.kube_applier.kube_applier_role_arn
 }
+
+# =============================================================================
+# kube-applier Messaging Outputs
+# Read by bootstrap-argocd.sh to wire the queue URL into the ArgoCD cluster
+# secret annotation, which the ApplicationSet then passes to the kube-applier
+# Helm chart as --sqs-queue-url.
+# =============================================================================
+
+output "kube_applier_specs_queue_url" {
+  description = "URL of the RC-side specs SQS queue polled by kube-applier cross-account for spec change notifications."
+  value       = "https://sqs.${var.region}.amazonaws.com/${var.regional_aws_account_id}/${var.management_id}-specs-notifications"
+}
