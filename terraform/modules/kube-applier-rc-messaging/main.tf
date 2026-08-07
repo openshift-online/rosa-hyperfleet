@@ -334,10 +334,11 @@ resource "aws_pipes_pipe" "specs_applydesires" {
   }
 
   target_parameters {
-    input_template = jsonencode({
-      documentID  = "<$.dynamodb.Keys.documentID.S>"
-      tableSuffix = "-applydesires"
-    })
+    # input_template must be a raw string — jsonencode() would double-quote the
+    # JSONPath placeholders, causing EventBridge to pass them through literally.
+    # EventBridge automatically adds quotes around string values at runtime, so
+    # the <$.path> references must appear unquoted in the template.
+    input_template = "{\"documentID\": <$.dynamodb.Keys.documentID.S>, \"tableSuffix\": \"-applydesires\"}"
 
     sqs_queue_parameters {}
   }
@@ -370,10 +371,7 @@ resource "aws_pipes_pipe" "specs_readdesires" {
   }
 
   target_parameters {
-    input_template = jsonencode({
-      documentID  = "<$.dynamodb.Keys.documentID.S>"
-      tableSuffix = "-readdesires"
-    })
+    input_template = "{\"documentID\": <$.dynamodb.Keys.documentID.S>, \"tableSuffix\": \"-readdesires\"}"
 
     sqs_queue_parameters {}
   }
@@ -480,10 +478,7 @@ resource "aws_pipes_pipe" "status_applydesires" {
   }
 
   target_parameters {
-    input_template = jsonencode({
-      documentID  = "<$.dynamodb.Keys.documentID.S>"
-      tableSuffix = "-applydesires"
-    })
+    input_template = "{\"documentID\": <$.dynamodb.Keys.documentID.S>, \"tableSuffix\": \"-applydesires\"}"
 
     sqs_queue_parameters {}
   }
@@ -518,10 +513,7 @@ resource "aws_pipes_pipe" "status_readdesires" {
   }
 
   target_parameters {
-    input_template = jsonencode({
-      documentID  = "<$.dynamodb.Keys.documentID.S>"
-      tableSuffix = "-readdesires"
-    })
+    input_template = "{\"documentID\": <$.dynamodb.Keys.documentID.S>, \"tableSuffix\": \"-readdesires\"}"
 
     sqs_queue_parameters {}
   }

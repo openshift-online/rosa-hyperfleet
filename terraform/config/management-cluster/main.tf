@@ -191,17 +191,12 @@ module "kube_applier" {
 }
 
 # =============================================================================
-# kube-applier MC-side Messaging (SNS/SQS cross-account notifications)
+# kube-applier MC-side Messaging (cross-account IAM for RC SQS)
 #
-# Creates the specs SQS queue (receives notifications from the RC specs SNS
-# topic when the operator writes a new desire document) and the status SNS
-# topic (kube-applier publishes here after writing a status document so the
-# RC-side operator queues are notified immediately).
-#
-# rc_specs_sns_topic_arn is read from the RC kube-applier-dynamodb terraform
-# state by the buildspec script and passed in as TF_VAR_rc_specs_sns_topic_arn.
-# When empty (e.g. during initial bootstrap before the RC run completes) the
-# module is skipped and messaging falls back to 5-minute safety polling.
+# Extends the MC-account kube-applier IAM role with cross-account SQS receive
+# and KMS decrypt permissions so it can poll the RC-side specs queue. All SQS
+# queues and EventBridge Pipes are provisioned in the RC account by the
+# kube-applier-dynamodb-provisioning pipeline.
 # =============================================================================
 
 module "kube_applier_mc_messaging" {
