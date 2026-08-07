@@ -7,7 +7,7 @@ kubeApplier:
   image:
     registry: "quay.io"
     repository: "psav/kube-applier-aws"
-    tag: "461dce3"
+    tag: "67ee1f4"
     pullPolicy: IfNotPresent
 
   # Deployment configuration
@@ -27,6 +27,11 @@ kubeApplier:
   config:
     # Optional: override DynamoDB endpoint (e.g. for LocalStack in dev)
     awsEndpointUrl: ""
+    # fullResyncPeriod controls how often the informer forces a full DynamoDB
+    # rescan by stopping the fake watcher so the reflector re-Lists all desires.
+    # This ensures items whose SQS notification was missed are eventually
+    # reconciled without a pod restart. Leave empty to use the binary default (5m).
+    fullResyncPeriod: ""
     metricsListenAddress: ":8081"
     healthzListenAddress: ":8083"
     leaderElectionId: "kube-applier"

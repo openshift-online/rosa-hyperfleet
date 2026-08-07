@@ -51,6 +51,9 @@ spec:
             {{- if .Values.kubeApplier.config.awsEndpointUrl }}
             - --aws-endpoint-url={{ .Values.kubeApplier.config.awsEndpointUrl }}
             {{- end }}
+            {{- if .Values.kubeApplier.config.fullResyncPeriod }}
+            - --full-resync-period={{ .Values.kubeApplier.config.fullResyncPeriod }}
+            {{- end }}
           ports:
             - name: metrics
               containerPort: {{ trimPrefix ":" .Values.kubeApplier.config.metricsListenAddress | int }}
