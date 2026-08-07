@@ -1,0 +1,47 @@
+# LocalStack Pro local development environment
+#
+# This environment targets a LocalStack Pro instance running on the developer's
+# machine. All AWS API calls are routed to http://localhost:4566 and use mock
+# account IDs created by scripts/localstack/init-aws.sh.
+#
+# Requires: LOCALSTACK_AUTH_TOKEN set in the host environment.
+# Features: Full EKS emulation, Lambda container images, IAM enforcement.
+#
+# See docs/localstack-testing.md for setup and usage.
+
+deployment_name: "{{ aws_region }}"
+
+dns:
+  domain: localstack.rosa.local
+  create_environment_zone: false
+
+aws:
+  # Mock account IDs — must match scripts/localstack/init-aws.sh
+  account_id: "000000000002"
+  management_cluster_account_id: "000000000003"
+
+regional_cluster:
+  enable_bastion: false
+  enable_cloudtrail: false
+  enable_api_custom_domain: false
+  enable_rate_limit_redis: false
+  enable_write_sre_tools: false
+  node_instance_families: ["m7i-flex"]
+  hyperfleet_db_instance_class: "db.t4g.medium"
+  hyperfleet_db_deletion_protection: false
+  hyperfleet_db_skip_final_snapshot: true
+  hyperfleet_db_performance_insights_enabled: false
+  hyperfleet_db_monitoring_interval: 0
+  enable_sre_tools_gateway: false
+  enable_sre_public_access: false
+  enable_sre_oidc_auth: false
+
+management_cluster_defaults:
+  enable_bastion: false
+  node_instance_families: ["m7i-flex"]
+
+observability:
+  pagerduty:
+    enabled: false
+  sns_alerting:
+    enabled: false
