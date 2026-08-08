@@ -116,7 +116,12 @@ resource "aws_iam_role_policy" "frontend_api_avp" {
           "verifiedpermissions:DeletePolicy",
           "verifiedpermissions:GetPolicy",
           "verifiedpermissions:ListPolicies",
-          "verifiedpermissions:UpdatePolicy"
+          "verifiedpermissions:UpdatePolicy",
+          "verifiedpermissions:CreatePolicyTemplate",
+          "verifiedpermissions:DeletePolicyTemplate",
+          "verifiedpermissions:GetPolicyTemplate",
+          "verifiedpermissions:ListPolicyTemplates",
+          "verifiedpermissions:UpdatePolicyTemplate"
         ]
         Resource = "*"
       },
