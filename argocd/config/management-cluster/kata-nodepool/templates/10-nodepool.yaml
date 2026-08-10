@@ -1,0 +1,44 @@
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: kata-request-serving
+spec:
+  template:
+    metadata:
+      labels:
+        katacontainers.io/kata-runtime: "true"
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: kata
+      taints:
+        - key: hypershift.openshift.io/request-serving-component
+          value: "true"
+          effect: NoSchedule
+      requirements:
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values:
+            - {{ .Values.kataNodePool.capacityType }}
+        - key: kubernetes.io/arch
+          operator: In
+          values:
+            - {{ .Values.kataNodePool.arch }}
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values:
+            {{- range .Values.kataNodePool.instanceFamilies }}
+            {{- $family := . }}
+            {{- range list "xlarge" "2xlarge" "4xlarge" }}
+            - {{ $family }}.{{ . }}
+            {{- end }}
+            {{- end }}
+  limits:
+    cpu: {{ .Values.kataNodePool.limits.cpu | quote }}
+    memory: {{ .Values.kataNodePool.limits.memory }}
+  disruption:
+    consolidationPolicy: {{ .Values.kataNodePool.disruption.consolidationPolicy }}
+    consolidateAfter: {{ .Values.kataNodePool.disruption.consolidateAfter }}
+  # TODO: add topology spread constraints for AZ balancing
+  # TODO: tune limits based on observed HCP density
