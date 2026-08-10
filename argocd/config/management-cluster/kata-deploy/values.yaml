@@ -1,0 +1,17 @@
+kata-deploy:
+  nodeSelector:
+    katacontainers.io/kata-runtime: "true"
+  tolerations:
+    - key: hypershift.openshift.io/request-serving-component
+      operator: Exists
+      effect: NoSchedule
+  shims:
+    disableAll: true
+    fc:
+      enabled: true
+  runtimeClasses:
+    enabled: true
+    createDefault: false
+  defaultShim:
+    amd64: fc
+  k8sDistribution: "k8s"

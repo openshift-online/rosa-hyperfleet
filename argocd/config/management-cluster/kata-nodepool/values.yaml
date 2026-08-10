@@ -1,0 +1,15 @@
+kataNodePool:
+  instanceFamilies:
+    - m7i
+    - c7i
+  capacityType: on-demand
+  arch: amd64
+  limits:
+    cpu: "64"
+    memory: 256Gi
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 30s
+
+global:
+  cluster_name: ""

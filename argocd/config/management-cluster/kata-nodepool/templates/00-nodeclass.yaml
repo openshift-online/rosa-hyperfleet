@@ -1,0 +1,139 @@
+{{- $clusterName := required "global.cluster_name must be set via ApplicationSet valuesObject" .Values.global.cluster_name -}}
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: kata
+spec:
+  amiSelectorTerms:
+    - alias: al2023@latest
+  instanceProfile: {{ $clusterName }}-karpenter-node-role
+  subnetSelectorTerms:
+    - tags:
+        kubernetes.io/cluster/{{ $clusterName }}: owned
+  securityGroupSelectorTerms:
+    - tags:
+        aws:eks:cluster-name: {{ $clusterName }}
+  metadataOptions:
+    httpTokens: required
+    httpPutResponseHopLimit: 2
+  cpuOptions:
+    nestedVirtualization: "enabled"
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        volumeSize: {{ .Values.kataNodePool.rootVolumeSize | default "100Gi" }}
+        volumeType: gp3
+        encrypted: true
+        deleteOnTermination: true
+  userData: |
+    MIME-Version: 1.0
+    Content-Type: multipart/mixed; boundary="BOUNDARY"
+
+    --BOUNDARY
+    Content-Type: application/node.eks.aws
+
+    apiVersion: node.eks.aws/v1alpha1
+    kind: NodeConfig
+    spec:
+      containerd:
+        config: |
+          [plugins."io.containerd.grpc.v1.cri".containerd]
+          discard_unpacked_layers = false
+
+          [plugins."io.containerd.snapshotter.v1.devmapper"]
+          pool_name = "devpool"
+          root_path = "/var/lib/containerd/devmapper"
+          base_image_size = "10GB"
+          discard_blocks = true
+
+          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata-fc]
+          snapshotter = "devmapper"
+          runtime_type = "io.containerd.kata-fc.v2"
+
+    --BOUNDARY
+    Content-Type: text/x-shellscript; charset="us-ascii"
+
+    #!/bin/bash
+    set -euo pipefail
+
+    # AL2023 doesn't auto-load kvm_intel even with EC2 nested virt enabled
+    modprobe kvm_intel
+    echo "kvm_intel" > /etc/modules-load.d/kvm.conf
+
+    # Firecracker requires block-level storage (devmapper thin-pool); overlayfs won't work.
+    # The NodeConfig MIME part above tells nodeadm to merge the devmapper plugin config
+    # into containerd's config.toml. This script creates the actual thin-pool device.
+
+    DATA_DIR=/var/lib/containerd/devmapper
+    POOL_NAME=devpool
+
+    mkdir -p "${DATA_DIR}"
+    truncate -s 100G "${DATA_DIR}/data"
+    truncate -s 10G "${DATA_DIR}/meta"
+
+    DATA_DEV=$(losetup --find --show "${DATA_DIR}/data")
+    META_DEV=$(losetup --find --show "${DATA_DIR}/meta")
+    DATA_SIZE=$(blockdev --getsize64 -q "${DATA_DEV}")
+    LENGTH_IN_SECTORS=$((DATA_SIZE / 512))
+
+    dmsetup create "${POOL_NAME}" \
+      --table "0 ${LENGTH_IN_SECTORS} thin-pool ${META_DEV} ${DATA_DEV} 128 32768"
+
+    cat > /etc/systemd/system/containerd-devmapper.service <<'UNIT'
+    [Unit]
+    Description=Reload devmapper thin-pool for containerd
+    DefaultDependencies=no
+    After=local-fs.target
+    Before=containerd.service
+
+    [Service]
+    Type=oneshot
+    RemainAfterExit=true
+    ExecStart=/bin/bash -c '\
+      [ -e /dev/mapper/devpool ] && exit 0; \
+      DATA_DIR=/var/lib/containerd/devmapper; \
+      DATA_DEV=$$(losetup --find --show "$${DATA_DIR}/data"); \
+      META_DEV=$$(losetup --find --show "$${DATA_DIR}/meta"); \
+      DATA_SIZE=$$(blockdev --getsize64 -q "$${DATA_DEV}"); \
+      LENGTH=$$(($${DATA_SIZE} / 512)); \
+      dmsetup create devpool --table "0 $${LENGTH} thin-pool $${META_DEV} $${DATA_DEV} 128 32768"'
+
+    [Install]
+    WantedBy=multi-user.target
+    UNIT
+
+    # kata-deploy 3.27.0's default kernel lacks CONFIG_VIRTIO_MMIO which Firecracker
+    # requires for all devices. The dragonball-experimental kernel has it enabled.
+    # This systemd path unit patches the kernel path after kata-deploy installs.
+    cat > /etc/systemd/system/kata-kernel-fix.path <<'PATHUNIT'
+    [Unit]
+    Description=Watch for kata-fc configuration
+
+    [Path]
+    PathExists=/opt/kata/share/defaults/kata-containers/runtimes/fc/configuration-fc.toml
+    PathChanged=/opt/kata/share/defaults/kata-containers/runtimes/fc/configuration-fc.toml
+
+    [Install]
+    WantedBy=multi-user.target
+    PATHUNIT
+
+    cat > /etc/systemd/system/kata-kernel-fix.service <<'SVCUNIT'
+    [Unit]
+    Description=Fix kata-fc kernel for Firecracker VIRTIO_MMIO support
+
+    [Service]
+    Type=oneshot
+    ExecStart=/bin/bash -c 'sed -i "s|vmlinux.container|vmlinux-dragonball-experimental.container|" /opt/kata/share/defaults/kata-containers/runtimes/fc/configuration-fc.toml'
+    SVCUNIT
+
+    systemctl daemon-reload
+    systemctl enable containerd-devmapper.service
+    systemctl enable --now kata-kernel-fix.path
+
+    # If containerd started before the thin-pool was created (nodeadm race),
+    # restart it so the devmapper snapshotter initializes against the live pool.
+    if systemctl is-active --quiet containerd; then
+      systemctl restart containerd
+    fi
+
+    --BOUNDARY--
