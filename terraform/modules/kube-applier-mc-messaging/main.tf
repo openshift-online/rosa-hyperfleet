@@ -71,7 +71,6 @@ resource "aws_iam_role_policy" "kube_applier_messaging" {
         Effect = "Allow"
         Action = [
           "kms:Decrypt",
-          "kms:GenerateDataKey*",
         ]
         Resource = local.rc_kms_key_arn_pattern
       },

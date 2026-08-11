@@ -113,6 +113,10 @@ KUBE_APPLIER_SQS_QUEUE_URL="${KUBE_APPLIER_SQS_QUEUE_URL:-}"
 # For management clusters, read the messaging outputs from terraform state.
 if [[ "$CLUSTER_TYPE" == "management-cluster" ]]; then
     KUBE_APPLIER_SQS_QUEUE_URL=$(echo "$OUTPUTS" | jq -r '.kube_applier_specs_queue_url.value // ""')
+    if [[ -z "$KUBE_APPLIER_SQS_QUEUE_URL" ]]; then
+        echo "ERROR: kube_applier_specs_queue_url is empty — management-cluster bootstrap requires a valid SQS queue URL" >&2
+        exit 1
+    fi
 fi
 
 RHOBS_API_URL="${RHOBS_API_URL:-}"

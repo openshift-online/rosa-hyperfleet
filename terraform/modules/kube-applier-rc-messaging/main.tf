@@ -320,7 +320,7 @@ resource "aws_pipes_pipe" "specs_applydesires" {
 
   source_parameters {
     dynamodb_stream_parameters {
-      starting_position = "LATEST"
+      starting_position = "TRIM_HORIZON"
       batch_size        = 10
     }
 
@@ -357,7 +357,7 @@ resource "aws_pipes_pipe" "specs_readdesires" {
 
   source_parameters {
     dynamodb_stream_parameters {
-      starting_position = "LATEST"
+      starting_position = "TRIM_HORIZON"
       batch_size        = 10
     }
 
@@ -464,7 +464,7 @@ resource "aws_pipes_pipe" "status_applydesires" {
 
   source_parameters {
     dynamodb_stream_parameters {
-      starting_position = "LATEST"
+      starting_position = "TRIM_HORIZON"
       batch_size        = 10
     }
 
@@ -499,7 +499,7 @@ resource "aws_pipes_pipe" "status_readdesires" {
 
   source_parameters {
     dynamodb_stream_parameters {
-      starting_position = "LATEST"
+      starting_position = "TRIM_HORIZON"
       batch_size        = 10
     }
 
