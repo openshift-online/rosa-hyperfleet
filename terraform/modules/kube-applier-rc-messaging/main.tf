@@ -623,8 +623,6 @@ resource "aws_pipes_pipe" "status_applydesires" {
 
   target_parameters {
     input_template = "{\"documentID\": <$.dynamodb.Keys.documentID.S>, \"tableSuffix\": \"-applydesires\"}"
-
-    sns_topic_parameters {}
   }
 
   tags = merge(local.common_tags, {
@@ -656,8 +654,6 @@ resource "aws_pipes_pipe" "status_readdesires" {
 
   target_parameters {
     input_template = "{\"documentID\": <$.dynamodb.Keys.documentID.S>, \"tableSuffix\": \"-readdesires\"}"
-
-    sns_topic_parameters {}
   }
 
   tags = merge(local.common_tags, {
