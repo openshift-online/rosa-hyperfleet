@@ -408,6 +408,11 @@ def scan_annotations(content: str) -> dict[str, dict[str, Any]]:
     return result
 
 
+def _is_inside_escaped_go_template(pos: int, skip_ranges: list[tuple[int, int]]) -> bool:
+    """Check if a position falls inside an escaped Go template string."""
+    return any(start <= pos < end for start, end in skip_ranges)
+
+
 def scan_template_variables(templates_dir: Path) -> dict[str, list[str]]:
     """Scan templates for variable references. Returns {var: [template_paths]}.
 
@@ -424,14 +429,10 @@ def scan_template_variables(templates_dir: Path) -> dict[str, list[str]]:
         for match in _ESCAPED_GO_TEMPLATE_RE.finditer(content):
             skip_ranges.append((match.start(), match.end()))
 
-        def _is_inside_escaped_go_template(pos: int) -> bool:
-            """Check if a position falls inside an escaped Go template string."""
-            return any(start <= pos < end for start, end in skip_ranges)
-
         for pattern in _TPL_PATTERNS:
             for match in pattern.finditer(content):
                 # Skip variables inside escaped Go template strings
-                if _is_inside_escaped_go_template(match.start()):
+                if _is_inside_escaped_go_template(match.start(), skip_ranges):
                     continue
                 var = match.group(1)
                 if var.startswith("_") or var.split(".")[0] in ("true", "false", "none", "loop"):
@@ -442,7 +443,7 @@ def scan_template_variables(templates_dir: Path) -> dict[str, list[str]]:
                     var_to_templates[var].append(rel)
         for match in _TPL_BRACKET_PATTERN.finditer(content):
             # Skip variables inside escaped Go template strings
-            if _is_inside_escaped_go_template(match.start()):
+            if _is_inside_escaped_go_template(match.start(), skip_ranges):
                 continue
             var = match.group(1) + "." + match.group(2) + match.group(3)
             if var.startswith("_"):
