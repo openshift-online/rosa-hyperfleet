@@ -272,13 +272,18 @@ def poll_apply_status(
     ddb,
     table: str,
     doc_id: str,
-    expect_type: str,
+    after_time: str | None,
     timeout: int,
     poll_interval: float,
     start: float,
 ) -> float | None:
     """
     Poll status-applydesires until Successful=True for the given doc_id.
+    If after_time is provided (ISO-8601 string), also requires that
+    observedDesireUpdateTime >= after_time, mirroring the operator's
+    CheckApplyDesireStatuses staleness gate. This prevents a stale
+    Successful=True condition from a prior reconciliation (e.g. the create)
+    being accepted as confirmation of a subsequent delete.
     Returns elapsed_ms or None on timeout.
     """
     deadline = time.monotonic() + timeout
@@ -296,14 +301,15 @@ def poll_apply_status(
 
         item = resp.get("Item", {})
         if item:
-            conditions = (
-                item.get("status", {}).get("M", {}).get("conditions", {}).get("L", [])
-            )
+            status_map = item.get("status", {}).get("M", {})
+            observed_time = status_map.get("observedDesireUpdateTime", {}).get("S", "")
+            conditions = status_map.get("conditions", {}).get("L", [])
             for cond in conditions:
                 m = cond.get("M", {})
                 if (
                     m.get("Type", {}).get("S") == "Successful"
                     and m.get("Status", {}).get("S") == "True"
+                    and (after_time is None or observed_time >= after_time)
                 ):
                     return (time.monotonic() - start) * 1000
         time.sleep(poll_interval)
@@ -443,7 +449,7 @@ def main():
         ddb,
         tbl_status_apply,
         apply_doc_id,
-        "ServerSideApply",
+        None,  # no staleness check for create — any Successful=True is fine
         args.timeout,
         args.poll_interval,
         step4_start,
@@ -525,22 +531,27 @@ def main():
     log(
         f"Step 7: Polling status-applydesires for delete Successful=True (timeout={args.timeout}s)..."
     )
-    step7_start = time.monotonic()
-    delete_ms = poll_apply_status(
-        ddb,
-        tbl_status_apply,
-        apply_doc_id,
-        "Delete",
-        args.timeout,
-        args.poll_interval,
-        step7_start,
-    )
-    if delete_ms is None:
-        warn(f"Timed out waiting for delete Successful=True after {args.timeout}s")
+    if not resp.get("Item"):
+        warn("Skipping delete poll — spec item was not found in Step 6")
         timings["delete_desire_confirmed_ms"] = None
     else:
-        timings["delete_desire_confirmed_ms"] = delete_ms
-        ok(f"Delete confirmed Successful=True (+{delete_ms:.0f}ms from poll start)")
+        step7_start = time.monotonic()
+        delete_update_time = delete_item["updateTime"]["S"]
+        delete_ms = poll_apply_status(
+            ddb,
+            tbl_status_apply,
+            apply_doc_id,
+            delete_update_time,  # gate: observedDesireUpdateTime must be >= this
+            args.timeout,
+            args.poll_interval,
+            step7_start,
+        )
+        if delete_ms is None:
+            warn(f"Timed out waiting for delete Successful=True after {args.timeout}s")
+            timings["delete_desire_confirmed_ms"] = None
+        else:
+            timings["delete_desire_confirmed_ms"] = delete_ms
+            ok(f"Delete confirmed Successful=True (+{delete_ms:.0f}ms from poll start)")
     print()
 
     # ------------------------------------------------------------------ #
