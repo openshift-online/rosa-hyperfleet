@@ -372,7 +372,7 @@ def main():
     tbl_status_apply = f"{status_prefix}-applydesires"
     tbl_status_read = f"{status_prefix}-readdesires"
 
-    cm_name = f"timing-test-{env_id[:6]}"
+    cm_name = f"timing-test-{env_id[:6]}-{uuid.uuid4().hex[:6]}"
 
     log(f"Ephemeral env   : {env_id}")
     log(f"MC cluster name : {cluster_name}")
