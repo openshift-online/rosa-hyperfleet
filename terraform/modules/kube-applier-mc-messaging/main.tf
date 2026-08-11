@@ -84,8 +84,26 @@ resource "aws_sqs_queue_policy" "specs" {
   })
 }
 
+# Cross-account SNS → SQS subscription. Placed here (MC module) rather than
+# the RC module so that Terraform can express the dependency on both the queue
+# and the queue policy. SNS cannot deliver the subscription confirmation
+# message until the queue policy permits sqs:SendMessage from sns.amazonaws.com,
+# so the subscription must be created after the policy exists.
+#
+# raw_message_delivery strips the SNS envelope so the SQS message body is
+# identical to the pipe's input_template payload; no consumer code changes
+# are required.
+resource "aws_sns_topic_subscription" "specs" {
+  topic_arn = local.rc_specs_sns_topic_arn
+  protocol  = "sqs"
+  endpoint  = aws_sqs_queue.specs.arn
+
+  raw_message_delivery = true
+
+  depends_on = [aws_sqs_queue_policy.specs]
+}
+
 # =============================================================================
-# IAM: extend kube-applier role with same-account SQS receive permissions
 #
 # The kube-applier role is created by the kube-applier module. We add a
 # supplementary inline policy here so that all messaging IAM is co-located

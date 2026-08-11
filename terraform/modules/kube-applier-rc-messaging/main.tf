@@ -54,10 +54,6 @@ locals {
   # IAM role for kube-applier (MC account). Deterministic — constructed from
   # known inputs so no cross-account output passing is required.
   kube_applier_role_arn = "arn:${data.aws_partition.current.partition}:iam::${var.mc_aws_account_id}:role/${var.mc_name}-kube-applier"
-
-  # MC-side specs SQS queue ARN — deterministic from known inputs.
-  # The queue is provisioned by kube-applier-mc-messaging in the MC account.
-  mc_specs_queue_arn = "arn:${data.aws_partition.current.partition}:sqs:${var.aws_region}:${var.mc_aws_account_id}:${var.mc_name}-specs-notifications"
 }
 
 # =============================================================================
@@ -180,16 +176,12 @@ resource "aws_sns_topic_policy" "specs" {
   })
 }
 
-# Cross-account SNS → SQS subscription. raw_message_delivery strips the SNS
-# envelope so the SQS message body is identical to the pipe's input_template
-# payload, requiring no changes in the consumer.
-resource "aws_sns_topic_subscription" "specs" {
-  topic_arn = aws_sns_topic.specs.arn
-  protocol  = "sqs"
-  endpoint  = local.mc_specs_queue_arn
-
-  raw_message_delivery = true
-}
+# NOTE: The cross-account SNS → SQS subscription for the specs topic is
+# intentionally provisioned in the MC module (kube-applier-mc-messaging), not
+# here. The subscription must be created after the MC-side queue policy exists
+# — otherwise SNS cannot deliver the confirmation message and the subscription
+# times out. Since the queue and its policy are concrete resources in the MC
+# module, the subscription is placed there to establish the correct dependency.
 
 # =============================================================================
 # Status SQS Queues (status path receiver — RC DynamoDB → RC SQS)
