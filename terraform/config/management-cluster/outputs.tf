@@ -175,6 +175,6 @@ output "kube_applier_role_arn" {
 # =============================================================================
 
 output "kube_applier_specs_queue_url" {
-  description = "URL of the RC-side specs SQS queue polled by kube-applier cross-account for spec change notifications."
-  value       = "https://sqs.${var.region}.amazonaws.com/${var.regional_aws_account_id}/${var.management_id}-specs-notifications"
+  description = "URL of the MC-side specs SQS queue polled by kube-applier for spec change notifications delivered from the RC SNS topic."
+  value       = module.kube_applier_mc_messaging.specs_queue_url
 }

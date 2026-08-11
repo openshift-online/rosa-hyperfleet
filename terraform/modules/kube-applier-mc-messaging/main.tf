@@ -1,17 +1,22 @@
 # =============================================================================
 # kube-applier-mc-messaging Module
 #
-# Provisions the MC-side IAM permissions for kube-applier to poll its
-# specs SQS queue, which now lives in the RC account.
+# Provisions the MC-side messaging resources for the specs path:
+#   - An SQS queue in the MC account that receives specs change events
+#     delivered cross-account from the RC-side SNS topic.
+#   - A queue policy permitting the RC SNS topic to send messages.
+#   - An inline IAM policy on the kube-applier role granting same-account
+#     SQS receive on the queue.
 #
-# All SQS queues and KMS keys are provisioned in the RC account by the
-# kube-applier-rc-messaging module. This module extends the MC-account
-# kube-applier IAM role with the cross-account SQS receive and KMS decrypt
-# permissions needed to drain the RC-side specs queue.
+# The RC-side SNS topic (provisioned by kube-applier-rc-messaging) subscribes
+# to this queue and delivers messages via SNS push. This eliminates the
+# previous cross-account SQS polling model (which required CMK) in favour of
+# a push model that works with SSE-SQS (managed key), reducing cost and
+# operational complexity.
 #
 # Resource naming:
-#   Specs SQS queue (RC account): ${mc_name}-specs-notifications
-#   KMS key (RC account):         alias/${mc_name}-kube-applier-messaging
+#   Specs SQS queue (MC account): ${mc_name}-specs-notifications
+#   RC-side SNS topic (RC account): ${mc_name}-specs-notifications
 #
 # Both names are deterministic — constructed from (mc_name, rc_account_id,
 # region) so no cross-stack output passing is required.
@@ -30,19 +35,57 @@ locals {
     }
   )
 
-  # RC-side specs SQS queue ARN — deterministic from known inputs.
-  rc_specs_queue_arn = "arn:${data.aws_partition.current.partition}:sqs:${var.aws_region}:${var.rc_aws_account_id}:${var.mc_name}-specs-notifications"
-
-  # RC-side KMS key ARN pattern for the identity-based policy.
-  # Alias ARNs cannot be used as Resource in identity-based policies for kms:Decrypt;
-  # only key ARNs are valid. Since we don't have the key ID without cross-stack output
-  # passing, we scope to all keys in the RC account/region — the KMS key resource policy
-  # is the actual access gate (it only allows this role via aws:PrincipalArn condition).
-  rc_kms_key_arn_pattern = "arn:${data.aws_partition.current.partition}:kms:${var.aws_region}:${var.rc_aws_account_id}:key/*"
+  # RC-side specs SNS topic ARN — deterministic from known inputs.
+  rc_specs_sns_topic_arn = "arn:${data.aws_partition.current.partition}:sns:${var.aws_region}:${var.rc_aws_account_id}:${var.mc_name}-specs-notifications"
 }
 
 # =============================================================================
-# IAM: extend kube-applier role with cross-account RC SQS permissions
+# Specs SQS Queue — MC account receiver for RC → MC SNS cross-account delivery
+#
+# The RC-side SNS topic pushes spec change events here. kube-applier polls
+# this same-account queue — no cross-account SQS or CMK required.
+# SSE-SQS (managed key) is sufficient since SNS and the consumer are both
+# scoped to the MC account.
+# =============================================================================
+
+resource "aws_sqs_queue" "specs" {
+  name                       = "${var.mc_name}-specs-notifications"
+  sqs_managed_sse_enabled    = true
+  message_retention_seconds  = 300
+  visibility_timeout_seconds = 30
+  receive_wait_time_seconds  = 20
+
+  tags = merge(local.common_tags, {
+    Name      = "${var.mc_name}-specs-notifications"
+    Direction = "specs-rc-to-mc"
+  })
+}
+
+# Allow the RC-side SNS topic to deliver messages cross-account.
+resource "aws_sqs_queue_policy" "specs" {
+  queue_url = aws_sqs_queue.specs.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "AllowRCSNSSpecsDelivery"
+      Effect = "Allow"
+      Principal = {
+        Service = "sns.amazonaws.com"
+      }
+      Action   = "sqs:SendMessage"
+      Resource = aws_sqs_queue.specs.arn
+      Condition = {
+        ArnEquals = {
+          "aws:SourceArn" = local.rc_specs_sns_topic_arn
+        }
+      }
+    }]
+  })
+}
+
+# =============================================================================
+# IAM: extend kube-applier role with same-account SQS receive permissions
 #
 # The kube-applier role is created by the kube-applier module. We add a
 # supplementary inline policy here so that all messaging IAM is co-located
@@ -64,15 +107,7 @@ resource "aws_iam_role_policy" "kube_applier_messaging" {
           "sqs:DeleteMessage",
           "sqs:GetQueueAttributes",
         ]
-        Resource = local.rc_specs_queue_arn
-      },
-      {
-        Sid    = "SpecsQueueKMSDecrypt"
-        Effect = "Allow"
-        Action = [
-          "kms:Decrypt",
-        ]
-        Resource = local.rc_kms_key_arn_pattern
+        Resource = aws_sqs_queue.specs.arn
       },
     ]
   })

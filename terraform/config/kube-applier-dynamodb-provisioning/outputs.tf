@@ -11,7 +11,7 @@ output "status_table_arns" {
 # =============================================================================
 # DynamoDB Stream ARN Outputs
 # Consumed by the kube-applier-rc-messaging module to configure EventBridge
-# Pipes that deliver change notifications directly to SQS queues.
+# Pipes that deliver change notifications to SNS topics.
 # =============================================================================
 
 output "specs_applydesires_stream_arn" {
@@ -39,7 +39,7 @@ output "status_sqs_queue_urls" {
   value       = module.kube_applier_rc_messaging.status_queue_urls
 }
 
-output "specs_sqs_queue_url" {
-  description = "URL of the RC-account specs SQS queue polled by kube-applier cross-account."
-  value       = module.kube_applier_rc_messaging.specs_queue_url
+output "specs_sns_topic_arn" {
+  description = "ARN of the RC-account specs SNS topic that delivers cross-account to the MC-side SQS queue."
+  value       = module.kube_applier_rc_messaging.specs_sns_topic_arn
 }

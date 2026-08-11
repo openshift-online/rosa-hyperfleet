@@ -2,25 +2,23 @@
 # kube-applier-rc-messaging Module
 #
 # Provisions the RC-side messaging resources that deliver DynamoDB change
-# events to SQS queues via EventBridge Pipes — replacing the previous
-# DynamoDB Streams-based informers.
+# events via EventBridge Pipes — replacing the previous DynamoDB
+# Streams-based informers.
 #
-# Specs path  (RC → RC SQS → kube-applier cross-account): Two EventBridge
-#   Pipes (one per specs table) source INSERT/MODIFY events from the RC specs
-#   DynamoDB streams and deliver them to a per-MC specs SQS queue in the RC
-#   account. kube-applier polls this queue cross-account using its existing
-#   Pod Identity role. Cross-account pipes are not supported by EventBridge
-#   Pipes, so both the pipe and its target queue live in the RC account.
+# Specs path  (RC → RC SNS → MC SQS): Two EventBridge Pipes (one per specs
+#   table) source INSERT/MODIFY events from the RC specs DynamoDB streams and
+#   publish them to an RC-side SNS topic. SNS delivers cross-account to an SQS
+#   queue in the MC account (provisioned by kube-applier-mc-messaging). This
+#   eliminates cross-account SQS polling (which required CMK) and replaces it
+#   with a push model: SNS publishes directly to the MC-side queue.
 #
 # Status path (RC → RC SNS → RC SQS): Two EventBridge Pipes (one per status
 #   table) deliver status INSERT/MODIFY events to an SNS topic, which fans out
 #   to one SQS queue per operator replica. Each pod drains only its own queue,
-#   preserving the no-competing-consumers design. Using a single pipe per
-#   stream (via SNS fan-out) stays within DynamoDB's 2-concurrent-reader limit
-#   per shard, which the previous 2×N pipe design violated.
+#   preserving the no-competing-consumers design.
 #
-# Resource naming (all RC account):
-#   Specs SQS queue:              ${mc_name}-specs-notifications
+# Resource naming (all RC account unless noted):
+#   Specs SNS topic:              ${mc_name}-specs-notifications
 #   Status SQS queues:            ${rc_id}-hyperfleet-operator-{0..N-1}
 #   Status SNS topics:            ${mc_name}-status-applydesires
 #                                 ${mc_name}-status-readdesires
@@ -28,10 +26,10 @@
 #   Status Pipe IAM role:         ${mc_name}-status-pipe
 #   KMS key alias:                alias/${mc_name}-kube-applier-messaging
 #
-# Deterministic ARN/URL pattern:
-#   All queue ARNs and URLs are constructable from (mc_name, rc_id, region,
-#   account_id) without cross-stack output passing, matching the pattern used
-#   for DynamoDB resource policies.
+# Deterministic ARN pattern:
+#   All ARNs are constructable from (mc_name, rc_id, region, account_id)
+#   without cross-stack output passing, matching the pattern used for
+#   DynamoDB resource policies.
 # =============================================================================
 
 data "aws_caller_identity" "current" {}
@@ -56,6 +54,10 @@ locals {
   # IAM role for kube-applier (MC account). Deterministic — constructed from
   # known inputs so no cross-account output passing is required.
   kube_applier_role_arn = "arn:${data.aws_partition.current.partition}:iam::${var.mc_aws_account_id}:role/${var.mc_name}-kube-applier"
+
+  # MC-side specs SQS queue ARN — deterministic from known inputs.
+  # The queue is provisioned by kube-applier-mc-messaging in the MC account.
+  mc_specs_queue_arn = "arn:${data.aws_partition.current.partition}:sqs:${var.aws_region}:${var.mc_aws_account_id}:${var.mc_name}-specs-notifications"
 }
 
 # =============================================================================
@@ -63,7 +65,7 @@ locals {
 # =============================================================================
 
 resource "aws_kms_key" "messaging" {
-  description             = "KMS key for ${var.mc_name} kube-applier messaging (SQS) in RC account"
+  description             = "KMS key for ${var.mc_name} kube-applier messaging (SNS/SQS) in RC account"
   deletion_window_in_days = 7
   enable_key_rotation     = true
   rotation_period_in_days = 90
@@ -94,27 +96,6 @@ resource "aws_kms_key" "messaging" {
         Condition = {
           StringEquals = {
             "aws:SourceAccount" = data.aws_caller_identity.current.account_id
-          }
-        }
-      },
-      {
-        # kube-applier runs in the MC account and polls the specs queue
-        # cross-account. It needs Decrypt access to read messages.
-        # Use MC account root + PrincipalArn condition so this stanza is
-        # valid at key-creation time even before the role exists.
-        Sid    = "AllowKubeApplierDecrypt"
-        Effect = "Allow"
-        Principal = {
-          AWS = "arn:${data.aws_partition.current.partition}:iam::${var.mc_aws_account_id}:root"
-        }
-        Action = [
-          "kms:Decrypt",
-          "kms:GenerateDataKey*",
-        ]
-        Resource = "*"
-        Condition = {
-          StringEquals = {
-            "aws:PrincipalArn" = local.kube_applier_role_arn
           }
         }
       },
@@ -151,54 +132,63 @@ resource "aws_kms_alias" "messaging" {
 }
 
 # =============================================================================
-# Specs SQS Queue (specs path receiver — RC EventBridge Pipe → RC SQS)
+# Specs SNS Topic (specs path intermediary — RC EventBridge Pipe → RC SNS → MC SQS)
 #
-# One queue per MC. kube-applier polls this queue cross-account; competing
-# consumers on spec work items are fine (unlike status, which is per-replica).
-# The queue lives in the RC account so the EventBridge Pipe can target it
-# without cross-account restrictions.
+# One topic per MC. The EventBridge Pipe publishes here; SNS delivers
+# cross-account to the SQS queue in the MC account. Using SNS as intermediary
+# avoids cross-account SQS polling (which required CMK) in favour of a push
+# model where SNS delivers directly to the MC-side queue via subscription.
 # =============================================================================
 
-resource "aws_sqs_queue" "specs" {
-  name                       = "${var.mc_name}-specs-notifications"
-  kms_master_key_id          = aws_kms_key.messaging.id
-  message_retention_seconds  = 300
-  visibility_timeout_seconds = 30
-  receive_wait_time_seconds  = 20
+resource "aws_sns_topic" "specs" {
+  name              = "${var.mc_name}-specs-notifications"
+  kms_master_key_id = aws_kms_key.messaging.id
 
   tags = merge(local.common_tags, {
     Name      = "${var.mc_name}-specs-notifications"
-    Direction = "specs-rc-to-rc"
+    Direction = "specs-rc-to-mc"
   })
 }
 
-# Allow the kube-applier role (MC account) to poll this queue cross-account.
-# Same account-root + PrincipalArn pattern to keep the policy valid before
-# the role exists.
-resource "aws_sqs_queue_policy" "specs" {
-  queue_url = aws_sqs_queue.specs.id
+# Allow the specs pipe role to Publish, and the MC account root to Subscribe
+# (so the MC-side SQS subscription can be confirmed cross-account).
+resource "aws_sns_topic_policy" "specs" {
+  arn = aws_sns_topic.specs.arn
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid    = "AllowKubeApplierReceive"
-      Effect = "Allow"
-      Principal = {
-        AWS = "arn:${data.aws_partition.current.partition}:iam::${var.mc_aws_account_id}:root"
-      }
-      Action = [
-        "sqs:ReceiveMessage",
-        "sqs:DeleteMessage",
-        "sqs:GetQueueAttributes",
-      ]
-      Resource = aws_sqs_queue.specs.arn
-      Condition = {
-        StringEquals = {
-          "aws:PrincipalArn" = local.kube_applier_role_arn
+    Statement = [
+      {
+        Sid    = "AllowSpecsPipePublish"
+        Effect = "Allow"
+        Principal = {
+          AWS = aws_iam_role.specs_pipe.arn
         }
-      }
-    }]
+        Action   = "sns:Publish"
+        Resource = aws_sns_topic.specs.arn
+      },
+      {
+        Sid    = "AllowMCAccountSubscribe"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:${data.aws_partition.current.partition}:iam::${var.mc_aws_account_id}:root"
+        }
+        Action   = "sns:Subscribe"
+        Resource = aws_sns_topic.specs.arn
+      },
+    ]
   })
+}
+
+# Cross-account SNS → SQS subscription. raw_message_delivery strips the SNS
+# envelope so the SQS message body is identical to the pipe's input_template
+# payload, requiring no changes in the consumer.
+resource "aws_sns_topic_subscription" "specs" {
+  topic_arn = aws_sns_topic.specs.arn
+  protocol  = "sqs"
+  endpoint  = local.mc_specs_queue_arn
+
+  raw_message_delivery = true
 }
 
 # =============================================================================
@@ -207,13 +197,15 @@ resource "aws_sqs_queue_policy" "specs" {
 # One queue per hyperfleet-operator pod replica. Each pod polls only its own
 # queue (named after its hostname, e.g. hyperfleet-operator-2), eliminating
 # competing-consumer problems and making queue drain deterministic on scale-down.
+# SSE-SQS (managed key) is used here — CMK is not required since queues are
+# same-account only (SNS and the consumer both live in RC).
 # =============================================================================
 
 resource "aws_sqs_queue" "status" {
   count = var.operator_replica_count
 
   name                       = "${var.rc_id}-hyperfleet-operator-${count.index}"
-  kms_master_key_id          = aws_kms_key.messaging.id
+  sqs_managed_sse_enabled    = true
   message_retention_seconds  = 300
   visibility_timeout_seconds = 30
   receive_wait_time_seconds  = 20
@@ -378,7 +370,7 @@ resource "aws_iam_role_policy" "hyperfleet_operator_messaging" {
 }
 
 # =============================================================================
-# EventBridge Pipe IAM — Specs path (RC DynamoDB → RC SQS)
+# EventBridge Pipe IAM — Specs path (RC DynamoDB → RC SNS → MC SQS)
 # =============================================================================
 
 resource "aws_iam_role" "specs_pipe" {
@@ -428,13 +420,13 @@ resource "aws_iam_role_policy" "specs_pipe" {
         ]
       },
       {
-        Sid      = "WriteToSpecsQueue"
+        Sid      = "PublishToSpecsTopic"
         Effect   = "Allow"
-        Action   = "sqs:SendMessage"
-        Resource = aws_sqs_queue.specs.arn
+        Action   = "sns:Publish"
+        Resource = aws_sns_topic.specs.arn
       },
       {
-        Sid    = "SpecsQueueKMSAccess"
+        Sid    = "SpecsTopicKMSAccess"
         Effect = "Allow"
         Action = [
           "kms:Decrypt",
@@ -447,14 +439,14 @@ resource "aws_iam_role_policy" "specs_pipe" {
 }
 
 # =============================================================================
-# EventBridge Pipes — Specs path (one pipe per specs table → RC SQS)
+# EventBridge Pipes — Specs path (one pipe per specs table → RC SNS)
 # =============================================================================
 
 resource "aws_pipes_pipe" "specs_applydesires" {
   name     = "${var.mc_name}-specs-applydesires"
   role_arn = aws_iam_role.specs_pipe.arn
   source   = var.specs_applydesires_stream_arn
-  target   = aws_sqs_queue.specs.arn
+  target   = aws_sns_topic.specs.arn
 
   source_parameters {
     dynamodb_stream_parameters {
@@ -477,13 +469,11 @@ resource "aws_pipes_pipe" "specs_applydesires" {
     # EventBridge automatically adds quotes around string values at runtime, so
     # the <$.path> references must appear unquoted in the template.
     input_template = "{\"documentID\": <$.dynamodb.Keys.documentID.S>, \"tableSuffix\": \"-applydesires\"}"
-
-    sqs_queue_parameters {}
   }
 
   tags = merge(local.common_tags, {
     Name      = "${var.mc_name}-specs-applydesires"
-    Direction = "specs-rc-to-rc"
+    Direction = "specs-rc-to-mc"
   })
 }
 
@@ -491,7 +481,7 @@ resource "aws_pipes_pipe" "specs_readdesires" {
   name     = "${var.mc_name}-specs-readdesires"
   role_arn = aws_iam_role.specs_pipe.arn
   source   = var.specs_readdesires_stream_arn
-  target   = aws_sqs_queue.specs.arn
+  target   = aws_sns_topic.specs.arn
 
   source_parameters {
     dynamodb_stream_parameters {
@@ -510,18 +500,16 @@ resource "aws_pipes_pipe" "specs_readdesires" {
 
   target_parameters {
     input_template = "{\"documentID\": <$.dynamodb.Keys.documentID.S>, \"tableSuffix\": \"-readdesires\"}"
-
-    sqs_queue_parameters {}
   }
 
   tags = merge(local.common_tags, {
     Name      = "${var.mc_name}-specs-readdesires"
-    Direction = "specs-rc-to-rc"
+    Direction = "specs-rc-to-mc"
   })
 }
 
 # =============================================================================
-# EventBridge Pipe IAM — Status path (RC DynamoDB → RC SQS)
+# EventBridge Pipe IAM — Status path (RC DynamoDB → RC SNS → RC SQS)
 # =============================================================================
 
 resource "aws_iam_role" "status_pipe" {

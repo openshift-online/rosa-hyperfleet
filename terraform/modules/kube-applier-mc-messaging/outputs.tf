@@ -2,7 +2,12 @@
 # kube-applier-mc-messaging Module Outputs
 # =============================================================================
 
-# No outputs — all queue URLs and ARNs are deterministic and consumed directly
-# from kube-applier-rc-messaging or constructed from known inputs. The only
-# resource this module creates is an IAM role policy, which has no outputs
-# consumed by callers.
+output "specs_queue_arn" {
+  description = "ARN of the MC-side specs SQS queue that receives cross-account delivery from the RC SNS topic"
+  value       = aws_sqs_queue.specs.arn
+}
+
+output "specs_queue_url" {
+  description = "URL of the MC-side specs SQS queue polled by kube-applier"
+  value       = aws_sqs_queue.specs.url
+}
