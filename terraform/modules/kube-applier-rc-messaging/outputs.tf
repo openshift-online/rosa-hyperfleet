@@ -22,14 +22,24 @@ output "specs_queue_arn" {
   value       = aws_sqs_queue.specs.arn
 }
 
-output "status_pipe_role_arn" {
-  description = "ARN of the IAM role used by the status EventBridge Pipes"
-  value       = aws_iam_role.status_pipe.arn
+output "status_pipe_applydesires_arn" {
+  description = "ARN of the EventBridge Pipe delivering status-applydesires changes to the SNS fan-out topic"
+  value       = aws_pipes_pipe.status_applydesires.arn
 }
 
-output "specs_pipe_role_arn" {
-  description = "ARN of the IAM role used by the specs EventBridge Pipes"
-  value       = aws_iam_role.specs_pipe.arn
+output "status_pipe_readdesires_arn" {
+  description = "ARN of the EventBridge Pipe delivering status-readdesires changes to the SNS fan-out topic"
+  value       = aws_pipes_pipe.status_readdesires.arn
+}
+
+output "status_sns_applydesires_topic_arn" {
+  description = "ARN of the SNS topic that fans out status-applydesires events to all operator replica SQS queues"
+  value       = aws_sns_topic.status_applydesires.arn
+}
+
+output "status_sns_readdesires_topic_arn" {
+  description = "ARN of the SNS topic that fans out status-readdesires events to all operator replica SQS queues"
+  value       = aws_sns_topic.status_readdesires.arn
 }
 
 output "status_queue_arns" {

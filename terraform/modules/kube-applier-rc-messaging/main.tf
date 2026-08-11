@@ -3,7 +3,7 @@
 #
 # Provisions the RC-side messaging resources that deliver DynamoDB change
 # events to SQS queues via EventBridge Pipes — replacing the previous
-# SNS-based notification paths.
+# DynamoDB Streams-based informers.
 #
 # Specs path  (RC → RC SQS → kube-applier cross-account): Two EventBridge
 #   Pipes (one per specs table) source INSERT/MODIFY events from the RC specs
@@ -12,17 +12,21 @@
 #   Pod Identity role. Cross-account pipes are not supported by EventBridge
 #   Pipes, so both the pipe and its target queue live in the RC account.
 #
-# Status path (RC → RC SQS): 2×N EventBridge Pipes (two status tables × N
-#   operator replicas) deliver status INSERT/MODIFY events to each operator
-#   pod's own SQS queue. Each pod drains only its own queue, preserving the
-#   no-competing-consumers design.
+# Status path (RC → RC SNS → RC SQS): Two EventBridge Pipes (one per status
+#   table) deliver status INSERT/MODIFY events to an SNS topic, which fans out
+#   to one SQS queue per operator replica. Each pod drains only its own queue,
+#   preserving the no-competing-consumers design. Using a single pipe per
+#   stream (via SNS fan-out) stays within DynamoDB's 2-concurrent-reader limit
+#   per shard, which the previous 2×N pipe design violated.
 #
 # Resource naming (all RC account):
-#   Specs SQS queue:        ${mc_name}-specs-notifications
-#   Status SQS queues:      ${rc_id}-hyperfleet-operator-{0..N-1}
-#   Specs Pipe IAM role:    ${mc_name}-specs-pipe
-#   Status Pipe IAM role:   ${mc_name}-status-pipe
-#   KMS key alias:          alias/${mc_name}-kube-applier-messaging
+#   Specs SQS queue:              ${mc_name}-specs-notifications
+#   Status SQS queues:            ${rc_id}-hyperfleet-operator-{0..N-1}
+#   Status SNS topics:            ${mc_name}-status-applydesires
+#                                 ${mc_name}-status-readdesires
+#   Specs Pipe IAM role:          ${mc_name}-specs-pipe
+#   Status Pipe IAM role:         ${mc_name}-status-pipe
+#   KMS key alias:                alias/${mc_name}-kube-applier-messaging
 #
 # Deterministic ARN/URL pattern:
 #   All queue ARNs and URLs are constructable from (mc_name, rc_id, region,
@@ -114,6 +118,25 @@ resource "aws_kms_key" "messaging" {
           }
         }
       },
+      {
+        # SNS fan-out for the status path: SNS must be able to decrypt the
+        # KMS key when re-encrypting messages for delivery to the SQS queues.
+        Sid    = "AllowSNS"
+        Effect = "Allow"
+        Principal = {
+          Service = "sns.amazonaws.com"
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey*",
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
+      },
     ]
   })
 
@@ -202,8 +225,123 @@ resource "aws_sqs_queue" "status" {
   })
 }
 
-# Status queues are same-account as the Pipes — no queue policy needed.
-# The status Pipe role's identity-based policy grants sqs:SendMessage directly.
+# Status queue policies — allow the two SNS topics to deliver messages.
+# Raw message delivery is enabled on the subscriptions so the SNS envelope is
+# stripped; the SQS message body is identical to what the pipe's input_template
+# produces, requiring no changes in the consumer.
+
+resource "aws_sqs_queue_policy" "status" {
+  count     = var.operator_replica_count
+  queue_url = aws_sqs_queue.status[count.index].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "AllowSNSStatusDelivery"
+      Effect = "Allow"
+      Principal = {
+        Service = "sns.amazonaws.com"
+      }
+      Action   = "sqs:SendMessage"
+      Resource = aws_sqs_queue.status[count.index].arn
+      Condition = {
+        ArnEquals = {
+          "aws:SourceArn" = [
+            aws_sns_topic.status_applydesires.arn,
+            aws_sns_topic.status_readdesires.arn,
+          ]
+        }
+      }
+    }]
+  })
+}
+
+# =============================================================================
+# SNS Topics — Status fan-out (one topic per status table)
+#
+# Each EventBridge Pipe targets one SNS topic. SNS fans out to one SQS
+# subscription per operator replica, broadcasting every status change event
+# to all replicas. Raw message delivery strips the SNS envelope so the
+# consumer receives the same JSON payload the pipe's input_template produces.
+# =============================================================================
+
+resource "aws_sns_topic" "status_applydesires" {
+  name              = "${var.mc_name}-status-applydesires"
+  kms_master_key_id = aws_kms_key.messaging.id
+
+  tags = merge(local.common_tags, {
+    Name      = "${var.mc_name}-status-applydesires"
+    Direction = "status-rc-to-rc"
+  })
+}
+
+resource "aws_sns_topic" "status_readdesires" {
+  name              = "${var.mc_name}-status-readdesires"
+  kms_master_key_id = aws_kms_key.messaging.id
+
+  tags = merge(local.common_tags, {
+    Name      = "${var.mc_name}-status-readdesires"
+    Direction = "status-rc-to-rc"
+  })
+}
+
+# SNS topic policies — allow the status pipe role to Publish.
+
+resource "aws_sns_topic_policy" "status_applydesires" {
+  arn = aws_sns_topic.status_applydesires.arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "AllowStatusPipePublish"
+      Effect = "Allow"
+      Principal = {
+        AWS = aws_iam_role.status_pipe.arn
+      }
+      Action   = "sns:Publish"
+      Resource = aws_sns_topic.status_applydesires.arn
+    }]
+  })
+}
+
+resource "aws_sns_topic_policy" "status_readdesires" {
+  arn = aws_sns_topic.status_readdesires.arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "AllowStatusPipePublish"
+      Effect = "Allow"
+      Principal = {
+        AWS = aws_iam_role.status_pipe.arn
+      }
+      Action   = "sns:Publish"
+      Resource = aws_sns_topic.status_readdesires.arn
+    }]
+  })
+}
+
+# SNS → SQS subscriptions — one per replica per topic.
+# raw_message_delivery = true strips the SNS envelope so the SQS message body
+# is the bare pipe payload; no consumer code changes are required.
+
+resource "aws_sns_topic_subscription" "status_applydesires" {
+  count     = var.operator_replica_count
+  topic_arn = aws_sns_topic.status_applydesires.arn
+  protocol  = "sqs"
+  endpoint  = aws_sqs_queue.status[count.index].arn
+
+  raw_message_delivery = true
+}
+
+resource "aws_sns_topic_subscription" "status_readdesires" {
+  count     = var.operator_replica_count
+  topic_arn = aws_sns_topic.status_readdesires.arn
+  protocol  = "sqs"
+  endpoint  = aws_sqs_queue.status[count.index].arn
+
+  raw_message_delivery = true
+}
 
 # =============================================================================
 # IAM: extend hyperfleet-operator role with messaging permissions (per-MC)
@@ -433,13 +571,16 @@ resource "aws_iam_role_policy" "status_pipe" {
         ]
       },
       {
-        Sid      = "WriteToStatusQueues"
-        Effect   = "Allow"
-        Action   = "sqs:SendMessage"
-        Resource = aws_sqs_queue.status[*].arn
+        Sid    = "PublishToStatusTopics"
+        Effect = "Allow"
+        Action = "sns:Publish"
+        Resource = [
+          aws_sns_topic.status_applydesires.arn,
+          aws_sns_topic.status_readdesires.arn,
+        ]
       },
       {
-        Sid    = "StatusQueueKMSAccess"
+        Sid    = "StatusTopicKMSAccess"
         Effect = "Allow"
         Action = [
           "kms:Decrypt",
@@ -452,15 +593,18 @@ resource "aws_iam_role_policy" "status_pipe" {
 }
 
 # =============================================================================
-# EventBridge Pipes — Status path (2×N pipes: two tables × N replicas)
+# EventBridge Pipes — Status path (one pipe per status table → SNS topic)
+#
+# A single pipe per stream keeps DynamoDB stream reader count at 1, staying
+# within the 2-concurrent-reader-per-shard limit. SNS fans out to all replica
+# SQS queues via the subscriptions defined above.
 # =============================================================================
 
 resource "aws_pipes_pipe" "status_applydesires" {
-  count    = var.operator_replica_count
-  name     = "${var.mc_name}-status-applydesires-${count.index}"
+  name     = "${var.mc_name}-status-applydesires"
   role_arn = aws_iam_role.status_pipe.arn
   source   = var.status_applydesires_stream_arn
-  target   = aws_sqs_queue.status[count.index].arn
+  target   = aws_sns_topic.status_applydesires.arn
 
   source_parameters {
     dynamodb_stream_parameters {
@@ -480,22 +624,20 @@ resource "aws_pipes_pipe" "status_applydesires" {
   target_parameters {
     input_template = "{\"documentID\": <$.dynamodb.Keys.documentID.S>, \"tableSuffix\": \"-applydesires\"}"
 
-    sqs_queue_parameters {}
+    sns_topic_parameters {}
   }
 
   tags = merge(local.common_tags, {
-    Name      = "${var.mc_name}-status-applydesires-${count.index}"
+    Name      = "${var.mc_name}-status-applydesires"
     Direction = "status-rc-to-rc"
-    Replica   = tostring(count.index)
   })
 }
 
 resource "aws_pipes_pipe" "status_readdesires" {
-  count    = var.operator_replica_count
-  name     = "${var.mc_name}-status-readdesires-${count.index}"
+  name     = "${var.mc_name}-status-readdesires"
   role_arn = aws_iam_role.status_pipe.arn
   source   = var.status_readdesires_stream_arn
-  target   = aws_sqs_queue.status[count.index].arn
+  target   = aws_sns_topic.status_readdesires.arn
 
   source_parameters {
     dynamodb_stream_parameters {
@@ -515,12 +657,11 @@ resource "aws_pipes_pipe" "status_readdesires" {
   target_parameters {
     input_template = "{\"documentID\": <$.dynamodb.Keys.documentID.S>, \"tableSuffix\": \"-readdesires\"}"
 
-    sqs_queue_parameters {}
+    sns_topic_parameters {}
   }
 
   tags = merge(local.common_tags, {
-    Name      = "${var.mc_name}-status-readdesires-${count.index}"
+    Name      = "${var.mc_name}-status-readdesires"
     Direction = "status-rc-to-rc"
-    Replica   = tostring(count.index)
   })
 }
