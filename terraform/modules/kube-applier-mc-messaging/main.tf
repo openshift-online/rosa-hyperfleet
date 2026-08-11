@@ -8,11 +8,13 @@
 #   - An inline IAM policy on the kube-applier role granting same-account
 #     SQS receive on the queue.
 #
-# The RC-side SNS topic (provisioned by kube-applier-rc-messaging) subscribes
-# to this queue and delivers messages via SNS push. This eliminates the
-# previous cross-account SQS polling model (which required CMK) in favour of
-# a push model that works with SSE-SQS (managed key), reducing cost and
-# operational complexity.
+# The RC-side SNS topic (provisioned by kube-applier-rc-messaging) delivers
+# messages to this queue via SNS push. The cross-account SNS→SQS subscription
+# is NOT managed in Terraform — it is wired imperatively in register.sh by
+# calling `aws sns subscribe` as the MC account (the queue owner), which is
+# required for AWS to auto-confirm the subscription. Terraform's
+# aws_sns_topic_subscription always calls SNS APIs in the topic's account
+# (RC), which cannot auto-confirm a subscription to an MC-side queue.
 #
 # Resource naming:
 #   Specs SQS queue (MC account): ${mc_name}-specs-notifications
@@ -84,26 +86,8 @@ resource "aws_sqs_queue_policy" "specs" {
   })
 }
 
-# Cross-account SNS → SQS subscription. Placed here (MC module) rather than
-# the RC module so that Terraform can express the dependency on both the queue
-# and the queue policy. SNS cannot deliver the subscription confirmation
-# message until the queue policy permits sqs:SendMessage from sns.amazonaws.com,
-# so the subscription must be created after the policy exists.
-#
-# raw_message_delivery strips the SNS envelope so the SQS message body is
-# identical to the pipe's input_template payload; no consumer code changes
-# are required.
-resource "aws_sns_topic_subscription" "specs" {
-  topic_arn = local.rc_specs_sns_topic_arn
-  protocol  = "sqs"
-  endpoint  = aws_sqs_queue.specs.arn
-
-  raw_message_delivery = true
-
-  depends_on = [aws_sqs_queue_policy.specs]
-}
-
 # =============================================================================
+# IAM: extend kube-applier role with same-account SQS receive permissions
 #
 # The kube-applier role is created by the kube-applier module. We add a
 # supplementary inline policy here so that all messaging IAM is co-located
