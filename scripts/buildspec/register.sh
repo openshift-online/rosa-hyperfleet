@@ -64,24 +64,40 @@ if [ -z "$API_GATEWAY_URL" ]; then
     exit 1
 fi
 
-# Wait for API Gateway /live endpoint
+# Wait for API Gateway /live endpoint.
+# RC and MC pipelines run in parallel, so RC outputs become available as soon
+# as terraform apply finishes — before the ECS bootstrap (ArgoCD install,
+# ~15 min) and initial ArgoCD sync (~10 min) have completed. Allow 40 minutes
+# so the Platform API has time to be deployed and reach a healthy state.
 set +e
-MAX_RETRIES=10
+DEADLINE_SECONDS=2400  # 40 minutes
+START_TIME=$(date +%s)
 RETRY_DELAY=30
 RETRY_COUNT=0
 LIVE_OK=false
 
-while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+while true; do
     RETRY_COUNT=$((RETRY_COUNT + 1))
+    ELAPSED=$(($(date +%s) - START_TIME))
+    REMAINING=$((DEADLINE_SECONDS - ELAPSED))
+
+    if [ $REMAINING -le 0 ]; then
+        break
+    fi
 
     SECURITY_TOKEN_HEADER=()
     if [ -n "${AWS_SESSION_TOKEN:-}" ]; then
         SECURITY_TOKEN_HEADER=(-H "x-amz-security-token: ${AWS_SESSION_TOKEN}")
     fi
 
+    CURL_TIMEOUT=$REMAINING
+    if [ $CURL_TIMEOUT -gt 30 ]; then
+        CURL_TIMEOUT=30
+    fi
+
     HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
         --connect-timeout 10 \
-        --max-time 30 \
+        --max-time $CURL_TIMEOUT \
         --aws-sigv4 "aws:amz:${TARGET_REGION}:execute-api" \
         --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
         "${SECURITY_TOKEN_HEADER[@]}" \
@@ -91,13 +107,24 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
         LIVE_OK=true
         break
     fi
-    echo "/live returned $HTTP_CODE (attempt $RETRY_COUNT/$MAX_RETRIES), retrying in ${RETRY_DELAY}s..."
-    sleep $RETRY_DELAY
+
+    ELAPSED=$(($(date +%s) - START_TIME))
+    REMAINING=$((DEADLINE_SECONDS - ELAPSED))
+
+    SLEEP_TIME=$REMAINING
+    if [ $SLEEP_TIME -gt $RETRY_DELAY ]; then
+        SLEEP_TIME=$RETRY_DELAY
+    fi
+    echo "/live returned $HTTP_CODE (attempt $RETRY_COUNT, ${REMAINING}s remaining), retrying in ${SLEEP_TIME}s..."
+    if [ $SLEEP_TIME -le 0 ]; then
+        break
+    fi
+    sleep $SLEEP_TIME
 done
 set -e
 
 if [ "$LIVE_OK" != "true" ]; then
-    echo "ERROR: /live did not return 200 after $MAX_RETRIES attempts" >&2
+    echo "ERROR: /live did not return 200 after 40 minutes" >&2
     exit 1
 fi
 

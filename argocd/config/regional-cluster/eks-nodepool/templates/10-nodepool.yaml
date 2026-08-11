@@ -2,13 +2,16 @@ apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   name: regional-workloads
+  annotations:
+    # Karpenter CRD may not exist yet when ArgoCD dry-runs this resource
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   weight: 100
   template:
     spec:
       nodeClassRef:
-        group: eks.amazonaws.com
-        kind: NodeClass
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
         name: fips
       requirements:
         - key: karpenter.sh/capacity-type

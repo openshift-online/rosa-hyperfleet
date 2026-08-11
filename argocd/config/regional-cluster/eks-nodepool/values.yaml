@@ -10,3 +10,6 @@ eksNodePool:
   disruption:
     consolidationPolicy: WhenEmpty
     consolidateAfter: 60s
+
+global:
+  cluster_name: ""

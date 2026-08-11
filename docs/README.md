@@ -20,32 +20,33 @@ The architecture consists of three layers within each region:
 
 Detailed architecture and rationale for key technical decisions:
 
-| Document                                                                             | Topic                                                                    |
-| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| [Alerting Architecture](design/alerting-architecture.md)                             | Fan-out alert routing (AlertManager, PagerDuty, SNS)                     |
-| [AWS IAM Hosted Cluster Auth](design/aws-iam-hosted-cluster-authentication.md)       | AWS IAM authentication for hosted clusters (experimental)                |
-| [DNS Architecture](design/dns-architecture.md)                                       | Hierarchical DNS with zone shards, `deployment_name`, DNSSEC chain       |
-| [ECS Fargate Bootstrap](design/fully-private-eks-bootstrap.md)                       | How fully private EKS clusters are bootstrapped via ECS                  |
-| [FIPS-Only EKS Compute](design/fips-eks-compute.md)                                  | FIPS NodeClass/NodePool strategy for FedRAMP workload nodes              |
-| [GitOps Cluster Configuration](design/gitops-cluster-configuration.md)               | ApplicationSet pattern, progressive deployment, config modes             |
-| [HyperFleet Architecture](design/hyperfleet-architecture.md)                         | Operator + kube-applier architecture, component replacement map          |
-| [Infrastructure Logging](design/infrastructure-logging.md)                           | AWS CloudWatch log groups, KMS encryption, Grafana access                |
-| [Logging Platform](design/logging-platform.md)                                       | Application-level log collection (Vector + Loki)                         |
-| [MC Metrics Remote Write](design/mc-metrics-remote-write.md)                         | MC-to-RC metrics forwarding via RHOBS API Gateway                        |
-| [Monitoring Platform](design/monitoring-platform.md)                                 | Metrics pipeline (Prometheus + Thanos)                                   |
-| [Pipeline-Based Lifecycle](design/pipeline-based-lifecycle.md)                       | CodePipeline hierarchy for cluster provisioning                          |
-| [Rate Limiting](design/rate-limiting-architecture.md)                                | Per-account rate limiting for Platform API                               |
-| [Regional Account Minting](design/regional-account-minting.md)                       | AWS account structure and minting pipelines                              |
-| [Regional Control Plane Architecture](design/regional-control-plane-architecture.md) | Operator + PostgreSQL control plane (hyperfleet-operator, hyperfleet-db) |
-| [Regional OIDC Ownership](design/regional-oidc-ownership.md)                         | Shared OIDC bucket per region, cross-account MC writes                   |
-| [Spec-to-PR Agent](design/spec-to-pr-agent.md)                                       | AI agent workflow for spec-driven implementation                         |
-| [SRE UI Access](design/sre-ui-access.md)                                             | ALB + OIDC access to SRE UIs replacing SSM port-forward                  |
-| [Terraform Resource Adoption](design/terraform-resource-adoption.md)                 | Idempotent import of auto-created AWS resources into Terraform           |
-| [Testing Strategy](design/testing-strategy.md)                                       | Ephemeral and long-lived test environments                               |
-| [Thanos Metrics Infrastructure](design/thanos-metrics-infrastructure.md)             | Thanos S3 storage, operator, and Pod Identity setup                      |
-| [ZOA Architecture](design/zoa-architecture.md)                                       | Zero Operator Access — system components, flows, infrastructure          |
-| [ZOA Trusted Actions](design/zoa-trusted-actions.md)                                 | TA template format, API design, CLI, dispatch flow                       |
-| [ZOA Security Model](design/zoa-security-model.md)                                   | SA isolation, RBAC, audit trail, threat model, FIPS                      |
+| Document                                                                             | Topic                                                                       |
+| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| [Alerting Architecture](design/alerting-architecture.md)                             | Fan-out alert routing (AlertManager, PagerDuty, SNS)                        |
+| [AWS IAM Hosted Cluster Auth](design/aws-iam-hosted-cluster-authentication.md)       | AWS IAM authentication for hosted clusters (experimental)                   |
+| [DNS Architecture](design/dns-architecture.md)                                       | Hierarchical DNS with zone shards, `deployment_name`, DNSSEC chain          |
+| [ECS Fargate Bootstrap](design/fully-private-eks-bootstrap.md)                       | How fully private EKS clusters are bootstrapped via ECS                     |
+| [FIPS-Only EKS Compute](design/fips-eks-compute.md)                                  | FIPS NodeClass/NodePool strategy for FedRAMP workload nodes                 |
+| [GitOps Cluster Configuration](design/gitops-cluster-configuration.md)               | ApplicationSet pattern, progressive deployment, config modes                |
+| [HyperFleet Architecture](design/hyperfleet-architecture.md)                         | Operator + kube-applier architecture, component replacement map             |
+| [Infrastructure Logging](design/infrastructure-logging.md)                           | AWS CloudWatch log groups, KMS encryption, Grafana access                   |
+| [Karpenter Node Provisioning](design/karpenter-node-provisioning.md)                 | Self-managed Karpenter IAM roles, IRSA rationale, SQS interruption handling |
+| [Logging Platform](design/logging-platform.md)                                       | Application-level log collection (Vector + Loki)                            |
+| [MC Metrics Remote Write](design/mc-metrics-remote-write.md)                         | MC-to-RC metrics forwarding via RHOBS API Gateway                           |
+| [Monitoring Platform](design/monitoring-platform.md)                                 | Metrics pipeline (Prometheus + Thanos)                                      |
+| [Pipeline-Based Lifecycle](design/pipeline-based-lifecycle.md)                       | CodePipeline hierarchy for cluster provisioning                             |
+| [Rate Limiting](design/rate-limiting-architecture.md)                                | Per-account rate limiting for Platform API                                  |
+| [Regional Account Minting](design/regional-account-minting.md)                       | AWS account structure and minting pipelines                                 |
+| [Regional Control Plane Architecture](design/regional-control-plane-architecture.md) | Operator + PostgreSQL control plane (hyperfleet-operator, hyperfleet-db)    |
+| [Regional OIDC Ownership](design/regional-oidc-ownership.md)                         | Shared OIDC bucket per region, cross-account MC writes                      |
+| [Spec-to-PR Agent](design/spec-to-pr-agent.md)                                       | AI agent workflow for spec-driven implementation                            |
+| [SRE UI Access](design/sre-ui-access.md)                                             | ALB + OIDC access to SRE UIs replacing SSM port-forward                     |
+| [Terraform Resource Adoption](design/terraform-resource-adoption.md)                 | Idempotent import of auto-created AWS resources into Terraform              |
+| [Testing Strategy](design/testing-strategy.md)                                       | Ephemeral and long-lived test environments                                  |
+| [Thanos Metrics Infrastructure](design/thanos-metrics-infrastructure.md)             | Thanos S3 storage, operator, and Pod Identity setup                         |
+| [ZOA Architecture](design/zoa-architecture.md)                                       | Zero Operator Access — system components, flows, infrastructure             |
+| [ZOA Trusted Actions](design/zoa-trusted-actions.md)                                 | TA template format, API design, CLI, dispatch flow                          |
+| [ZOA Security Model](design/zoa-security-model.md)                                   | SA isolation, RBAC, audit trail, threat model, FIPS                         |
 
 ### How-To Guides
 
@@ -79,6 +80,7 @@ Each module has its own README with usage, inputs, outputs, and architecture:
 - [`kube-applier-dynamodb`](../terraform/modules/kube-applier-dynamodb/README.md) - DynamoDB tables and backend IAM role for kube-applier (RC account)
 - [`hyperfleet-db`](../terraform/modules/hyperfleet-db/) - Aurora PostgreSQL for hyperfleet-operator cluster/nodepool state
 - [`grafana-cloudwatch-logs`](../terraform/modules/grafana-cloudwatch-logs/) - IAM + Pod Identity for Grafana CloudWatch Logs datasources (RC primary + MC reader)
+- [`aws-load-balancer-controller`](../terraform/modules/aws-load-balancer-controller/README.md) - IAM role and Pod Identity association for AWS Load Balancer Controller
 
 ### ArgoCD Helm Chart Documentation
 

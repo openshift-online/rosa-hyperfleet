@@ -17,17 +17,26 @@ kube-prometheus-stack:
 
   prometheusOperator:
     admissionWebhooks:
-      # During bootstrap, ArgoCD syncs itself and restarts its controllers
-      # while other app syncs are in flight. If a PreSync hook Job completes
-      # while no controller is watching, the Kubernetes TTL controller deletes
-      # the Job (upstream default: 60s) before the replacement controller can
-      # observe it, leaving the sync stuck indefinitely.
-      # Bump to 600s to give the new controller time to come back.
-      # Ref: https://github.com/argoproj/argo-cd/issues/21055
-      create:
-        ttlSecondsAfterFinished: 600
-      patch:
-        ttlSecondsAfterFinished: 600
+      # Disabled: the kube-webhook-certgen PreSync hook Jobs stall monitoring
+      # sync during bootstrap when ArgoCD controllers restart and miss the hook
+      # completion event (ArgoCD #21055). A ttlSecondsAfterFinished bump was
+      # tried first and was insufficient — the sync still stalled long enough
+      # to fail the hypershift-install Job's 30-minute CRD wait, failing
+      # bootstrap entirely (see b0afd99e).
+      #
+      # Known tradeoff: this also disables Prometheus Operator's admission-time
+      # promql validation for PrometheusRule (and Probe/AlertmanagerConfig)
+      # resources. Malformed rules are applied instead of rejected at admission
+      # and will only surface as evaluation errors at runtime. CRD schema
+      # validation (structural OpenAPI validation) is unaffected — it's
+      # enforced by the API server independent of this webhook.
+      enabled: false
+    tls:
+      # Disabled alongside admissionWebhooks: the PrometheusOperator Deployment
+      # mounts a tls-secret volume gated on tls.enabled (not admissionWebhooks.enabled).
+      # Without this flag the pod fails to start because the certgen Job that
+      # creates the secret was disabled above.
+      enabled: false
     resources:
       requests:
         cpu: 50m

@@ -1,9 +1,12 @@
 ---
-apiVersion: eks.amazonaws.com/v1
+apiVersion: elbv2.k8s.aws/v1beta1
 kind: TargetGroupBinding
 metadata:
   name: {{ .Values.platformApi.app.name }}
   namespace: {{ .Values.platformApi.namespace }}
+  annotations:
+    # aws-load-balancer-controller CRD may not exist yet when ArgoCD dry-runs this resource
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   serviceRef:
     name: {{ .Values.platformApi.app.name }}

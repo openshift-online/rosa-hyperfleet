@@ -1,0 +1,9 @@
+apiVersion: v2
+name: karpenter
+description: Self-managed Karpenter controller for node provisioning
+type: application
+version: 1.0.0
+dependencies:
+  - name: karpenter
+    version: 1.14.0
+    repository: oci://public.ecr.aws/karpenter
