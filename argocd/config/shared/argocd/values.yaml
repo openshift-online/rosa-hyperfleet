@@ -5,21 +5,16 @@ argo-cd:
   ha:
     enabled: true
 
-  # CriticalAddonsOnly toleration for all ArgoCD components so they can
-  # schedule on the karpenter-bootstrap node group before Karpenter has
-  # provisioned any worker nodes. Harmless on regular nodes.
+  # bootstrap-critical PriorityClass for all ArgoCD components so they can
+  # preempt lower-priority pods on the karpenter-bootstrap node group before
+  # Karpenter has provisioned any worker nodes. The PriorityClass is applied
+  # by the ECS bootstrap task (see ecs-bootstrap module). Harmless on regular
+  # nodes.
   global:
-    tolerations:
-      - key: CriticalAddonsOnly
-        operator: Exists
-        effect: NoSchedule
+    priorityClassName: bootstrap-critical
 
   # Server configuration
   server:
-    tolerations:
-      - key: CriticalAddonsOnly
-        operator: Exists
-        effect: NoSchedule
     autoscaling:
       enabled: true
       minReplicas: 2
@@ -53,10 +48,6 @@ argo-cd:
 
   # Controller configuration
   controller:
-    tolerations:
-      - key: CriticalAddonsOnly
-        operator: Exists
-        effect: NoSchedule
     replicas: 2
     pdb:
       enabled: true
@@ -88,10 +79,6 @@ argo-cd:
 
   # Repo Server configuration
   repoServer:
-    tolerations:
-      - key: CriticalAddonsOnly
-        operator: Exists
-        effect: NoSchedule
     autoscaling:
       enabled: true
       minReplicas: 2
@@ -125,10 +112,6 @@ argo-cd:
 
   # ApplicationSet controller
   applicationSet:
-    tolerations:
-      - key: CriticalAddonsOnly
-        operator: Exists
-        effect: NoSchedule
     resources:
       limits:
         cpu: 250m
@@ -143,10 +126,6 @@ argo-cd:
 
   # Dex configuration
   dex:
-    tolerations:
-      - key: CriticalAddonsOnly
-        operator: Exists
-        effect: NoSchedule
     resources:
       limits:
         cpu: 250m
@@ -157,10 +136,6 @@ argo-cd:
 
   # Notifications controller
   notifications:
-    tolerations:
-      - key: CriticalAddonsOnly
-        operator: Exists
-        effect: NoSchedule
     resources:
       limits:
         cpu: 250m
@@ -170,21 +145,15 @@ argo-cd:
         memory: 64Mi
 
   # Redis HA configuration (enabled via ha.enabled=true above).
-  # redis-ha is a subchart and does not inherit global.tolerations.
+  # redis-ha is a subchart and does not inherit global.priorityClassName.
   redis-ha:
     enabled: true
     replicas: 2
     hardAntiAffinity: false
-    tolerations:
-      - key: CriticalAddonsOnly
-        operator: Exists
-        effect: NoSchedule
+    priorityClassName: bootstrap-critical
     haproxy:
       hardAntiAffinity: false
-      tolerations:
-        - key: CriticalAddonsOnly
-          operator: Exists
-          effect: NoSchedule
+      priorityClassName: bootstrap-critical
 
   # redis key kept for non-HA mode reference (unused when ha.enabled=true)
   redis:

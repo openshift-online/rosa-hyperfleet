@@ -38,7 +38,7 @@ resource "aws_iam_role_policy_attachment" "eks_cluster_managed" {
 # Karpenter Node Role + Instance Profile
 #
 # Used by both Karpenter-provisioned FIPS nodes (via EC2NodeClass.spec.instanceProfile)
-# and the AL2023 bootstrap managed node group.
+# and the Bottlerocket bootstrap managed node group.
 # -----------------------------------------------------------------------------
 
 resource "aws_iam_role" "karpenter_node" {

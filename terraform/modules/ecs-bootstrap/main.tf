@@ -17,7 +17,8 @@
 # the ECS task exits.
 #
 # Runtime: Karpenter and ArgoCD run on the karpenter-bootstrap node group
-# (2× m7i.xlarge with CriticalAddonsOnly taint) for the lifetime of the cluster.
+# (2× m7i.xlarge, scheduled via the bootstrap-critical PriorityClass) for the
+# lifetime of the cluster.
 #
 # See docs/design/fully-private-eks-bootstrap.md for the full architecture and
 # rationale for choosing ECS over alternatives (public→private transition, node
@@ -152,6 +153,21 @@ resource "aws_ecs_task_definition" "bootstrap" {
             echo "✓ $ADDON active"
           done
 
+          # Applied unconditionally (not just on first install) so a changed
+          # value/preemptionPolicy is picked up on every bootstrap re-run.
+          echo "Creating bootstrap-critical PriorityClass..."
+          cat <<-PRIORITYCLASS_EOF | kubectl apply -f -
+          apiVersion: scheduling.k8s.io/v1
+          kind: PriorityClass
+          metadata:
+            name: bootstrap-critical
+          value: 100000
+          globalDefault: false
+          preemptionPolicy: PreemptLowerPriority
+          description: "ArgoCD and Karpenter controller pods on the karpenter-bootstrap node group."
+          PRIORITYCLASS_EOF
+          echo "✓ bootstrap-critical PriorityClass applied"
+
           if ! kubectl get deployment argocd-server -n argocd 2>/dev/null; then
             echo "Installing ArgoCD from repo chart..."
 
@@ -168,14 +184,14 @@ resource "aws_ecs_task_definition" "bootstrap" {
             # redisSecretInit is enabled here to create the Redis auth secret;
             # the self-managed ArgoCD app has it disabled and prunes the
             # completed Job on adoption.
-            # CriticalAddonsOnly tolerations are defined in values.yaml and
-            # picked up automatically by helm install — no --set flags needed.
+            # ArgoCD components schedule via the bootstrap-critical
+            # PriorityClass (argo-cd.global.priorityClassName in values.yaml,
+            # applied automatically to all components except redis-ha which
+            # needs its own explicit override). redisSecretInit is a one-time
+            # init Job with no scheduling override — it schedules normally.
             helm upgrade --install argocd "$REPO_DIR/argocd/config/shared/argocd" \
               --namespace argocd \
               --set argo-cd.redisSecretInit.enabled=true \
-              --set 'argo-cd.redisSecretInit.tolerations[0].key=CriticalAddonsOnly' \
-              --set 'argo-cd.redisSecretInit.tolerations[0].operator=Exists' \
-              --set 'argo-cd.redisSecretInit.tolerations[0].effect=NoSchedule' \
               --set-string 'argo-cd.controller.annotations.argocd\.argoproj\.io/tracking-id=argocd:argoproj.io/Application:argocd/argocd' \
               --set-string 'argo-cd.server.annotations.argocd\.argoproj\.io/tracking-id=argocd:argoproj.io/Application:argocd/argocd' \
               --set-string 'argo-cd.repoServer.annotations.argocd\.argoproj\.io/tracking-id=argocd:argoproj.io/Application:argocd/argocd' \
