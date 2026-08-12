@@ -5,9 +5,9 @@
 ## Summary
 
 All EKS clusters use self-managed Karpenter v1 (1.14.0) for node provisioning. A dedicated
-`karpenter-bootstrap` managed node group (2× t3.large) provides stable capacity for the Karpenter
-controller and ArgoCD (t3.large, upgraded from t3.medium, to give ArgoCD HA replicas room to
-schedule).
+`karpenter-bootstrap` managed node group (2× m7i.xlarge) provides stable capacity for the Karpenter
+controller and ArgoCD (t3.medium → t3.large → m7i.xlarge, sized up to give ArgoCD HA replicas and
+the redis-ha subchart room to schedule).
 The Karpenter controller IAM role uses IRSA (IAM Roles for Service Accounts). While EKS Pod
 Identity is the ZOA platform standard, IRSA was chosen for this repository as it is fully
 supported by AWS and simplifies the Karpenter Helm chart configuration.
@@ -45,7 +45,7 @@ graph LR
     KCR -->|"EC2: RunInstances, TerminateInstances"| EC2["EC2 API"]
     KCR -->|"iam:PassRole → instance profile"| KNR["karpenter-node-role\nInstance Profile"]
     KNR -->|"assumed by"| KN["Karpenter-provisioned\nnodes"]
-    BNG["karpenter-bootstrap\nManaged Node Group\n(2x t3.large)"] -->|"tolerates CriticalAddonsOnly"| KC
+    BNG["karpenter-bootstrap\nManaged Node Group\n(2x m7i.xlarge)"] -->|"tolerates CriticalAddonsOnly"| KC
     EB["EventBridge Rules\n(EC2 lifecycle events)"] --> SQS
 ```
 

@@ -17,7 +17,7 @@ sequenceDiagram
     participant ARGO as ArgoCD
 
     TF->>K8s: Provision EKS cluster
-    TF->>K8s: Create karpenter-bootstrap node group (2× t3.large, CriticalAddonsOnly:NoSchedule)
+    TF->>K8s: Create karpenter-bootstrap node group (2× m7i.xlarge, CriticalAddonsOnly:NoSchedule)
     TF->>K8s: Install EKS addons (vpc-cni, coredns, metrics-server, pod-identity)
     TF->>ECS: Start bootstrap task
 
@@ -35,10 +35,10 @@ sequenceDiagram
 
 ## Node groups
 
-| Node group                         | Type            | Size                                   | Taint                           | Purpose                                                            |
-| ---------------------------------- | --------------- | -------------------------------------- | ------------------------------- | ------------------------------------------------------------------ |
-| `<cluster-id>-karpenter-bootstrap` | EKS managed     | 2× t3.large, fixed (min=max=desired=2) | `CriticalAddonsOnly:NoSchedule` | Runs ArgoCD + Karpenter controller for the lifetime of the cluster |
-| Karpenter-provisioned              | EC2 (Karpenter) | Defined by NodePool                    | None                            | Runs all other workloads                                           |
+| Node group                         | Type            | Size                                     | Taint                           | Purpose                                                            |
+| ---------------------------------- | --------------- | ---------------------------------------- | ------------------------------- | ------------------------------------------------------------------ |
+| `<cluster-id>-karpenter-bootstrap` | EKS managed     | 2× m7i.xlarge, fixed (min=max=desired=2) | `CriticalAddonsOnly:NoSchedule` | Runs ArgoCD + Karpenter controller for the lifetime of the cluster |
+| Karpenter-provisioned              | EC2 (Karpenter) | Defined by NodePool                      | None                            | Runs all other workloads                                           |
 
 The bootstrap node group is **not scaled by Karpenter**. It is declared in Terraform with fixed
 capacity and persists indefinitely. The `CriticalAddonsOnly:NoSchedule` taint prevents workload pods

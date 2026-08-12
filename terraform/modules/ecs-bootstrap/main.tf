@@ -17,7 +17,7 @@
 # the ECS task exits.
 #
 # Runtime: Karpenter and ArgoCD run on the karpenter-bootstrap node group
-# (2× t3.large with CriticalAddonsOnly taint) for the lifetime of the cluster.
+# (2× m7i.xlarge with CriticalAddonsOnly taint) for the lifetime of the cluster.
 #
 # See docs/design/fully-private-eks-bootstrap.md for the full architecture and
 # rationale for choosing ECS over alternatives (public→private transition, node

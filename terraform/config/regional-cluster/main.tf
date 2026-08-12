@@ -182,7 +182,7 @@ module "regional_cluster" {
 # ECS Bootstrap - Installation Mechanism for Fully Private Cluster
 #
 # The regional_cluster module above creates a fully private EKS cluster with a
-# karpenter-bootstrap managed node group (2× t3.large) where Karpenter and
+# karpenter-bootstrap managed node group (2× m7i.xlarge) where Karpenter and
 # ArgoCD will run. However, Terraform cannot reach the private cluster API to
 # install software via the helm provider.
 #

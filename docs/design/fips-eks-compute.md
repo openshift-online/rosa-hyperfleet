@@ -6,7 +6,7 @@
 
 All EKS clusters in the ROSA HyperFleet use self-managed Karpenter v1 with an `EC2NodeClass` (`fips`)
 and a cluster-type-specific `NodePool` for platform and application workloads. A dedicated
-`karpenter-bootstrap` managed node group (t3.large, 2 nodes, tainted `CriticalAddonsOnly`)
+`karpenter-bootstrap` managed node group (m7i.xlarge, 2 nodes, tainted `CriticalAddonsOnly`)
 provides stable capacity for Karpenter itself, CoreDNS, and metrics-server. All other workloads
 land on Karpenter-provisioned nodes.
 
@@ -59,7 +59,7 @@ node OS configuration.
 
 ## Design Rationale
 
-- **Justification**: The `karpenter-bootstrap` managed node group (t3.large, 2 nodes,
+- **Justification**: The `karpenter-bootstrap` managed node group (m7i.xlarge, 2 nodes,
   `CriticalAddonsOnly` taint) provides stable, pre-provisioned capacity for Karpenter itself and
   EKS system addons. This eliminates the bootstrap chicken-and-egg problem: ECS bootstrap installs
   ArgoCD, then ArgoCD installs Karpenter and creates the `EC2NodeClass` and `NodePool` via GitOps
@@ -95,7 +95,7 @@ node OS configuration.
 
 ### Negative
 
-- Karpenter controller, CoreDNS, and metrics-server run on standard AL2023 t3.large nodes. These
+- Karpenter controller, CoreDNS, and metrics-server run on standard AL2023 m7i.xlarge nodes. These
   are platform system components, not customer-bearing workloads. CoreDNS and metrics-server are
   AWS-managed EKS addons; Karpenter is OSS software installed and managed by ArgoCD.
 - Platform and application workloads currently run on standard Bottlerocket nodes. FIPS-validated
@@ -135,7 +135,7 @@ node OS configuration.
 
 ### Cost
 
-- The `karpenter-bootstrap` node group (2x t3.large) runs continuously. Karpenter workload nodes
+- The `karpenter-bootstrap` node group (2x m7i.xlarge) runs continuously. Karpenter workload nodes
   are on-demand EC2 instances provisioned reactively.
 - `WhenEmpty` consolidation reclaims idle Karpenter capacity promptly, reducing EC2 spend.
 
