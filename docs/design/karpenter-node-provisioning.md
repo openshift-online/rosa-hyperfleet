@@ -4,7 +4,7 @@
 
 ## Summary
 
-All EKS clusters use self-managed Karpenter v1 (1.14.0) for node provisioning. A dedicated
+All EKS clusters use self-managed Karpenter for node provisioning. A dedicated
 `karpenter-bootstrap` managed node group (2× m7i.xlarge) provides stable capacity for the Karpenter
 controller and ArgoCD (t3.medium → t3.large → m7i.xlarge, sized up to give ArgoCD HA replicas and
 the redis-ha subchart room to schedule).
@@ -27,11 +27,11 @@ were available for the Karpenter controller ServiceAccount:
 
 **Chosen**: IRSA for the Karpenter controller; EKS Pod Identity for all other workloads.
 
-**Rationale**: IRSA was chosen for this repository because Karpenter v1 (1.14.0) ships with
-built-in IRSA support via the `serviceAccount.annotations` Helm value. EKS Pod Identity is the ZOA
-platform standard and remains supported by AWS alongside IRSA. While AWS recommends EKS Pod
-Identity for new workloads, IRSA simplifies the Helm chart configuration for this repository by
-avoiding additional Pod Identity association resources in Terraform.
+**Rationale**: IRSA was chosen for this repository because Karpenter ships with built-in IRSA
+support via the `serviceAccount.annotations` Helm value. EKS Pod Identity is the ZOA platform
+standard and remains supported by AWS alongside IRSA. While AWS recommends EKS Pod Identity for
+new workloads, IRSA simplifies the Helm chart configuration for this repository by avoiding
+additional Pod Identity association resources in Terraform.
 
 All other platform workloads (Thanos, Loki, kube-applier, AWS Load Balancer Controller, ZOA
 jobs) use EKS Pod Identity exclusively.

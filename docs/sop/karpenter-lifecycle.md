@@ -74,17 +74,17 @@ karpenter:
 The `karpenter_controller_role_arn` annotation is written to the cluster identity secret by the ECS
 bootstrap task (sourced from a Terraform output via an ECS environment variable).
 
-**Karpenter chart** (`argocd/config/{management-cluster,regional-cluster}/karpenter/Chart.yaml`):
+**Karpenter chart** (`argocd/config/shared/karpenter/Chart.yaml`):
 
 ```yaml
 dependencies:
   - name: karpenter
-    version: 1.14.0
+    version: <version>
     repository: oci://public.ecr.aws/karpenter
 ```
 
-To upgrade Karpenter, update the version here and run `make pre-push`. ArgoCD will apply the
-upgrade on the next sync.
+To upgrade Karpenter, update the version in the Chart.yaml file and run `make pre-push`. ArgoCD
+will apply the upgrade on the next sync.
 
 ## SQS interruption queue
 

@@ -4,7 +4,7 @@
 
 ## Summary
 
-All EKS clusters in the ROSA HyperFleet use self-managed Karpenter v1 with an `EC2NodeClass` (`fips`)
+All EKS clusters in the ROSA HyperFleet use self-managed Karpenter with an `EC2NodeClass` (`fips`)
 and a cluster-type-specific `NodePool` for platform and application workloads. A dedicated
 `karpenter-bootstrap` managed node group (m7i.xlarge, 2 nodes, tainted `CriticalAddonsOnly`)
 provides stable capacity for Karpenter itself, CoreDNS, and metrics-server. All other workloads
