@@ -108,6 +108,17 @@ else
     REDIS_ENDPOINT=""
 fi
 
+KUBE_APPLIER_SQS_QUEUE_URL="${KUBE_APPLIER_SQS_QUEUE_URL:-}"
+
+# For management clusters, read the messaging outputs from terraform state.
+if [[ "$CLUSTER_TYPE" == "management-cluster" ]]; then
+    KUBE_APPLIER_SQS_QUEUE_URL=$(echo "$OUTPUTS" | jq -r '.kube_applier_specs_queue_url.value // ""')
+    if [[ -z "$KUBE_APPLIER_SQS_QUEUE_URL" ]]; then
+        echo "ERROR: kube_applier_specs_queue_url is empty — management-cluster bootstrap requires a valid SQS queue URL" >&2
+        exit 1
+    fi
+fi
+
 RHOBS_API_URL="${RHOBS_API_URL:-}"
 DNS_ZONE_OPERATOR_ROLE_ARN="${DNS_ZONE_OPERATOR_ROLE_ARN:-}"
 
@@ -149,7 +160,8 @@ RUN_TASK_OUTPUT=$(aws ecs run-task \
         {\"name\": \"SRE_THANOS_TARGET_GROUP_ARN\", \"value\": \"$SRE_THANOS_TARGET_GROUP_ARN\"},
         {\"name\": \"SRE_ALB_DNS_NAME\", \"value\": \"$SRE_ALB_DNS_NAME\"},
         {\"name\": \"SRE_DOMAIN\", \"value\": \"$SRE_DOMAIN\"},
-        {\"name\": \"REDIS_ENDPOINT\", \"value\": \"$REDIS_ENDPOINT\"}
+        {\"name\": \"REDIS_ENDPOINT\", \"value\": \"$REDIS_ENDPOINT\"},
+        {\"name\": \"KUBE_APPLIER_SQS_QUEUE_URL\", \"value\": \"$KUBE_APPLIER_SQS_QUEUE_URL\"}
       ]
     }]
   }" 2>&1)

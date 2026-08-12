@@ -155,3 +155,30 @@ if [ "$REG_OK" != "true" ]; then
     cat /tmp/register-response.json >&2
     exit 1
 fi
+
+# Wire specs SNS→SQS subscription.
+#
+# The RC SNS topic delivers spec change events cross-account to the MC-side
+# SQS queue. AWS only auto-confirms an SNS→SQS subscription when the caller
+# is from the same account as the queue — so subscribe must be called as the
+# MC account (queue owner), not the RC account (topic owner).
+#
+# The RC specs topic policy (AllowMCAccountSubscribe) grants sns:Subscribe to
+# the MC account root, permitting this cross-account call.
+#
+# AWS automatically removes subscriptions when their SNS topic is deleted, so
+# no explicit teardown is needed — Terraform destroying a topic cleans up its
+# subscriptions.
+SPECS_TOPIC_ARN="arn:aws:sns:${TARGET_REGION}:${RESOLVED_REGIONAL_ACCOUNT_ID}:${CLUSTER_ID}-specs-notifications"
+SPECS_QUEUE_ARN="arn:aws:sqs:${TARGET_REGION}:${TARGET_ACCOUNT_ID}:${CLUSTER_ID}-specs-notifications"
+
+echo "Subscribing specs queue to specs topic (as MC account)"
+use_mc_account
+aws sns subscribe \
+    --topic-arn "$SPECS_TOPIC_ARN" \
+    --protocol sqs \
+    --notification-endpoint "$SPECS_QUEUE_ARN" \
+    --attributes '{"RawMessageDelivery":"true"}' \
+    --region "$TARGET_REGION"
+
+echo "MC ${CLUSTER_ID} registered successfully"

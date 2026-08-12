@@ -68,6 +68,8 @@ module "ecs_bootstrap" {
 
   repository_url    = var.repository_url
   repository_branch = var.repository_branch
+
+  kube_applier_specs_queue_url  = module.kube_applier_mc_messaging.specs_queue_url
 }
 
 # =============================================================================
@@ -184,6 +186,23 @@ module "kube_applier" {
 
   management_id     = var.management_id
   eks_cluster_name  = module.management_cluster.cluster_name
+  rc_aws_account_id = var.regional_aws_account_id
+  aws_region        = var.region
+}
+
+# =============================================================================
+# kube-applier MC-side Messaging (specs SQS queue + IAM for kube-applier)
+#
+# Provisions the MC-account specs SQS queue and grants kube-applier same-
+# account SQS receive permissions. The RC-side SNS topic (provisioned by
+# kube-applier-dynamodb-provisioning) delivers specs change events cross-
+# account to this queue via SNS push.
+# =============================================================================
+
+module "kube_applier_mc_messaging" {
+  source = "../../modules/kube-applier-mc-messaging"
+
+  mc_name           = var.management_id
   rc_aws_account_id = var.regional_aws_account_id
   aws_region        = var.region
 }

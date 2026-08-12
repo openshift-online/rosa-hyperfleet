@@ -82,3 +82,9 @@ variable "redis_endpoint" {
   default     = ""
 }
 
+variable "kube_applier_specs_queue_url" {
+  description = "URL of the RC-side SQS queue consumed by the management-cluster kube-applier — it polls this queue for spec change notifications. Written as an annotation on the local-cluster-identity secret so the ApplicationSet can pass it to the kube-applier Helm chart."
+  type        = string
+  default     = ""
+}
+
