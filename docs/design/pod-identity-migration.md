@@ -228,7 +228,7 @@ When migrating a component from IRSA to Pod Identity:
 
 ## Related Documentation
 
-- [Karpenter Node Provisioning](karpenter-node-provisioning.md) - Karpenter's IRSA → Pod Identity
+- Karpenter Pod Identity migration (commit `8b9a3661`) - Documented Karpenter's IRSA → Pod Identity
   migration
 - [Thanos Metrics Infrastructure](thanos-metrics-infrastructure.md) - Thanos architecture
 - [Regional OIDC Ownership](regional-oidc-ownership.md) - Customer ROSA HCP cluster OIDC

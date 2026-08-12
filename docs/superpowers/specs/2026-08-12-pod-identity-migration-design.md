@@ -548,7 +548,7 @@ metadata:
 
 ## Related Documentation
 
-- [Karpenter Node Provisioning](../design/karpenter-node-provisioning.md) - Documents Karpenter's IRSA → Pod Identity migration (2026-08-12)
+- Karpenter Pod Identity migration (commit `8b9a3661`) - Documents Karpenter's IRSA → Pod Identity migration
 - [Thanos Metrics Infrastructure](../design/thanos-metrics-infrastructure.md) - Thanos architecture (if exists)
 - [Regional OIDC Ownership](../design/regional-oidc-ownership.md) - Customer ROSA HCP cluster OIDC (different from platform IRSA)
 - AWS Documentation:
