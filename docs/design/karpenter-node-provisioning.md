@@ -45,7 +45,7 @@ graph LR
     KCR -->|"EC2: RunInstances, TerminateInstances"| EC2["EC2 API"]
     KCR -->|"iam:PassRole → instance profile"| KNR["karpenter-node-role\nInstance Profile"]
     KNR -->|"assumed by"| KN["Karpenter-provisioned\nnodes"]
-    BNG["karpenter-bootstrap\nManaged Node Group\n(2x m7i.xlarge)"] -->|"tolerates CriticalAddonsOnly"| KC
+    BNG["karpenter-bootstrap\nManaged Node Group\n(2x m7i.xlarge)"] -->|"scheduled via bootstrap-critical PriorityClass"| KC
     EB["EventBridge Rules\n(EC2 lifecycle events)"] --> SQS
 ```
 

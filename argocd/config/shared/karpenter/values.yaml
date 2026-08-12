@@ -21,10 +21,13 @@ karpenter:
       # ApplicationSet must inject at: karpenter.serviceAccount.annotations.eks\.amazonaws\.com/role-arn
       eks.amazonaws.com/role-arn: ""
 
-  tolerations:
-    - key: CriticalAddonsOnly
-      operator: Exists
-      effect: NoSchedule
+  # Deliberate override: the karpenter chart's own default priorityClassName is
+  # system-cluster-critical (2,000,000,000) — confirmed via `helm show values
+  # oci://public.ecr.aws/karpenter/karpenter --version 1.14.0`. This downgrades
+  # Karpenter to bootstrap-critical (100000) so it shares the same priority tier
+  # as ArgoCD on the karpenter-bootstrap node group. Intentional — do not revert
+  # to the chart default.
+  priorityClassName: bootstrap-critical
 
   replicas: 2
 

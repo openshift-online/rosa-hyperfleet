@@ -213,10 +213,15 @@ resource "aws_eks_addon" "pod_identity" {
 # -----------------------------------------------------------------------------
 # Karpenter Bootstrap Node Group
 #
-# AL2023 managed node group (m7i.xlarge × 2, CriticalAddonsOnly:NoSchedule) that
-# provides fixed capacity for the Karpenter controller and VPC CNI daemonset
-# before any Karpenter-provisioned nodes exist. This breaks the bootstrap
-# deadlock: Karpenter cannot provision nodes for itself.
+# Bottlerocket managed node group (m7i.xlarge × 2) that provides fixed
+# capacity for the Karpenter controller and VPC CNI daemonset before any
+# Karpenter-provisioned nodes exist. This breaks the bootstrap deadlock:
+# Karpenter cannot provision nodes for itself.
+#
+# ArgoCD and Karpenter schedule here via the bootstrap-critical PriorityClass
+# (applied by the ECS bootstrap task, see ecs-bootstrap module) rather than a
+# node taint — other pods may land here too when there's room, but ArgoCD and
+# Karpenter can preempt them if the nodes fill up.
 #
 # IMPORTANT: This node group is WHERE Karpenter and ArgoCD run at runtime. The
 # ecs-bootstrap module provides the HOW (installation mechanism). Because this
@@ -226,9 +231,11 @@ resource "aws_eks_addon" "pod_identity" {
 # After bootstrap, this node group continues to host Karpenter + ArgoCD for the
 # lifetime of the cluster. See docs/design/fully-private-eks-bootstrap.md.
 #
-# No custom launch template: EKS managed node groups set IMDSv2 hop limit to 2
-# by default for AL2023, and managed node group auth is handled automatically
-# by EKS regardless of node name format.
+# No custom launch template: managed node group auth is handled automatically
+# by EKS regardless of node name format. ASSUMPTION TO VERIFY: AL2023 managed
+# node groups default to an IMDSv2 hop limit of 2; this has not been confirmed
+# to carry over identically to BOTTLEROCKET_x86_64 managed node groups (no
+# `terraform apply` was run against real AWS as part of this change).
 # -----------------------------------------------------------------------------
 
 resource "aws_eks_node_group" "karpenter_bootstrap" {
@@ -237,19 +244,13 @@ resource "aws_eks_node_group" "karpenter_bootstrap" {
   node_role_arn   = aws_iam_role.karpenter_node.arn
   subnet_ids      = var.private_subnet_ids
 
-  ami_type       = "AL2023_x86_64_STANDARD"
+  ami_type       = "BOTTLEROCKET_x86_64"
   instance_types = ["m7i.xlarge"]
 
   scaling_config {
     desired_size = 2
     min_size     = 2
     max_size     = 2
-  }
-
-  taint {
-    key    = "CriticalAddonsOnly"
-    value  = "true"
-    effect = "NO_SCHEDULE"
   }
 
   tags = {
@@ -299,11 +300,6 @@ resource "aws_eks_addon" "aws_secrets_store_csi_driver_provider" {
       syncSecret = {
         enabled = true
       }
-      tolerations = [{
-        key      = "CriticalAddonsOnly"
-        operator = "Exists"
-        effect   = "NoSchedule"
-      }]
     }
   })
 

@@ -137,7 +137,7 @@ After bootstrap, ArgoCD manages Karpenter installation and node provisioning con
 
 The module provisions Karpenter-based compute:
 
-- **`karpenter-bootstrap` managed node group**: 2x m7i.xlarge nodes tainted `CriticalAddonsOnly=true:NoSchedule`. Hosts Karpenter controller, CoreDNS, and metrics-server.
+- **`karpenter-bootstrap` managed node group**: 2x Bottlerocket m7i.xlarge nodes. ArgoCD and Karpenter schedule here via the `bootstrap-critical` PriorityClass (able to preempt lower-priority pods rather than excluding them via a taint). Hosts Karpenter controller, CoreDNS, and metrics-server.
 - **Karpenter controller IAM role**: IRSA-backed, scoped to `kube-system/karpenter` ServiceAccount with SQS, EC2, and IAM instance profile permissions.
 - **Karpenter node IAM role**: Full `AmazonEKSWorkerNodePolicy`, VPC CNI, ECR pull-only, and optional KMS decrypt for FIPS AMI snapshots.
 - **SQS queue**: Receives EC2 interruption events (spot reclamation, instance health, rebalance) for graceful node draining.

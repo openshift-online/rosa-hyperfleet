@@ -17,11 +17,12 @@ sequenceDiagram
     participant ARGO as ArgoCD
 
     TF->>K8s: Provision EKS cluster
-    TF->>K8s: Create karpenter-bootstrap node group (2× m7i.xlarge, CriticalAddonsOnly:NoSchedule)
+    TF->>K8s: Create karpenter-bootstrap node group (2× m7i.xlarge, Bottlerocket)
     TF->>K8s: Install EKS addons (vpc-cni, coredns, metrics-server, pod-identity)
     TF->>ECS: Start bootstrap task
 
     ECS->>K8s: Wait for coredns + metrics-server addon-active
+    ECS->>K8s: kubectl apply bootstrap-critical PriorityClass
     ECS->>K8s: helm install argocd (argocd/config/shared/argocd, --wait --timeout 10m)
     ECS->>K8s: kubectl apply cluster identity secret (with karpenter_controller_role_arn annotation)
     ECS->>K8s: kubectl apply root Application (points to repo argocd/config/<cluster_type>)
@@ -35,14 +36,16 @@ sequenceDiagram
 
 ## Node groups
 
-| Node group                         | Type            | Size                                     | Taint                           | Purpose                                                            |
-| ---------------------------------- | --------------- | ---------------------------------------- | ------------------------------- | ------------------------------------------------------------------ |
-| `<cluster-id>-karpenter-bootstrap` | EKS managed     | 2× m7i.xlarge, fixed (min=max=desired=2) | `CriticalAddonsOnly:NoSchedule` | Runs ArgoCD + Karpenter controller for the lifetime of the cluster |
-| Karpenter-provisioned              | EC2 (Karpenter) | Defined by NodePool                      | None                            | Runs all other workloads                                           |
+| Node group                         | Type            | Size                                     | Scheduling                         | Purpose                                                            |
+| ---------------------------------- | --------------- | ---------------------------------------- | ---------------------------------- | ------------------------------------------------------------------ |
+| `<cluster-id>-karpenter-bootstrap` | EKS managed     | 2× m7i.xlarge, fixed (min=max=desired=2) | `bootstrap-critical` PriorityClass | Runs ArgoCD + Karpenter controller for the lifetime of the cluster |
+| Karpenter-provisioned              | EC2 (Karpenter) | Defined by NodePool                      | Default (0)                        | Runs all other workloads                                           |
 
 The bootstrap node group is **not scaled by Karpenter**. It is declared in Terraform with fixed
-capacity and persists indefinitely. The `CriticalAddonsOnly:NoSchedule` taint prevents workload pods
-from landing on infrastructure nodes; ArgoCD and Karpenter explicitly tolerate it.
+capacity and persists indefinitely. ArgoCD and Karpenter run there with the `bootstrap-critical`
+PriorityClass (value 100000), which lets them preempt lower-priority pods if the nodes fill up.
+Other pods may land here too when there's room — nothing excludes them — but ArgoCD and Karpenter
+are guaranteed the capacity they need via preemption rather than exclusion.
 
 ## ArgoCD ownership of Karpenter
 
