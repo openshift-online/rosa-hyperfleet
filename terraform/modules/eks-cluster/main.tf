@@ -122,36 +122,34 @@ resource "aws_eks_cluster" "main" {
   # Terminate Karpenter-provisioned EC2 instances before the cluster is deleted.
   # Karpenter nodes are not in Terraform state, so they survive EKS deletion and
   # block VPC/subnet teardown with DependencyViolation due to lingering ENIs.
+  #
+  # This intentionally does not attempt to reach the cluster API (kubectl,
+  # update-kubeconfig, graceful NodePool deletion) first: the CodeBuild project
+  # that runs terraform destroy has no VPC connectivity to this fully-private
+  # cluster's API endpoint, so that path never actually succeeds — it silently
+  # fell through to this same tag-based termination anyway. Since the whole
+  # cluster is being destroyed, there's no workload to protect by draining
+  # gracefully first; terminating by tag has no dependency on kubeconfig,
+  # cluster reachability, or kubectl being installed.
+  #
+  # LBC only reconciles TargetGroupBinding resources in this architecture
+  # (registering pod IPs into Terraform-managed target groups); it never
+  # creates its own ALBs/NLBs, so there's no LBC-created load balancer to
+  # worry about orphaning here.
   provisioner "local-exec" {
     when       = destroy
     on_failure = fail
     command    = <<-EOT
       set -euo pipefail
 
-      # Preflight: verify AWS CLI and kubectl are available
       if ! command -v aws >/dev/null 2>&1; then
         echo "ERROR: aws CLI not found — install awscli to proceed" >&2
-        exit 1
-      fi
-      if ! command -v kubectl >/dev/null 2>&1; then
-        echo "ERROR: kubectl not found — install kubectl to proceed" >&2
         exit 1
       fi
 
       CLUSTER_NAME="${self.name}"
       REGION=$(echo "${self.arn}" | cut -d: -f4)
-      echo "Stopping Karpenter provisioning for cluster: $CLUSTER_NAME"
 
-      # Try updating kubeconfig; if cluster is already gone, skip graceful cleanup
-      if ! aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$REGION" 2>/dev/null; then
-        echo "Cluster already deleted or unreachable — proceeding to EC2 instance termination"
-      else
-        # Stop Karpenter from creating new nodes by deleting the NodePool
-        kubectl delete nodepools --all --timeout=30s 2>/dev/null || true
-        sleep 10
-      fi
-
-      # Query for remaining Karpenter-managed instances
       echo "Terminating Karpenter EC2 instances for cluster: $CLUSTER_NAME"
       INSTANCE_IDS=$(aws ec2 describe-instances \
         --region "$REGION" \
@@ -169,7 +167,10 @@ resource "aws_eks_cluster" "main" {
 
       echo "Terminating: $INSTANCE_IDS"
       aws ec2 terminate-instances --region "$REGION" --instance-ids $INSTANCE_IDS
-      aws ec2 wait instance-terminated --region "$REGION" --instance-ids $INSTANCE_IDS
+      if ! timeout 300 aws ec2 wait instance-terminated --region "$REGION" --instance-ids $INSTANCE_IDS; then
+        echo "ERROR: instances did not reach terminated state within 300s: $INSTANCE_IDS" >&2
+        exit 1
+      fi
       echo "Done."
     EOT
   }
