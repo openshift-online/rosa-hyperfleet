@@ -217,10 +217,15 @@ resource "aws_eks_addon" "pod_identity" {
 # -----------------------------------------------------------------------------
 # Karpenter Bootstrap Node Group
 #
-# AL2023 managed node group (m7i.xlarge × 2, CriticalAddonsOnly:NoSchedule) that
-# provides fixed capacity for the Karpenter controller and VPC CNI daemonset
-# before any Karpenter-provisioned nodes exist. This breaks the bootstrap
-# deadlock: Karpenter cannot provision nodes for itself.
+# AL2023 managed node group (m7i.xlarge x 2) that provides fixed capacity
+# for the Karpenter controller and VPC CNI daemonset before any
+# Karpenter-provisioned nodes exist. This breaks the bootstrap deadlock:
+# Karpenter cannot provision nodes for itself.
+#
+# ArgoCD and Karpenter schedule here via the bootstrap-critical PriorityClass
+# (applied by the ECS bootstrap task, see ecs-bootstrap module) rather than a
+# node taint -- other pods may land here too when there's room, but ArgoCD and
+# Karpenter can preempt them if the nodes fill up.
 #
 # IMPORTANT: This node group is WHERE Karpenter and ArgoCD run at runtime. The
 # ecs-bootstrap module provides the HOW (installation mechanism). Because this
@@ -248,12 +253,6 @@ resource "aws_eks_node_group" "karpenter_bootstrap" {
     desired_size = 2
     min_size     = 2
     max_size     = 2
-  }
-
-  taint {
-    key    = "CriticalAddonsOnly"
-    value  = "true"
-    effect = "NO_SCHEDULE"
   }
 
   tags = {
@@ -303,11 +302,6 @@ resource "aws_eks_addon" "aws_secrets_store_csi_driver_provider" {
       syncSecret = {
         enabled = true
       }
-      tolerations = [{
-        key      = "CriticalAddonsOnly"
-        operator = "Exists"
-        effect   = "NoSchedule"
-      }]
     }
   })
 

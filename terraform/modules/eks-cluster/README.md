@@ -142,7 +142,13 @@ The ECS bootstrap task:
 - Creates bootstrap application pointing to your repository
 - Enables ArgoCD to take over cluster management
 
-For the FIPS node strategy, including why the built-in `system` pool is retained and `general-purpose` is disabled, see [FIPS-Only EKS Compute](../../../docs/design/fips-eks-compute.md).
+- **`karpenter-bootstrap` managed node group**: 2x AL2023 m7i.xlarge nodes. ArgoCD and Karpenter schedule here via the `bootstrap-critical` PriorityClass (able to preempt lower-priority pods rather than excluding them via a taint). Hosts Karpenter controller, CoreDNS, and metrics-server.
+- **Karpenter controller IAM role**: IRSA-backed, scoped to `kube-system/karpenter` ServiceAccount with SQS, EC2, and IAM instance profile permissions.
+- **Karpenter node IAM role**: Full `AmazonEKSWorkerNodePolicy`, VPC CNI, ECR pull-only, and optional KMS decrypt for FIPS AMI snapshots.
+- **SQS queue**: Receives EC2 interruption events (spot reclamation, instance health, rebalance) for graceful node draining.
+- **EventBridge rules**: Four rules forward EC2 lifecycle events to the SQS queue.
+
+For the node provisioning strategy, including why Auto Mode was replaced with self-managed Karpenter, see [FIPS-Only EKS Compute](../../../docs/design/fips-eks-compute.md). For Karpenter IAM role design, see [Karpenter Node Provisioning](../../../docs/design/karpenter-node-provisioning.md). FIPS-validated compute will be delivered as part of the RHEL AMI work.
 
 ## Requirements
 

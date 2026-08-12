@@ -5,11 +5,6 @@ aws-load-balancer-controller:
     create: true
     name: aws-load-balancer-controller
 
-  tolerations:
-    - key: CriticalAddonsOnly
-      operator: Exists
-      effect: NoSchedule
-
   podSecurityContext:
     runAsNonRoot: true
     runAsUser: 65534

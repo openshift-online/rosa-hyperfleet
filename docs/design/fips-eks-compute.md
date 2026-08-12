@@ -6,9 +6,9 @@
 
 All EKS clusters in the ROSA HyperFleet use self-managed Karpenter with an `EC2NodeClass` (`fips`)
 and a cluster-type-specific `NodePool` for platform and application workloads. A dedicated
-`karpenter-bootstrap` managed node group (m7i.xlarge, 2 nodes, tainted `CriticalAddonsOnly`)
-provides stable capacity for Karpenter itself, CoreDNS, and metrics-server. All other workloads
-land on Karpenter-provisioned nodes.
+`karpenter-bootstrap` managed node group (m7i.xlarge, 2 nodes, scheduled via the
+`bootstrap-critical` PriorityClass) provides stable capacity for Karpenter itself, CoreDNS, and
+metrics-server. All other workloads land on Karpenter-provisioned nodes.
 
 **Note**: FIPS-validated compute (RHEL nodes with FIPS mode enabled) is planned for a future
 iteration. Current implementation uses standard Bottlerocket AMIs pinned via the
@@ -53,14 +53,14 @@ node OS configuration.
    pools. Not durable. Rejected.
 
 4. **Self-managed Karpenter with dedicated bootstrap node group**: Provides a stable, pre-provisioned node
-   group (tainted `CriticalAddonsOnly`) for Karpenter controller, CoreDNS, and metrics-server.
+   group (`bootstrap-critical` PriorityClass) for Karpenter controller, CoreDNS, and metrics-server.
    Karpenter provisions all other nodes on demand using custom `EC2NodeClass`. Enables future
    FIPS compliance for customer-bearing workloads via RHEL AMI configuration. **Chosen.**
 
 ## Design Rationale
 
 - **Justification**: The `karpenter-bootstrap` managed node group (m7i.xlarge, 2 nodes,
-  `CriticalAddonsOnly` taint) provides stable, pre-provisioned capacity for Karpenter itself and
+  `bootstrap-critical` PriorityClass) provides stable, pre-provisioned capacity for Karpenter itself and
   EKS system addons. This eliminates the bootstrap chicken-and-egg problem: ECS bootstrap installs
   ArgoCD, then ArgoCD installs Karpenter and creates the `EC2NodeClass` and `NodePool` via GitOps
   Applications.
@@ -73,7 +73,7 @@ node OS configuration.
   eks-nodepool chart creates the `EC2NodeClass` and workloads `NodePool`.
 
 - **Tradeoff**: The `karpenter-bootstrap` node group runs standard Amazon Linux 2023 (AL2023) nodes.
-  These nodes host only Karpenter controller, CoreDNS, and metrics-server — EKS system
+  These nodes host only Karpenter controller, CoreDNS, and metrics-server -- EKS system
   infrastructure, not customer-bearing workloads. Platform and application workloads run
   exclusively on Karpenter-provisioned nodes, which will be migrated to FIPS-enabled RHEL nodes
   as part of the RHEL AMI work. This scope boundary is an accepted tradeoff for operational
