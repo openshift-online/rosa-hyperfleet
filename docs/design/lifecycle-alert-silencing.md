@@ -1,5 +1,4 @@
 ---
-Status: Proposed
 Owner: HyperFleet
 Jira: https://redhat.atlassian.net/browse/ROSAENG-62370
 Related: https://redhat.atlassian.net/browse/ROSAENG-62371
