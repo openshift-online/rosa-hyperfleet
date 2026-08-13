@@ -1,42 +1,31 @@
----
-Owner: HyperFleet
-Jira: https://redhat.atlassian.net/browse/ROSAENG-62370
-Related: https://redhat.atlassian.net/browse/ROSAENG-62371
----
-
 # Lifecycle alert silencing for HyperFleet
+
+**Last Updated Date**: 2026-08-13
 
 ## Summary
 
-Replace PromQL `unless` lifecycle exclusions in regional alert rules with **Alertmanager silences** managed by a **HyperFleet silence reconciler**. The reconciler reads cluster lifecycle state from **hyperfleet-db** and creates, renews, and deletes silences on the **regional cluster (RC) Alertmanager**.
+Replace PromQL `unless` lifecycle exclusions in regional alert rules with **Alertmanager silences** managed by a **HyperFleet silence reconciler** that reads cluster lifecycle state from **hyperfleet-db** and writes to the **regional cluster (RC) Alertmanager** using the Alertmanager v2 silence API (`POST /api/v2/silences`, `DELETE /api/v2/silence/{silenceID}`).
 
-**Recommendation:** Proceed. MVP uses in-cluster Alertmanager v0.28.x (via [kube-prometheus-stack 72.6.2](../../argocd/config/regional-cluster/monitoring/Chart.yaml)) Alertmanager API v2: `POST /api/v2/silences` to create or update (include `id` in `postableSilence` to renew), and `DELETE /api/v2/silence/{silenceID}` to expire. Dual-run with existing PromQL during rollout, then remove `unless` from alert expressions.
+## Context
 
-Control plane context: **hyperfleet-operator** + **hyperfleet-db** ([regional architecture](regional-control-plane-architecture.md)).
+- **Problem Statement**: Install/delete suppression is embedded in every SLA alert expression (`unless on(namespace, name, cluster) (hcp:lifecycle_installing or hcp:lifecycle_deleting)` — [hcp-sla.yaml](../../argocd/config/regional-cluster/alerting-rules/templates/hcp-sla.yaml)). Each new alert must remember the wrapper; new reasons (limited support, maintenance) require more recording rules; lifecycle logic lives in metrics instead of the control plane that already owns cluster state.
+- **Constraints**: Evaluation and paging run on the RC ([alerting architecture](alerting-architecture.md)); silences must scope per HostedCluster; install-timeout alerts must remain fireable during install ([hcp-installation.yaml](../../argocd/config/regional-cluster/alerting-rules/templates/hcp-installation.yaml)).
+- **Assumptions**: Control plane is **hyperfleet-operator** + **hyperfleet-db** ([regional architecture](regional-control-plane-architecture.md)); MVP talks to in-cluster RC Alertmanager over Kubernetes `Service` DNS.
 
-## Problem
+Prior RHOBS direction prefers **Alertmanager silence API + an external lifecycle caller** over PromQL wrappers ([Observatorium silence API #904](https://github.com/observatorium/api/pull/904), [OpenAPI spec](https://github.com/observatorium/api/blob/main/client/spec.yaml)).
 
-Today, install/delete suppression is embedded in every SLA alert expression:
+## Alternatives Considered
 
-```yaml
-unless on(namespace, name, cluster) (hcp:lifecycle_installing or hcp:lifecycle_deleting)
-```
+1. **Keep / expand PromQL `unless` wrappers**: Rejected — does not scale as alert and lifecycle-reason cardinality grows.
+2. **Embed silence logic in the main hyperfleet-operator reconciler**: Rejected — couples paging policy to the primary reconcile loop; harder to test and operate independently.
+3. **Customer-facing silence API**: Out of scope — privileged ops remain mediated via ZOA.
 
-([source](../../argocd/config/regional-cluster/alerting-rules/templates/hcp-sla.yaml))
+## Design Rationale
 
-This does not scale: each new alert must remember the wrapper; new reasons (limited support, maintenance) require more recording rules and PromQL edits; and lifecycle logic lives in metrics instead of the control plane that already owns cluster state.
+- **Justification**: hyperfleet-db already records lifecycle state (`installing`, `deleting`, `limited_support`, …). A dedicated reconciler maps that state to Alertmanager silences so alert rules only express SLO logic.
+- **Comparison**: PromQL suppression duplicates state and drifts; API silences are the standard Alertmanager mechanism and align with upstream RHOBS API work.
 
-Prior RHOBS discussion (`#wg-rhobs-2x`, Apr 2026) agreed on **Alertmanager silence API + an external lifecycle caller** rather than PromQL wrappers.
-
-## Current architecture
-
-- **Thanos Ruler** on the RC evaluates `PrometheusRule` CRs against federated RC+MC metrics.
-- **RC Alertmanager** routes critical alerts to PagerDuty and fans out via SNS.
-- Lifecycle suppression is PromQL-only today; limited support on classic OSD uses a brittle OCM-label → metric → PromQL chain we want to avoid for HCP.
-
-See [alerting architecture](alerting-architecture.md).
-
-## Proposed design
+## Design
 
 ### Components
 
@@ -55,62 +44,59 @@ flowchart LR
 
 **Principle:** PromQL answers whether an SLO is burning; silences answer whether humans should be notified for a given cluster right now.
 
-### Ownership
+### Reconciler ownership and sharding
 
-Add a **dedicated silence reconciler** (not embedded in the main operator loop, not a webhook or cron-only job) that:
+Add a **dedicated silence reconciler** (controller-runtime) that:
 
-1. Derives silence **intent** from hyperfleet-db cluster state (`installing`, `deleting`, `limited_support`, `maintenance`).
-2. Reconciles Alertmanager silences to that intent (single leader writer via controller-runtime leader election).
-3. Persists silence IDs, intent hash, and `endsAt` in hyperfleet-db for restart recovery.
+1. Watches cluster lifecycle resources from hyperfleet-db using the **same namespace sharding model as hyperfleet-operator** (per-shard namespace scope, not a single controller scanning the full fleet).
+2. Derives silence **intent** from cluster state: `installing`, `deleting`, `limited_support`, `maintenance`.
+3. Reconciles Alertmanager silences to that intent; persists silence IDs, intent hash, and `endsAt` in hyperfleet-db.
 
-Each silence is owned by a stable key `(cluster_id, lifecycle_reason)` with `createdBy=hyperfleet-silence-reconciler` and a structured comment. On reconcile, compare desired intent to stored state before calling Alertmanager so the loop is idempotent. Heal drift on startup by listing owned silences and reconciling against current DB intent.
+Each silence is keyed by `(cluster_id, lifecycle_reason)` with `createdBy=hyperfleet-silence-reconciler` and a structured comment. Compare desired intent to stored state before calling Alertmanager so the loop is idempotent.
+
+**Orphan detection:** A silence is orphaned when (a) Alertmanager has a silence with our `createdBy` + cluster matchers but hyperfleet-db has no matching active lifecycle intent, or (b) hyperfleet-db has intent but no corresponding silence after reconcile. Startup and periodic reconcile list owned silences, delete (a), and recreate for (b).
+
+### Lifecycle states
+
+| State             | Meaning                                                                                                                        |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `installing`      | Cluster provisioning in progress                                                                                               |
+| `deleting`        | Cluster teardown in progress                                                                                                   |
+| `limited_support` | Cluster marked limited support in platform state                                                                               |
+| `maintenance`     | Planned SRE/platform maintenance window on the cluster (operator or platform-api maintenance flag — not customer self-service) |
 
 ### Lifecycle behavior
 
 - **Enter silencable state** → `POST /api/v2/silences` with TTL.
-- **While state persists** → renew before expiry by `POST /api/v2/silences` with the existing silence `id` and updated `endsAt` (native Alertmanager v0.28.x supports update-by-ID via POST).
+- **While state persists** → renew before expiry via `POST /api/v2/silences` with the existing silence `id` and updated `endsAt`.
 - **Leave state** → `DELETE /api/v2/silence/{silenceID}`.
-- **Controller restart** → list/filter by `createdBy` + matchers or persisted IDs; delete orphans and recreate missing silences.
 - **Ambiguous API responses** → bounded retries; reconcile re-reads persisted IDs before creating duplicates.
 
 Suggested TTLs (each renewal sets `endsAt = now + renewal_window`):
 
 | Reason                    | Initial window   | Renew when remaining  | Renewal window                               |
 | ------------------------- | ---------------- | --------------------- | -------------------------------------------- |
-| `installing` / `deleting` | 6h               | < 1h                  | 6h (same as initial)                         |
+| `installing` / `deleting` | 6h               | < 1h                  | 6h                                           |
 | `limited_support`         | 24h              | < 4h                  | 24h                                          |
 | `maintenance`             | Until window end | < 30m before `endsAt` | Extend to window end, or +4h if no fixed end |
 
-Example for install: cluster enters `installing` at T0 → silence `endsAt = T0 + 6h`. Reconciler runs periodically; at T0+5h15m (45m left) it POSTs the same silence `id` with `endsAt = now + 6h` (rolls forward). Repeats until the cluster leaves `installing`, then DELETE.
+Example for install: cluster enters `installing` at T0 → silence `endsAt = T0 + 6h`. At T0+5h15m (< 1h left) the reconciler POSTs the same `id` with `endsAt = now + 6h`. Repeats until the cluster leaves `installing`, then DELETE.
 
 ### Matchers and exemptions
 
-Scope silences on existing alert identity labels: `namespace`, `name`, `cluster`.
+Scope silences on alert identity labels already on SLA rules: `namespace`, `name`, `cluster`.
 
-**MVP exemption:** negative matcher so `HCPInstallTimeout15m` still fires during install ([installation rules](../../argocd/config/regional-cluster/alerting-rules/templates/hcp-installation.yaml)).
+**MVP exemption:** per-reason negative matcher — e.g. `alertname != HCPInstallTimeout15m` on the `installing` silence only, not a fleet-wide `silence_eligible` label (that would be too coarse if some lifecycle reasons should suppress an alert and others should not).
 
-Longer-term: label silenceable alerts with `silence_eligible: "true"` and omit on exempt alerts.
+| Lifecycle state | Silence? | Exemption notes                                                |
+| --------------- | -------- | -------------------------------------------------------------- |
+| Installing      | Yes      | Exclude install-timeout alert via negative `alertname` matcher |
+| Deleting        | Yes      | TBD for delete-stuck alerts                                    |
+| Limited support | Yes      | TBD for billing/security criticals                             |
+| Maintenance     | Yes      | Per-window policy                                              |
+| Available       | No       | —                                                              |
 
-| Lifecycle state | Silence? | Notes                              |
-| --------------- | -------- | ---------------------------------- |
-| Installing      | Yes      | Except install-timeout alert       |
-| Deleting        | Yes      | TBD for delete-stuck alerts        |
-| Limited support | Yes      | TBD for billing/security criticals |
-| Maintenance     | Yes      | Per-window policy                  |
-| Available       | No       | —                                  |
-
-### Auth (MVP)
-
-The MVP path is **in-cluster HTTP** to RC Alertmanager (Kubernetes `Service` DNS). It does not traverse AWS APIs, so **AWS IAM is not the auth boundary** for this write path.
-
-Access controls for MVP:
-
-- Dedicated reconciler **ServiceAccount** (no shared operator credentials).
-- **NetworkPolicy** allowing only the reconciler pods to reach Alertmanager on the API port.
-- **Kubernetes RBAC** if Alertmanager is fronted with auth middleware in future chart versions.
-- No customer-facing silence write path; ZOA remains the mediation layer for privileged ops.
-
-AWS SigV4 / OIDC apply only to the future Observatorium gateway path (see below).
+**Label contract:** SLA burn-rate alerts must carry `namespace`, `name`, and `cluster` labels (already true for [hcp-sla.yaml](../../argocd/config/regional-cluster/alerting-rules/templates/hcp-sla.yaml)). New rules are reviewed in the alerting-rules PR process; implementation may add a `promtool`/rule lint check in a follow-up.
 
 ### Client abstraction
 
@@ -122,51 +108,62 @@ type SilenceClient interface {
 }
 ```
 
-MVP implementation talks to in-cluster Alertmanager v2. The interface allows swapping transport later without changing reconciler logic.
+MVP implementation uses in-cluster Alertmanager v2 HTTP.
 
 ### Migration
 
 1. Ship reconciler; dual-run PromQL `unless` + API silences for one release.
-2. Validate in e2e: install → silence exists; install-timeout still fires; cluster ready → silence removed.
+2. Validate in e2e: silence exists while cluster is installing or deleting; silence removed when cluster becomes available. Install-timeout exemption is covered by matcher unit tests (forcing a stalled install in e2e is impractical).
 3. Remove `unless` from SLA alert expressions. Keep lifecycle recording rules if dashboards still need them.
 
-### Key risks
+## Consequences
 
-| Risk                              | Mitigation                                             |
-| --------------------------------- | ------------------------------------------------------ |
-| Silence API unavailable at create | Retry, metrics, dual-run PromQL during migration       |
-| Orphan silence after crash        | TTL expiry; heal on startup via list + `createdBy`     |
-| Exemption misconfiguration        | Matcher unit tests; deny-list; e2e for install timeout |
-| Alerts missing identity labels    | Label contract + CI check                              |
+### Positive
 
-### Out of scope
+- Lifecycle suppression decoupled from individual alert expressions
+- New lifecycle reasons do not require editing every PromQL rule
+- Aligns with RHOBS Alertmanager silence API direction
+
+### Negative
+
+- Additional reconciler to deploy and monitor
+- Silence drift possible if reconciler or Alertmanager is unavailable — mitigated by TTL and reconcile loops
+
+## Cross-Cutting Concerns
+
+### Security
+
+- Dedicated reconciler **ServiceAccount** and **NetworkPolicy** restricting Alertmanager API access to reconciler pods only
+- No customer-facing silence write path; ZOA mediates privileged operations
+
+### Reliability
+
+- **Resiliency**: TTL-bound silences; orphan cleanup on reconcile; dual-run PromQL during migration
+- **Observability**: Metrics for active silences, reconcile errors, and renewals
+
+| Risk                              | Mitigation                                                                 |
+| --------------------------------- | -------------------------------------------------------------------------- |
+| Silence API unavailable at create | Retries; alerting on Alertmanager issues; dual-run PromQL during migration |
+| Orphan silence after crash        | TTL expiry; orphan detection via `createdBy` + DB intent comparison        |
+| Exemption misconfiguration        | Matcher unit tests; per-reason negative `alertname` matchers               |
+| Alerts missing identity labels    | Label contract on SLA rules; review on alerting-rules changes              |
+
+## Out of scope
 
 - Customer-facing silence API
 - SNS / PagerDuty routing changes
-- Silencing on MC-local Prometheus (evaluation is on RC Thanos Ruler)
+- Silencing on MC-local Prometheus
 - Classic OSD clusters (ROSA HCP regional only)
-
-### Next steps
-
-1. Implement client + reconciler ([ROSAENG-62371](https://redhat.atlassian.net/browse/ROSAENG-62371)).
-2. Add limited support / maintenance intents after install/delete soak.
-
----
 
 ## Future: Observatorium / shared RHOBS API
 
-> **Not part of the MVP.** Included for context only.
+> **Not part of the MVP.**
 
-The MVP deploys and talks to **Alertmanager inside the regional cluster** — the same v2 silence contract HyperFleet already uses for paging ([alerting architecture](alerting-architecture.md)).
+The MVP uses **Alertmanager inside the regional cluster**. The **Observatorium tenant silence API** only matters if HyperFleet hosts **full RHOBS per region** as a shared service rather than deploying observability components per RC today — a separate decision, not close in maturity.
 
-We would only need the **Observatorium tenant silence API** if HyperFleet moves from _deploying observability components per RC_ to hosting **RHOBS as a shared regional service** (full RHOBS stack colocated in regional clusters, not just Thanos Ruler + Alertmanager as today). That is a separate platform decision; we are not close to it in maturity or design.
+If that path is taken later: tenant-scoped silence CRUD ([spec](https://github.com/observatorium/api/blob/main/client/spec.yaml), [#904](https://github.com/observatorium/api/pull/904)); gateway enforcer may require DELETE + POST for renew ([enforcer](https://github.com/observatorium/api/blob/main/api/metrics/v1/alertmanager_enforcer.go)); `SilenceClient` absorbs the transport swap.
 
-If that path is taken later:
+## References
 
-- Observatorium exposes Alertmanager v2 silence CRUD per tenant ([spec](https://github.com/observatorium/api/blob/main/client/spec.yaml), [silence-by-ID PR #904](https://github.com/observatorium/api/pull/904)).
-- Paths: `POST/GET /api/metrics/v1/{tenant}/am/api/v2/silences`, `GET/DELETE …/silence/{silenceID}`.
-- Tenant enforcer injects tenant matcher, **rejects update-by-ID** on the gateway (renew = delete + recreate — unlike native in-cluster AM), requires ≥1 matcher beyond tenant label ([enforcer](https://github.com/observatorium/api/blob/main/api/metrics/v1/alertmanager_enforcer.go)).
-- Auth would follow the shared gateway model (SigV4 / OIDC) rather than in-cluster SA.
-- The `SilenceClient` abstraction above is intended to absorb that swap without reconciler changes.
-
-Open questions for that future (not blocking MVP): gateway auth choice, rate limits, audit retention, and whether the same client serves classic OSD.
+- [ROSAENG-62370](https://redhat.atlassian.net/browse/ROSAENG-62370) (spike)
+- [ROSAENG-62371](https://redhat.atlassian.net/browse/ROSAENG-62371) (implementation)
