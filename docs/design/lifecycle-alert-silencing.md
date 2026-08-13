@@ -74,7 +74,15 @@ Each silence is owned by a stable key `(cluster_id, lifecycle_reason)` with `cre
 - **Controller restart** → list/filter by `createdBy` + matchers or persisted IDs; delete orphans and recreate missing silences.
 - **Ambiguous API responses** → bounded retries; reconcile re-reads persisted IDs before creating duplicates.
 
-Suggested TTLs: `installing` / `deleting` — 6h initial, renew when <1h left; `limited_support` — 24h / renew at 4h; `maintenance` — window end or 4h.
+Suggested TTLs (each renewal sets `endsAt = now + renewal_window`):
+
+| Reason                    | Initial window   | Renew when remaining  | Renewal window                               |
+| ------------------------- | ---------------- | --------------------- | -------------------------------------------- |
+| `installing` / `deleting` | 6h               | < 1h                  | 6h (same as initial)                         |
+| `limited_support`         | 24h              | < 4h                  | 24h                                          |
+| `maintenance`             | Until window end | < 30m before `endsAt` | Extend to window end, or +4h if no fixed end |
+
+Example for install: cluster enters `installing` at T0 → silence `endsAt = T0 + 6h`. Reconciler runs periodically; at T0+5h15m (45m left) it POSTs the same silence `id` with `endsAt = now + 6h` (rolls forward). Repeats until the cluster leaves `installing`, then DELETE.
 
 ### Matchers and exemptions
 
