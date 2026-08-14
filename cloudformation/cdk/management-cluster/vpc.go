@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
 	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
@@ -88,15 +89,19 @@ func NewMcVpc(scope constructs.Construct, id string, props *McVpcProps) *McVpcOu
 	})
 
 	// Interface endpoints
-	for _, svc := range []awsec2.InterfaceVpcEndpointAwsService{
-		awsec2.InterfaceVpcEndpointAwsService_ECR(),
-		awsec2.InterfaceVpcEndpointAwsService_ECR_DOCKER(),
-		awsec2.InterfaceVpcEndpointAwsService_STS(),
-		awsec2.InterfaceVpcEndpointAwsService_CLOUDWATCH_LOGS(),
-		awsec2.InterfaceVpcEndpointAwsService_EC2(),
+	type vpceEntry struct {
+		id  string
+		svc awsec2.InterfaceVpcEndpointAwsService
+	}
+	for _, e := range []vpceEntry{
+		{"EcrApi", awsec2.InterfaceVpcEndpointAwsService_ECR()},
+		{"EcrDkr", awsec2.InterfaceVpcEndpointAwsService_ECR_DOCKER()},
+		{"Sts", awsec2.InterfaceVpcEndpointAwsService_STS()},
+		{"Logs", awsec2.InterfaceVpcEndpointAwsService_CLOUDWATCH_LOGS()},
+		{"Ec2", awsec2.InterfaceVpcEndpointAwsService_EC2()},
 	} {
-		vpc.AddInterfaceEndpoint(svc.Name(), &awsec2.InterfaceVpcEndpointOptions{
-			Service:           svc,
+		vpc.AddInterfaceEndpoint(jsii.String(e.id), &awsec2.InterfaceVpcEndpointOptions{
+			Service:           e.svc,
 			PrivateDnsEnabled: jsii.Bool(true),
 			SecurityGroups:    &[]awsec2.ISecurityGroup{vpcesg},
 		})

@@ -76,7 +76,7 @@ func NewManagementClusterStack(scope constructs.Construct, id string, props *Man
 	}
 
 	// Pod Identities — one construct per TF module
-	clusterName := eks.Cluster.ClusterName()
+	clusterName := eks.Cluster.Name()
 
 	NewDnsPodIdentity(stack, "DnsPodIdentity", &DnsPodIdentityProps{
 		ManagementId:           props.ManagementId,
@@ -135,7 +135,9 @@ func NewManagementClusterStack(scope constructs.Construct, id string, props *Man
 
 func main() {
 	defer jsii.Close()
-	app := awscdk.NewApp(nil)
+	app := awscdk.NewApp(&awscdk.AppProps{
+		Outdir: jsii.String("output"),
+	})
 
 	NewManagementClusterStack(app, "mc01", &ManagementClusterStackProps{
 		StackProps: awscdk.StackProps{
