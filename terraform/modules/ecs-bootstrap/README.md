@@ -74,7 +74,7 @@ After ECS bootstrap completes, ArgoCD takes over cluster management:
 | `eks_cluster_arn`               | EKS cluster ARN for bootstrap configuration                                                                                                                                     | `string`       | n/a     |   yes    |
 | `eks_cluster_name`              | EKS cluster name for bootstrap configuration                                                                                                                                    | `string`       | n/a     |   yes    |
 | `eks_cluster_security_group_id` | EKS cluster security group ID                                                                                                                                                   | `string`       | n/a     |   yes    |
-| `karpenter_controller_role_arn` | IAM role ARN for Karpenter controller (IRSA). Set from `eks_cluster.karpenter_controller_role_arn`. Injected into the ArgoCD cluster secret for ApplicationSet value injection. | `string`       | `""`    |    no    |
+| `karpenter_controller_role_arn` | IAM role ARN for Karpenter controller (IRSA). Set from `eks_cluster.karpenter_controller_role_arn`. Injected into the ArgoCD cluster secret for ApplicationSet value injection. | `string`       | n/a     |   yes    |
 | `environment`                   | Environment name for tagging                                                                                                                                                    | `string`       | `"dev"` |    no    |
 
 ## Outputs

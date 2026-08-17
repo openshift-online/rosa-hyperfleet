@@ -143,7 +143,11 @@ resource "aws_eks_cluster" "main" {
       set -euo pipefail
 
       if ! command -v aws >/dev/null 2>&1; then
-        echo "ERROR: aws CLI not found — install awscli to proceed" >&2
+        echo "ERROR: aws CLI not found -- install awscli to proceed" >&2
+        exit 1
+      fi
+      if ! command -v timeout >/dev/null 2>&1; then
+        echo "ERROR: timeout not found -- install coreutils to proceed" >&2
         exit 1
       fi
 
@@ -286,7 +290,7 @@ resource "aws_eks_addon" "ebs_csi" {
   cluster_name = aws_eks_cluster.main.name
   addon_name   = "aws-ebs-csi-driver"
 
-  depends_on = [aws_eks_node_group.karpenter_bootstrap, aws_eks_pod_identity_association.ebs_csi]
+  depends_on = [aws_eks_node_group.karpenter_bootstrap, aws_eks_addon.pod_identity, aws_eks_pod_identity_association.ebs_csi]
 }
 
 # AWS Secrets Store CSI Driver Provider (e.g. for kube-applier or service secret mounting)
