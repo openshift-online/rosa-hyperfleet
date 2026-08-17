@@ -50,8 +50,13 @@ flowchart LR
 Add a **dedicated, stateless silence reconciler** (controller-runtime) that:
 
 1. Uses `For(&v1alpha1.Cluster{})` — the same pattern as `ClusterReconciler` and `PlacementReconciler` — so it plugs into the existing **namespace sharding model** with no new watches.
-2. Derives desired silences from the cluster's `.Status.Phase` and conditions: `installing`, `deleting`, `limited_support`, `maintenance`.
-3. Each reconcile: **list** owned silences from Alertmanager (filtered by `createdBy=hyperfleet-silence-reconciler` + cluster matchers), **diff** against the desired set, then create, renew, or expire.
+2. Derives desired silences from the cluster's `.Status.Phase` and conditions. **MVP:** `installing` and `deleting` only; `limited_support` and `maintenance` follow once per-state exemption policies are defined.
+3. Each reconcile:
+   - **List** silences from Alertmanager with `GET /api/v2/silences?filter=<cluster label matchers>&expired=false` (the API accepts label-matcher filters, not `createdBy`).
+   - **Filter locally** to silences where `createdBy=hyperfleet-silence-reconciler` and the structured comment matches the owner key (`cluster=<id>;reason=<lifecycle_reason>`).
+   - Ignore any returned silence with `status.state=expired` even if present.
+   - **Diff** against the desired set, then create, renew, or expire.
+   - For orphan cleanup, also list owned silences for clusters that recently left the shard (including deleted clusters) and expire any not in the desired set.
 
 **Sources of truth:**
 
@@ -66,12 +71,14 @@ Each desired silence is keyed by `(cluster_id, lifecycle_reason)` with `createdB
 
 ### Lifecycle states
 
-| State             | Meaning                                                                                                                        |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `installing`      | Cluster provisioning in progress                                                                                               |
-| `deleting`        | Cluster teardown in progress                                                                                                   |
-| `limited_support` | Cluster marked limited support in platform state                                                                               |
-| `maintenance`     | Planned SRE/platform maintenance window on the cluster (operator or platform-api maintenance flag — not customer self-service) |
+| State             | Meaning                                                                                                                         | MVP |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------- | --- |
+| `installing`      | Cluster provisioning in progress                                                                                                | Yes |
+| `deleting`        | Cluster teardown in progress                                                                                                    | Yes |
+| `limited_support` | Cluster marked limited support — **platform-api** writes the condition; **hyperfleet-operator** projects it to `Cluster` status | No  |
+| `maintenance`     | Planned SRE maintenance window — **platform-api** sets the maintenance condition; operator projects to `Cluster` status         | No  |
+
+`limited_support` and `maintenance` are out of MVP until per-state exemption matchers are approved (see below). The reconciler reads only `Cluster` status — never a separate flag source.
 
 ### Lifecycle behavior
 
@@ -94,17 +101,26 @@ Example for install: cluster enters `installing` at T0 → silence `endsAt = T0 
 
 Scope silences on alert identity labels already on SLA rules: `namespace`, `name`, `cluster`.
 
-**MVP exemption:** per-reason negative matcher — e.g. `alertname != HCPInstallTimeout15m` on the `installing` silence only, not a fleet-wide `silence_eligible` label (that would be too coarse if some lifecycle reasons should suppress an alert and others should not).
+**MVP exemption (installing):** use an explicit Alertmanager negative matcher — `alertname` / `HCPInstallTimeout15m` / `isEqual: false` / `isRegex: false` — not shorthand `!=` syntax.
 
-| Lifecycle state | Silence? | Exemption notes                                                |
-| --------------- | -------- | -------------------------------------------------------------- |
-| Installing      | Yes      | Exclude install-timeout alert via negative `alertname` matcher |
-| Deleting        | Yes      | TBD for delete-stuck alerts                                    |
-| Limited support | Yes      | TBD for billing/security criticals                             |
-| Maintenance     | Yes      | Per-window policy                                              |
-| Available       | No       | —                                                              |
+```json
+{
+  "name": "alertname",
+  "value": "HCPInstallTimeout15m",
+  "isRegex": false,
+  "isEqual": false
+}
+```
 
-**Label contract:** SLA burn-rate alerts must carry `namespace`, `name`, and `cluster` labels (already true for [hcp-sla.yaml](../../argocd/config/regional-cluster/alerting-rules/templates/hcp-sla.yaml)). New rules are reviewed in the alerting-rules PR process; implementation may add a `promtool`/rule lint check in a follow-up.
+| Lifecycle state | Silence? (MVP) | Exemption notes                                                |
+| --------------- | -------------- | -------------------------------------------------------------- |
+| Installing      | Yes            | Exclude install-timeout alert via negative `alertname` matcher |
+| Deleting        | Yes            | No additional exemptions identified for MVP                    |
+| Limited support | No (post-MVP)  | Requires billing/security-critical exemption policy            |
+| Maintenance     | No (post-MVP)  | Requires per-window exemption policy                           |
+| Available       | No             | —                                                              |
+
+**Label contract (migration gate):** SLA burn-rate alerts must carry `namespace`, `name`, and `cluster` labels (already true for [hcp-sla.yaml](../../argocd/config/regional-cluster/alerting-rules/templates/hcp-sla.yaml)). A `promtool` check (or equivalent CI rule lint) validating these labels on all SLA rules **must pass before the dual-run period ends** and `unless` is removed.
 
 ### Client abstraction
 
@@ -121,8 +137,11 @@ MVP implementation uses in-cluster Alertmanager v2 HTTP.
 ### Migration
 
 1. Ship reconciler; dual-run PromQL `unless` + API silences for one release.
-2. Validate in e2e: silence exists while cluster is installing or deleting; silence removed when cluster becomes available. Install-timeout exemption is covered by matcher unit tests (forcing a stalled install in e2e is impractical).
+2. **Migration gates (required before removing `unless`):**
+   - `promtool` / CI check: every SLA burn-rate alert defines `namespace`, `name`, and `cluster`.
+   - Synthetic-alert tests against Alertmanager: for each MVP lifecycle state and transition, confirm eligible alerts are silenced and exempt alerts (install-timeout) still notify — validates matchers, renewal, and expiry. Silence-presence e2e alone is insufficient while `unless` is still active.
 3. Remove `unless` from SLA alert expressions. Keep lifecycle recording rules if dashboards still need them.
+4. Add `limited_support` / `maintenance` intents after exemption policies are approved.
 
 ## Consequences
 
