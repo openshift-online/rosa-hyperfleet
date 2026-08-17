@@ -173,6 +173,7 @@ spec:
                   arn: '{{ '{{ .metadata.annotations.sre_prometheus_target_group_arn }}' }}'
             aws-load-balancer-controller:
               clusterName: '{{ '{{ .metadata.labels.cluster_name }}' }}'
+              vpcId: '{{ '{{ .metadata.annotations.vpc_id }}' }}'
             karpenter:
               settings:
                 clusterName: '{{ '{{ .metadata.labels.cluster_name }}' }}'

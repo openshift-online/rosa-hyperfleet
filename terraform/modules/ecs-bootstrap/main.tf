@@ -245,6 +245,7 @@ resource "aws_ecs_task_definition" "bootstrap" {
               sre_domain: "$SRE_DOMAIN"
               redis_endpoint: "$REDIS_ENDPOINT"
               karpenter_controller_role_arn: "$KARPENTER_CONTROLLER_ROLE_ARN"
+              vpc_id: "$VPC_ID"
           type: Opaque
           stringData:
             name: in-cluster
@@ -361,6 +362,10 @@ resource "aws_ecs_task_definition" "bootstrap" {
         {
           name  = "KARPENTER_CONTROLLER_ROLE_ARN"
           value = var.karpenter_controller_role_arn
+        },
+        {
+          name  = "VPC_ID"
+          value = var.vpc_id
         }
       ]
 

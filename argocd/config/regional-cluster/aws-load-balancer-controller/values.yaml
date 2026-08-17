@@ -1,5 +1,6 @@
 aws-load-balancer-controller:
-  # clusterName injected via ApplicationSet valuesObject (aws-load-balancer-controller.clusterName)
+  # clusterName and vpcId injected via ApplicationSet valuesObject
+  vpcId: ""
   serviceAccount:
     create: true
     name: aws-load-balancer-controller
