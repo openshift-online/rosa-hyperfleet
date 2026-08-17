@@ -173,11 +173,14 @@ argo-cd:
   # redis-ha is a subchart and does not inherit global.tolerations.
   redis-ha:
     enabled: true
+    replicas: 2
+    hardAntiAffinity: false
     tolerations:
       - key: CriticalAddonsOnly
         operator: Exists
         effect: NoSchedule
     haproxy:
+      hardAntiAffinity: false
       tolerations:
         - key: CriticalAddonsOnly
           operator: Exists
