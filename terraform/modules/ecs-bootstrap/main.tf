@@ -140,9 +140,10 @@ resource "aws_ecs_task_definition" "bootstrap" {
           # Configure kubectl for EKS
           aws eks update-kubeconfig --name $CLUSTER_NAME
 
-          # Wait for coredns and metrics-server (on the bootstrap node group)
-          # before installing ArgoCD.
-          for ADDON in coredns metrics-server; do
+          # Wait for essential addons on the bootstrap node group before
+          # installing ArgoCD. Pod Identity agent must be active so that
+          # workloads deployed by ArgoCD (LBC, EBS CSI) can authenticate.
+          for ADDON in coredns metrics-server eks-pod-identity-agent; do
             echo "Waiting for $ADDON to be active..."
             aws eks wait addon-active \
               --cluster-name "$CLUSTER_NAME" \
