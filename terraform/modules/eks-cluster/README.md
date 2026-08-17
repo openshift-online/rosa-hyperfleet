@@ -7,6 +7,7 @@ Creates private EKS clusters with security-first configuration and standardized 
 - **Deterministic Resource Naming**: Uses `cluster_id` for all resource names (e.g., `regional`, `mc01`)
 - **Provider-Level Tagging**: Enforces required organizational tags via AWS provider default_tags
 - **Fully Private Clusters**: EKS control plane with private endpoint only
+- **Self-managed Karpenter**: Node provisioning via Karpenter v1 with custom EC2NodeClass
 - **GitOps Bootstrap**: Automated ArgoCD installation via ECS Fargate task for self-management
 - **Security Hardening**: KMS encryption, IMDSv2 enforcement, and network segmentation
 - **High Availability**: Multi-AZ NAT Gateways for fault-tolerant egress connectivity
@@ -18,7 +19,7 @@ Creates private EKS clusters with security-first configuration and standardized 
 - **KMS Encryption**: Kubernetes secrets encrypted at rest using customer-managed keys
 - **Dedicated Security Groups**: VPC endpoints use isolated security groups (port 443 from VPC CIDR only)
 - **Restricted Egress**: Cluster egress limited to HTTPS for container registries and VPC internal traffic
-- **Auto Mode Authentication**: EKS authentication configured for API_AND_CONFIG_MAP mode
+- **EKS Authentication**: Configured for API_AND_CONFIG_MAP mode
 
 ### High Availability Network Architecture
 
@@ -97,6 +98,7 @@ module "regional_cluster" {
 | `private_subnet_cidrs`          | CIDR blocks for private subnets                                                 | `list(string)` | `["10.0.0.0/18", "10.0.64.0/18", "10.0.128.0/18"]`      | no       |
 | `public_subnet_cidrs`           | CIDR blocks for public subnets                                                  | `list(string)` | `["10.0.192.0/22", "10.0.196.0/22", "10.0.200.0/22"]`   | no       |
 | `enable_pod_security_standards` | Enable Pod Security Standards                                                   | `bool`         | `true`                                                  | no       |
+| `ami_kms_key_arn`               | KMS key ARN for FIPS AMI EBS snapshots (grants Karpenter controller access)     | `string`       | `""`                                                    | no       |
 | `bootstrap_enabled`             | Enable ArgoCD bootstrap for GitOps management                                   | `bool`         | `true`                                                  | no       |
 | `argocd_namespace`              | Kubernetes namespace for ArgoCD installation                                    | `string`       | `"argocd"`                                              | no       |
 | `argocd_chart_version`          | ArgoCD Helm chart version                                                       | `string`       | `"9.3.0"`                                               | no       |
@@ -105,15 +107,18 @@ module "regional_cluster" {
 
 ## Outputs
 
-| Name                                 | Description                                        |
-| ------------------------------------ | -------------------------------------------------- |
-| `cluster_name`                       | EKS cluster name (same as `cluster_id`)            |
-| `cluster_endpoint`                   | EKS cluster API endpoint                           |
-| `cluster_certificate_authority_data` | Base64 encoded certificate data                    |
-| `vpc_id`                             | VPC ID where cluster is deployed                   |
-| `private_subnets`                    | Private subnet IDs where worker nodes are deployed |
-| `cluster_security_group_id`          | EKS cluster security group ID                      |
-| `bootstrap_report`                   | Bootstrap process information and status           |
+| Name                                   | Description                                        |
+| -------------------------------------- | -------------------------------------------------- |
+| `cluster_name`                         | EKS cluster name (same as `cluster_id`)            |
+| `cluster_endpoint`                     | EKS cluster API endpoint                           |
+| `cluster_certificate_authority_data`   | Base64 encoded certificate data                    |
+| `vpc_id`                               | VPC ID where cluster is deployed                   |
+| `private_subnets`                      | Private subnet IDs where worker nodes are deployed |
+| `cluster_security_group_id`            | EKS cluster security group ID                      |
+| `karpenter_controller_role_arn`        | IAM role ARN for Karpenter controller (IRSA)       |
+| `karpenter_queue_url`                  | SQS queue URL for Karpenter interruption handling  |
+| `karpenter_node_instance_profile_name` | Instance profile for Karpenter-provisioned nodes   |
+| `bootstrap_report`                     | Bootstrap process information and status           |
 
 ## Bootstrap Functionality
 
@@ -121,11 +126,10 @@ When `bootstrap_enabled` is `true`, the module automatically installs ArgoCD for
 
 1. **ECS Fargate Task**: Executes within cluster VPC for secure bootstrap operations
 2. **Tool Installation**: Downloads kubectl, helm, and AWS CLI at runtime
-3. **FIPS Node Setup**: Applies FIPS NodeClass and cluster-type-specific workloads NodePool
-4. **Addon Wait**: Waits for CoreDNS and metrics-server addons to become Active
-5. **ArgoCD Installation**: Installs ArgoCD via Helm with cluster-only access
-6. **GitOps Configuration**: Creates Application of Applications for self-management
-7. **Synchronous Execution**: Bootstrap completes during `terraform apply` with visible logs
+3. **Addon Wait**: Waits for CoreDNS, metrics-server, and Pod Identity agent to become Active
+4. **ArgoCD Installation**: Installs ArgoCD via Helm with cluster-only access
+5. **GitOps Configuration**: Creates Application of Applications for self-management
+6. **Synchronous Execution**: Bootstrap completes during `terraform apply` with visible logs
 
 ### Bootstrap Process
 
@@ -133,13 +137,18 @@ The ECS bootstrap task:
 
 - Runs in the cluster's private subnets for network access
 - Updates kubeconfig using EKS access entries and Pod Identity
-- Applies a FIPS-validated Bottlerocket NodeClass (`fips`) and a workloads NodePool
-- Waits for CoreDNS and metrics-server to be Active (scheduled on the built-in `system` pool)
+- Waits for CoreDNS, metrics-server, and Pod Identity agent to become Active
 - Installs ArgoCD using Helm from the official repository
 - Creates bootstrap application pointing to your repository
 - Enables ArgoCD to take over cluster management
 
-For the FIPS node strategy, including why the built-in `system` pool is retained and `general-purpose` is disabled, see [FIPS-Only EKS Compute](../../../docs/design/fips-eks-compute.md).
+- **`karpenter-bootstrap` managed node group**: 2x Bottlerocket m7i.xlarge nodes. ArgoCD and Karpenter schedule here via the `bootstrap-critical` PriorityClass (able to preempt lower-priority pods rather than excluding them via a taint). Hosts Karpenter controller, CoreDNS, and metrics-server.
+- **Karpenter controller IAM role**: IRSA-backed, scoped to `kube-system/karpenter` ServiceAccount with SQS, EC2, and IAM instance profile permissions.
+- **Karpenter node IAM role**: Full `AmazonEKSWorkerNodePolicy`, VPC CNI, ECR pull-only, and optional KMS decrypt for FIPS AMI snapshots.
+- **SQS queue**: Receives EC2 interruption events (spot reclamation, instance health, rebalance) for graceful node draining.
+- **EventBridge rules**: Four rules forward EC2 lifecycle events to the SQS queue.
+
+For the node provisioning strategy, including why Auto Mode was replaced with self-managed Karpenter, see [FIPS-Only EKS Compute](../../../docs/design/fips-eks-compute.md). For Karpenter IAM role design, see [Karpenter Node Provisioning](../../../docs/design/karpenter-node-provisioning.md). FIPS-validated compute will be delivered as part of the RHEL AMI work.
 
 ## Requirements
 

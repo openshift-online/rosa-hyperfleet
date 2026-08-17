@@ -38,7 +38,8 @@ spec:
     spec:
       project: default
       destination:
-        namespace: '{{ '{{ .path.basename }}' }}'
+        # Karpenter must be installed in kube-system namespace
+        namespace: '{{ '{{ if eq .path.basename "karpenter" }}kube-system{{ else }}{{ .path.basename }}{{ end }}' }}'
         server: '{{ '{{ .server }}' }}'
       syncPolicy:
         automated:
@@ -54,6 +55,46 @@ spec:
         syncOptions:
         - ServerSideApply=true
         - CreateNamespace=true
+        # RespectIgnoreDifferences must be set per-Application; ArgoCD has no per-resource
+        # equivalent for it (unlike SkipDryRunOnMissingResource, which is set per-resource
+        # below on the specific resources that need it — see argocd.argoproj.io/sync-options
+        # annotations in eks-nodepool, alerting-rules, and *targetgroupbinding.yaml templates).
+        - RespectIgnoreDifferences=true
+      # Fields managed by controllers post-deployment that should not cause OutOfSync.
+      # These stay unscoped (apply to every generated Application) rather than scoped to
+      # aws-load-balancer-controller specifically:
+      #   - Webhook caBundle: cert-manager, external-secrets, and LBC each self-manage
+      #     their webhook's caBundle via their own CA injector/cert controller — this is
+      #     shared across all three, not LBC-specific.
+      #   - TargetGroupBinding .status: this CRD is unique to LBC, so scoping by
+      #     group/kind is already precise (no collision risk). The CRs are actually
+      #     created by shared/argocd, platform-api, monitoring, thanos, and grafana/loki
+      #     — not by the aws-load-balancer-controller Application itself — so scoping
+      #     this to LBC would break the exemption for the Applications that need it.
+      #   - Secret named aws-load-balancer-tls: this name is unique to the LBC chart, so
+      #     collision risk is low. Scoping it to LBC specifically would require ArgoCD's
+      #     templatePatch mechanism (goTemplate only renders per-field, not across list
+      #     structure), which would mean restating all of ignoreDifferences a second time
+      #     to avoid the patch wiping out the other entries — not worth the duplication
+      #     for this level of risk.
+      ignoreDifferences:
+      - group: admissionregistration.k8s.io
+        kind: MutatingWebhookConfiguration
+        jqPathExpressions:
+        - .webhooks[].clientConfig.caBundle
+      - group: admissionregistration.k8s.io
+        kind: ValidatingWebhookConfiguration
+        jqPathExpressions:
+        - .webhooks[].clientConfig.caBundle
+      - group: ""
+        kind: Secret
+        name: aws-load-balancer-tls
+        jqPathExpressions:
+        - .data
+      - group: elbv2.k8s.aws
+        kind: TargetGroupBinding
+        jqPathExpressions:
+        - .status
       sources:
       - helm:
           valueFiles:
@@ -130,6 +171,16 @@ spec:
               sre:
                 targetGroup:
                   arn: '{{ '{{ .metadata.annotations.sre_prometheus_target_group_arn }}' }}'
+            aws-load-balancer-controller:
+              clusterName: '{{ '{{ .metadata.labels.cluster_name }}' }}'
+              vpcId: '{{ '{{ .metadata.annotations.vpc_id }}' }}'
+            karpenter:
+              settings:
+                clusterName: '{{ '{{ .metadata.labels.cluster_name }}' }}'
+                interruptionQueue: '{{ '{{ .metadata.labels.cluster_name }}' }}-karpenter'
+              serviceAccount:
+                annotations:
+                  eks.amazonaws.com/role-arn: '{{ '{{ .metadata.annotations.karpenter_controller_role_arn }}' }}'
         path: '{{ '{{ .path.path }}' }}'
         repoURL: '{{ '{{ .metadata.annotations.git_repo }}' }}'
         targetRevision: '{% if pinned %}{{ pinned }}{% else %}{{ "{{ .metadata.annotations.git_revision }}" }}{% endif %}'

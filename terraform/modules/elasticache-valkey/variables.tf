@@ -23,7 +23,7 @@ variable "eks_cluster_security_group_id" {
 }
 
 variable "eks_cluster_primary_security_group_id" {
-  description = "EKS cluster primary security group ID (Auto Mode ingress to Valkey)"
+  description = "EKS cluster primary security group ID (ingress to Valkey)"
   type        = string
 }
 

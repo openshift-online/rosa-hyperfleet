@@ -3,6 +3,9 @@ kind: PrometheusRule
 metadata:
   name: hcp-sla
   namespace: thanos
+  annotations:
+    # Prometheus Operator CRD (installed by the monitoring Application) may not exist yet when ArgoCD dry-runs this resource
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
   labels:
     app.kubernetes.io/name: alerting-rules
     app.kubernetes.io/managed-by: Helm

@@ -4,6 +4,9 @@ kind: ServiceMonitor
 metadata:
   name: {{ include "kube-applier.fullname" . }}
   namespace: {{ .Release.Namespace }}
+  annotations:
+    # Prometheus Operator CRD (installed by the monitoring Application) may not exist yet when ArgoCD dry-runs this resource
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
   labels:
     {{- include "kube-applier.labels" . | nindent 4 }}
 spec:

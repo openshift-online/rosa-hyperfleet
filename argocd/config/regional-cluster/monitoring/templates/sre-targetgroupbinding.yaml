@@ -1,9 +1,12 @@
 {{- if .Values.monitoring.sre.targetGroup.arn }}
-apiVersion: eks.amazonaws.com/v1
+apiVersion: elbv2.k8s.aws/v1beta1
 kind: TargetGroupBinding
 metadata:
   name: prometheus-sre
   namespace: {{ .Release.Namespace }}
+  annotations:
+    # aws-load-balancer-controller CRD may not exist yet when ArgoCD dry-runs this resource
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   serviceRef:
     name: monitoring-prometheus

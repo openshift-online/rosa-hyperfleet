@@ -179,7 +179,21 @@ module "regional_cluster" {
 }
 
 # =============================================================================
-# ECS Bootstrap - depends on VPC + EKS
+# ECS Bootstrap - Installation Mechanism for Fully Private Cluster
+#
+# The regional_cluster module above creates a fully private EKS cluster with a
+# karpenter-bootstrap managed node group (2× m7i.xlarge) where Karpenter and
+# ArgoCD will run. However, Terraform cannot reach the private cluster API to
+# install software via the helm provider.
+#
+# This ecs_bootstrap module creates ECS Fargate infrastructure that runs in the
+# cluster's VPC and can reach the private EKS API. A one-time bootstrap task
+# performs `helm install` of Karpenter and ArgoCD onto the bootstrap nodes, then
+# exits. After bootstrap, Karpenter and ArgoCD continue running on the managed
+# node group, and the ECS infrastructure remains available for future audited
+# SRE operations.
+#
+# See docs/design/fully-private-eks-bootstrap.md for the full architecture.
 # =============================================================================
 
 module "ecs_bootstrap" {
@@ -203,6 +217,8 @@ module "ecs_bootstrap" {
 
   rc_aws_account_id = var.target_account_id
   redis_endpoint    = var.enable_rate_limit_redis ? "${module.elasticache_valkey[0].endpoint}:${module.elasticache_valkey[0].port}" : ""
+
+  karpenter_controller_role_arn = module.regional_cluster.karpenter_controller_role_arn
 }
 
 # =============================================================================
@@ -542,6 +558,18 @@ module "cloudwatch_exporter" {
 }
 
 # =============================================================================
+# AWS Load Balancer Controller (Pod Identity for self-managed Karpenter clusters)
+#
+# EKS Auto Mode includes LBC built-in. Self-managed Karpenter clusters must install it
+# explicitly to provide the TargetGroupBinding CRD used by platform-api.
+# =============================================================================
+
+module "aws_load_balancer_controller" {
+  source       = "../../modules/aws-load-balancer-controller"
+  cluster_name = module.regional_cluster.cluster_name
+}
+
+# =============================================================================
 # Regional OIDC Module
 #
 # Provisions the shared OIDC S3 bucket and CloudFront distribution owned by
@@ -551,9 +579,8 @@ module "cloudwatch_exporter" {
 module "regional_oidc" {
   source = "../../modules/regional-oidc"
 
-  regional_id   = var.regional_id
-  mc_ou_path    = var.mc_ou_path
-  force_destroy = var.environment == "ephemeral"
+  regional_id = var.regional_id
+  mc_ou_path  = var.mc_ou_path
 }
 
 # =============================================================================

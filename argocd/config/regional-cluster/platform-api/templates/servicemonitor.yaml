@@ -5,6 +5,9 @@ kind: ServiceMonitor
 metadata:
   name: {{ .Values.platformApi.app.name }}
   namespace: {{ .Values.platformApi.namespace }}
+  annotations:
+    # Prometheus Operator CRD (installed by the monitoring Application) may not exist yet when ArgoCD dry-runs this resource
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
   labels:
     app: {{ .Values.platformApi.app.name }}
     {{- with .Values.platformApi.serviceMonitor.labels }}

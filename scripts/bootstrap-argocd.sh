@@ -110,6 +110,83 @@ fi
 
 RHOBS_API_URL="${RHOBS_API_URL:-}"
 DNS_ZONE_OPERATOR_ROLE_ARN="${DNS_ZONE_OPERATOR_ROLE_ARN:-}"
+# Set by E2E CI workflows only — gates the post-bootstrap HyperShift health wait.
+WAIT_FOR_HYPERSHIFT_HEALTH="${WAIT_FOR_HYPERSHIFT_HEALTH:-false}"
+if [[ "$WAIT_FOR_HYPERSHIFT_HEALTH" != "true" && "$WAIT_FOR_HYPERSHIFT_HEALTH" != "false" ]]; then
+    echo "ERROR: WAIT_FOR_HYPERSHIFT_HEALTH must be 'true' or 'false', got '${WAIT_FOR_HYPERSHIFT_HEALTH}'" >&2
+    exit 1
+fi
+
+OVERRIDES_JSON=$(jq -nc \
+  --arg cluster_name "$CLUSTER_NAME" \
+  --arg cluster_type "$CLUSTER_TYPE" \
+  --arg repository_url "$REPOSITORY_URL" \
+  --arg repository_path "$APPLICATIONSET_PATH" \
+  --arg repository_branch "$REPOSITORY_BRANCH" \
+  --arg environment "$ENVIRONMENT" \
+  --arg aws_region "$AWS_REGION" \
+  --arg region_deployment "$REGION_DEPLOYMENT" \
+  --arg api_target_group_arn "$API_TARGET_GROUP_ARN" \
+  --arg thanos_target_group_arn "$THANOS_TARGET_GROUP_ARN" \
+  --arg thanos_query_target_group_arn "$THANOS_QUERY_TARGET_GROUP_ARN" \
+  --arg loki_kms_key_arn "$LOKI_KMS_KEY_ARN" \
+  --arg loki_distributor_target_group_arn "$LOKI_DISTRIBUTOR_TARGET_GROUP_ARN" \
+  --arg loki_query_frontend_target_group_arn "$LOKI_QUERY_FRONTEND_TARGET_GROUP_ARN" \
+  --arg rhobs_api_url "$RHOBS_API_URL" \
+  --arg dns_zone_operator_role_arn "$DNS_ZONE_OPERATOR_ROLE_ARN" \
+  --arg zoa_table_name "$ZOA_TABLE_NAME" \
+  --arg zoa_audit_table_name "$ZOA_AUDIT_TABLE_NAME" \
+  --arg zoa_bucket_name "$ZOA_BUCKET_NAME" \
+  --arg oidc_cloudfront_domain "$OIDC_CLOUDFRONT_DOMAIN" \
+  --arg sre_grafana_target_group_arn "$SRE_GRAFANA_TARGET_GROUP_ARN" \
+  --arg sre_argocd_target_group_arn "$SRE_ARGOCD_TARGET_GROUP_ARN" \
+  --arg sre_prometheus_target_group_arn "$SRE_PROMETHEUS_TARGET_GROUP_ARN" \
+  --arg sre_thanos_target_group_arn "$SRE_THANOS_TARGET_GROUP_ARN" \
+  --arg sre_alb_dns_name "$SRE_ALB_DNS_NAME" \
+  --arg sre_domain "$SRE_DOMAIN" \
+  --arg redis_endpoint "$REDIS_ENDPOINT" \
+  --arg wait_for_hypershift_health "$WAIT_FOR_HYPERSHIFT_HEALTH" \
+  '{
+    containerOverrides: [{
+      name: "bootstrap",
+      environment: [
+        {name: "CLUSTER_NAME", value: $cluster_name},
+        {name: "CLUSTER_TYPE", value: $cluster_type},
+        {name: "REPOSITORY_URL", value: $repository_url},
+        {name: "REPOSITORY_PATH", value: $repository_path},
+        {name: "REPOSITORY_BRANCH", value: $repository_branch},
+        {name: "ENVIRONMENT", value: $environment},
+        {name: "AWS_REGION", value: $aws_region},
+        {name: "REGION_DEPLOYMENT", value: $region_deployment},
+        {name: "API_TARGET_GROUP_ARN", value: $api_target_group_arn},
+        {name: "THANOS_TARGET_GROUP_ARN", value: $thanos_target_group_arn},
+        {name: "THANOS_QUERY_TARGET_GROUP_ARN", value: $thanos_query_target_group_arn},
+        {name: "LOKI_KMS_KEY_ARN", value: $loki_kms_key_arn},
+        {name: "LOKI_DISTRIBUTOR_TARGET_GROUP_ARN", value: $loki_distributor_target_group_arn},
+        {name: "LOKI_QUERY_FRONTEND_TARGET_GROUP_ARN", value: $loki_query_frontend_target_group_arn},
+        {name: "RHOBS_API_URL", value: $rhobs_api_url},
+        {name: "DNS_ZONE_OPERATOR_ROLE_ARN", value: $dns_zone_operator_role_arn},
+        {name: "ZOA_TABLE_NAME", value: $zoa_table_name},
+        {name: "ZOA_AUDIT_TABLE_NAME", value: $zoa_audit_table_name},
+        {name: "ZOA_BUCKET_NAME", value: $zoa_bucket_name},
+        {name: "OIDC_CLOUDFRONT_DOMAIN", value: $oidc_cloudfront_domain},
+        {name: "SRE_GRAFANA_TARGET_GROUP_ARN", value: $sre_grafana_target_group_arn},
+        {name: "SRE_ARGOCD_TARGET_GROUP_ARN", value: $sre_argocd_target_group_arn},
+        {name: "SRE_PROMETHEUS_TARGET_GROUP_ARN", value: $sre_prometheus_target_group_arn},
+        {name: "SRE_THANOS_TARGET_GROUP_ARN", value: $sre_thanos_target_group_arn},
+        {name: "SRE_ALB_DNS_NAME", value: $sre_alb_dns_name},
+        {name: "SRE_DOMAIN", value: $sre_domain},
+        {name: "REDIS_ENDPOINT", value: $redis_endpoint},
+        {name: "WAIT_FOR_HYPERSHIFT_HEALTH", value: $wait_for_hypershift_health}
+      ]
+    }]
+  }')
+
+# ECS RunTask enforces an 8192-character limit on the serialized --overrides value.
+if [[ ${#OVERRIDES_JSON} -ge 8192 ]]; then
+    echo "ERROR: --overrides payload is ${#OVERRIDES_JSON} characters, at or over the ECS 8192-character limit" >&2
+    exit 1
+fi
 
 echo "Bootstrapping ArgoCD on $CLUSTER_NAME"
 set +e
@@ -118,41 +195,7 @@ RUN_TASK_OUTPUT=$(aws ecs run-task \
   --task-definition "$TASK_DEFINITION_ARN" \
   --launch-type FARGATE \
   --network-configuration "awsvpcConfiguration={subnets=[$PRIVATE_SUBNETS],securityGroups=[$BOOTSTRAP_SECURITY_GROUP],assignPublicIp=DISABLED}" \
-  --overrides "{
-    \"containerOverrides\": [{
-      \"name\": \"bootstrap\",
-      \"environment\": [
-        {\"name\": \"CLUSTER_NAME\", \"value\": \"$CLUSTER_NAME\"},
-        {\"name\": \"CLUSTER_TYPE\", \"value\": \"$CLUSTER_TYPE\"},
-        {\"name\": \"REPOSITORY_URL\", \"value\": \"$REPOSITORY_URL\"},
-        {\"name\": \"REPOSITORY_PATH\", \"value\": \"$APPLICATIONSET_PATH\"},
-        {\"name\": \"REPOSITORY_BRANCH\", \"value\": \"$REPOSITORY_BRANCH\"},
-        {\"name\": \"ENVIRONMENT\", \"value\": \"$ENVIRONMENT\"},
-        {\"name\": \"AWS_REGION\", \"value\": \"$AWS_REGION\"},
-        {\"name\": \"REGION_DEPLOYMENT\", \"value\": \"$REGION_DEPLOYMENT\"},
-        {\"name\": \"CLUSTER_TYPE\", \"value\": \"$CLUSTER_TYPE\"},
-        {\"name\": \"API_TARGET_GROUP_ARN\", \"value\": \"$API_TARGET_GROUP_ARN\"},
-        {\"name\": \"THANOS_TARGET_GROUP_ARN\", \"value\": \"$THANOS_TARGET_GROUP_ARN\"},
-        {\"name\": \"THANOS_QUERY_TARGET_GROUP_ARN\", \"value\": \"$THANOS_QUERY_TARGET_GROUP_ARN\"},
-        {\"name\": \"LOKI_KMS_KEY_ARN\", \"value\": \"$LOKI_KMS_KEY_ARN\"},
-        {\"name\": \"LOKI_DISTRIBUTOR_TARGET_GROUP_ARN\", \"value\": \"$LOKI_DISTRIBUTOR_TARGET_GROUP_ARN\"},
-        {\"name\": \"LOKI_QUERY_FRONTEND_TARGET_GROUP_ARN\", \"value\": \"$LOKI_QUERY_FRONTEND_TARGET_GROUP_ARN\"},
-        {\"name\": \"RHOBS_API_URL\", \"value\": \"$RHOBS_API_URL\"},
-        {\"name\": \"DNS_ZONE_OPERATOR_ROLE_ARN\", \"value\": \"$DNS_ZONE_OPERATOR_ROLE_ARN\"},
-        {\"name\": \"ZOA_TABLE_NAME\", \"value\": \"$ZOA_TABLE_NAME\"},
-        {\"name\": \"ZOA_AUDIT_TABLE_NAME\", \"value\": \"$ZOA_AUDIT_TABLE_NAME\"},
-        {\"name\": \"ZOA_BUCKET_NAME\", \"value\": \"$ZOA_BUCKET_NAME\"},
-        {\"name\": \"OIDC_CLOUDFRONT_DOMAIN\", \"value\": \"$OIDC_CLOUDFRONT_DOMAIN\"},
-        {\"name\": \"SRE_GRAFANA_TARGET_GROUP_ARN\", \"value\": \"$SRE_GRAFANA_TARGET_GROUP_ARN\"},
-        {\"name\": \"SRE_ARGOCD_TARGET_GROUP_ARN\", \"value\": \"$SRE_ARGOCD_TARGET_GROUP_ARN\"},
-        {\"name\": \"SRE_PROMETHEUS_TARGET_GROUP_ARN\", \"value\": \"$SRE_PROMETHEUS_TARGET_GROUP_ARN\"},
-        {\"name\": \"SRE_THANOS_TARGET_GROUP_ARN\", \"value\": \"$SRE_THANOS_TARGET_GROUP_ARN\"},
-        {\"name\": \"SRE_ALB_DNS_NAME\", \"value\": \"$SRE_ALB_DNS_NAME\"},
-        {\"name\": \"SRE_DOMAIN\", \"value\": \"$SRE_DOMAIN\"},
-        {\"name\": \"REDIS_ENDPOINT\", \"value\": \"$REDIS_ENDPOINT\"}
-      ]
-    }]
-  }" 2>&1)
+  --overrides "$OVERRIDES_JSON" 2>&1)
 RUN_TASK_EXIT_CODE=$?
 set -e
 
