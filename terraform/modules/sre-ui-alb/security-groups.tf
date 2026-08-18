@@ -100,7 +100,6 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_pods" {
 # Node Security Group Ingress Rules
 #
 # Allow SRE ALB traffic to reach pods on each service port.
-# For EKS Auto Mode, targets the cluster_primary_security_group_id.
 # -----------------------------------------------------------------------------
 
 # Node SG ingress: one rule per unique container port derived from local.services

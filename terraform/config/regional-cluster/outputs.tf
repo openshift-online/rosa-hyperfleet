@@ -51,7 +51,7 @@ output "hyperfleet_db_security_group_id" {
 }
 
 output "node_security_group_id" {
-  description = "EKS node/pod security group ID (Auto Mode primary SG)"
+  description = "EKS node/pod security group ID"
   value       = module.regional_cluster.node_security_group_id
 }
 

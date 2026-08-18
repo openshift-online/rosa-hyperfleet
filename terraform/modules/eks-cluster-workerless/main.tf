@@ -2,7 +2,7 @@
 # Workerless EKS Cluster
 #
 # Minimal EKS cluster that serves only as a kube-apiserver database.
-# No compute (Auto Mode), no node IAM roles, no addons. Just the control
+# No compute, no node IAM roles, no addons. Just the control
 # plane, KMS encryption, and CloudWatch audit logs.
 # =============================================================================
 

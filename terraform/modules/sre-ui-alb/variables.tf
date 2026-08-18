@@ -33,12 +33,12 @@ variable "regional_id" {
 }
 
 variable "node_security_group_id" {
-  description = "EKS node/pod security group ID. For EKS Auto Mode, use cluster_primary_security_group_id."
+  description = "EKS node/pod security group ID"
   type        = string
 }
 
 variable "cluster_name" {
-  description = "EKS cluster name — required for eks:eks-cluster-name tag (EKS Auto Mode IAM)"
+  description = "EKS cluster name — used to tag target groups with eks:eks-cluster-name"
   type        = string
 }
 

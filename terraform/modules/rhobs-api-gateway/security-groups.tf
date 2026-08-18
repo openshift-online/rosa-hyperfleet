@@ -88,7 +88,6 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_thanos_query" {
 # Node Security Group Ingress Rules
 #
 # Allow RHOBS ALB to send health checks and traffic to Thanos pods.
-# For EKS Auto Mode, this must target the cluster_primary_security_group_id.
 # -----------------------------------------------------------------------------
 
 resource "aws_vpc_security_group_ingress_rule" "nodes_from_alb_thanos" {

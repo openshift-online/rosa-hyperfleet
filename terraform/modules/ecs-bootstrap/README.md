@@ -24,9 +24,6 @@ module "ecs_bootstrap" {
   eks_cluster_name             = module.eks_cluster.cluster_name
   eks_cluster_security_group_id = module.eks_cluster.cluster_security_group_id
   cluster_id                   = var.regional_id  # or var.management_id
-
-  # Karpenter inputs (from eks-cluster module outputs)
-  karpenter_controller_role_arn = module.eks_cluster.karpenter_controller_role_arn
 }
 ```
 
@@ -66,16 +63,15 @@ After ECS bootstrap completes, ArgoCD takes over cluster management:
 
 ## Inputs
 
-| Name                            | Description                                                                                                                                                                     | Type           | Default | Required |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | ------- | :------: |
-| `cluster_id`                    | Cluster identifier for resource naming (e.g., `regional`, `mc01`)                                                                                                               | `string`       | n/a     |   yes    |
-| `vpc_id`                        | VPC ID for ECS task execution                                                                                                                                                   | `string`       | n/a     |   yes    |
-| `private_subnets`               | Private subnet IDs for task execution                                                                                                                                           | `list(string)` | n/a     |   yes    |
-| `eks_cluster_arn`               | EKS cluster ARN for bootstrap configuration                                                                                                                                     | `string`       | n/a     |   yes    |
-| `eks_cluster_name`              | EKS cluster name for bootstrap configuration                                                                                                                                    | `string`       | n/a     |   yes    |
-| `eks_cluster_security_group_id` | EKS cluster security group ID                                                                                                                                                   | `string`       | n/a     |   yes    |
-| `karpenter_controller_role_arn` | IAM role ARN for Karpenter controller (IRSA). Set from `eks_cluster.karpenter_controller_role_arn`. Injected into the ArgoCD cluster secret for ApplicationSet value injection. | `string`       | n/a     |   yes    |
-| `environment`                   | Environment name for tagging                                                                                                                                                    | `string`       | `"dev"` |    no    |
+| Name                            | Description                                                       | Type           | Default | Required |
+| ------------------------------- | ----------------------------------------------------------------- | -------------- | ------- | :------: |
+| `cluster_id`                    | Cluster identifier for resource naming (e.g., `regional`, `mc01`) | `string`       | n/a     |   yes    |
+| `vpc_id`                        | VPC ID for ECS task execution                                     | `string`       | n/a     |   yes    |
+| `private_subnets`               | Private subnet IDs for task execution                             | `list(string)` | n/a     |   yes    |
+| `eks_cluster_arn`               | EKS cluster ARN for bootstrap configuration                       | `string`       | n/a     |   yes    |
+| `eks_cluster_name`              | EKS cluster name for bootstrap configuration                      | `string`       | n/a     |   yes    |
+| `eks_cluster_security_group_id` | EKS cluster security group ID                                     | `string`       | n/a     |   yes    |
+| `environment`                   | Environment name for tagging                                      | `string`       | `"dev"` |    no    |
 
 ## Outputs
 

@@ -69,7 +69,7 @@ node OS configuration.
   between them, consistent with the project's eventual-consistency ArgoCD model (`selfHeal: true`,
   `retry.limit: -1` with exponential backoff). If eks-nodepool's apply runs before Karpenter's CRDs
   are registered, ArgoCD retries until it succeeds. The ApplicationSet injects cluster-specific
-  values (clusterName, interruptionQueue, IRSA role ARN) into the Karpenter Helm chart, and the
+  values (clusterName, interruptionQueue) into the Karpenter Helm chart, and the
   eks-nodepool chart creates the `EC2NodeClass` and workloads `NodePool`.
 
 - **Tradeoff**: The `karpenter-bootstrap` node group runs standard Amazon Linux 2023 (AL2023) nodes.
@@ -100,7 +100,7 @@ node OS configuration.
   AWS-managed EKS addons; Karpenter is OSS software installed and managed by ArgoCD.
 - Platform and application workloads currently run on standard Bottlerocket nodes. FIPS-validated
   compute (RHEL with FIPS mode enabled) will be delivered as part of the RHEL AMI work.
-- Two IAM roles are required: the IRSA-backed Karpenter controller role, and
+- Two IAM roles are required: the Karpenter controller role (bound via EKS Pod Identity), and
   `karpenter-node-role`, shared by both the `karpenter-bootstrap` node group and
   Karpenter-provisioned nodes.
 
@@ -119,7 +119,7 @@ node OS configuration.
 
 - The `EC2NodeClass` selects subnets and security groups via cluster-owned tags, ensuring nodes
   land in the correct private subnets with correct network policies.
-- Karpenter controller IAM role uses IRSA (ServiceAccount annotation on `kube-system/karpenter`)
+- Karpenter controller IAM role is bound via EKS Pod Identity to `kube-system/karpenter`
   with least-privilege SQS, EC2, and IAM instance profile permissions.
 - Karpenter node IAM role (`${cluster_id}-karpenter-node-role`) is referenced directly in the
   `EC2NodeClass`, scoping node permissions to a cluster-specific role.

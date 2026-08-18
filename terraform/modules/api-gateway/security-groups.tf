@@ -72,8 +72,6 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_targets" {
 # Node Security Group Ingress Rule
 #
 # Allow ALB to send health checks and traffic to pods in the cluster.
-# For EKS Auto Mode, this must be added to the cluster_primary_security_group_id
-# (not the cluster_security_group_id) because that's what nodes/pods actually use.
 # -----------------------------------------------------------------------------
 
 resource "aws_vpc_security_group_ingress_rule" "nodes_from_alb" {

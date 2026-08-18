@@ -268,9 +268,8 @@ resource "aws_eks_node_group" "karpenter_bootstrap" {
 # -----------------------------------------------------------------------------
 # Explicit Core Addons (Karpenter mode only)
 #
-# bootstrap_self_managed_addons = false prevents EKS from auto-installing these.
-# Auto Mode clusters receive VPC CNI and kube-proxy from the managed control
-# plane; Karpenter clusters must declare them explicitly.
+# bootstrap_self_managed_addons = false prevents EKS from auto-installing these;
+# self-managed Karpenter clusters must declare them explicitly.
 # -----------------------------------------------------------------------------
 
 resource "aws_eks_addon" "vpc_cni" {

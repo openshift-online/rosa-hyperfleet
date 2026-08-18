@@ -260,7 +260,6 @@ resource "aws_ecs_task_definition" "bootstrap" {
               sre_alb_dns_name: "$SRE_ALB_DNS_NAME"
               sre_domain: "$SRE_DOMAIN"
               redis_endpoint: "$REDIS_ENDPOINT"
-              karpenter_controller_role_arn: "$KARPENTER_CONTROLLER_ROLE_ARN"
               vpc_id: "$VPC_ID"
           type: Opaque
           stringData:
@@ -374,10 +373,6 @@ resource "aws_ecs_task_definition" "bootstrap" {
         {
           name  = "REDIS_ENDPOINT"
           value = var.redis_endpoint
-        },
-        {
-          name  = "KARPENTER_CONTROLLER_ROLE_ARN"
-          value = var.karpenter_controller_role_arn
         },
         {
           name  = "VPC_ID"

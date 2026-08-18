@@ -157,9 +157,6 @@ spec:
               settings:
                 clusterName: '{{ '{{ .metadata.labels.cluster_name }}' }}'
                 interruptionQueue: '{{ '{{ .metadata.labels.cluster_name }}' }}-karpenter'
-              serviceAccount:
-                annotations:
-                  eks.amazonaws.com/role-arn: '{{ '{{ .metadata.annotations.karpenter_controller_role_arn }}' }}'
         path: '{{ '{{ .path.path }}' }}'
         repoURL: '{{ '{{ .metadata.annotations.git_repo }}' }}'
         targetRevision: '{% if pinned %}{{ pinned }}{% else %}{{ "{{ .metadata.annotations.git_revision }}" }}{% endif %}'

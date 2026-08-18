@@ -3,7 +3,7 @@
 #
 # - eks_cluster role: AmazonEKSClusterPolicy
 # - karpenter_node role: AmazonEKSWorkerNodePolicy + CNI + ECR + SSM
-# - karpenter_controller role: IRSA-backed, scoped to kube-system/karpenter SA
+# - karpenter_controller role: Pod Identity-backed, scoped to kube-system/karpenter SA
 # - ebs_csi role: Pod Identity-backed, scoped to kube-system/ebs-csi-controller-sa
 # - SQS interruption queue + four EventBridge rules
 # =============================================================================
@@ -74,20 +74,7 @@ resource "aws_iam_instance_profile" "karpenter_node" {
 }
 
 # -----------------------------------------------------------------------------
-# OIDC Provider — required for Karpenter controller IRSA
-# -----------------------------------------------------------------------------
-
-resource "aws_iam_openid_connect_provider" "eks" {
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = [data.tls_certificate.eks_oidc.certificates[0].sha1_fingerprint]
-  url             = aws_eks_cluster.main.identity[0].oidc[0].issuer
-}
-
-# -----------------------------------------------------------------------------
-# Karpenter Controller Role (IRSA)
-#
-# Karpenter predates EKS Pod Identity support; IRSA is the supported auth
-# mechanism. See ADR docs/design/karpenter-node-provisioning.md.
+# Karpenter Controller Role (Pod Identity)
 # -----------------------------------------------------------------------------
 
 resource "aws_iam_role" "karpenter_controller" {
@@ -96,19 +83,18 @@ resource "aws_iam_role" "karpenter_controller" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
-      Principal = {
-        Federated = aws_iam_openid_connect_provider.eks.arn
-      }
-      Action = "sts:AssumeRoleWithWebIdentity"
-      Condition = {
-        StringEquals = {
-          "${local.oidc_issuer}:sub" = "system:serviceaccount:kube-system:karpenter"
-          "${local.oidc_issuer}:aud" = "sts.amazonaws.com"
-        }
-      }
+      Effect    = "Allow"
+      Principal = { Service = "pods.eks.amazonaws.com" }
+      Action    = ["sts:AssumeRole", "sts:TagSession"]
     }]
   })
+}
+
+resource "aws_eks_pod_identity_association" "karpenter_controller" {
+  cluster_name    = aws_eks_cluster.main.name
+  namespace       = "kube-system"
+  service_account = "karpenter"
+  role_arn        = aws_iam_role.karpenter_controller.arn
 }
 
 resource "aws_iam_role_policy" "karpenter_controller" {
@@ -261,7 +247,7 @@ resource "aws_iam_role_policy" "karpenter_controller" {
   })
 }
 
-# The controller (IRSA) calls RunInstances, which requires kms:CreateGrant so
+# The controller calls RunInstances, which requires kms:CreateGrant so
 # EC2 can decrypt the RHEL FIPS AMI's encrypted EBS snapshot on instance launch.
 # kms:GrantIsForAWSResource restricts grant creation to AWS service principals,
 # preventing the controller from granting arbitrary IAM principals key access.

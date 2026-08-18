@@ -115,7 +115,6 @@ module "regional_cluster" {
 | `vpc_id`                               | VPC ID where cluster is deployed                   |
 | `private_subnets`                      | Private subnet IDs where worker nodes are deployed |
 | `cluster_security_group_id`            | EKS cluster security group ID                      |
-| `karpenter_controller_role_arn`        | IAM role ARN for Karpenter controller (IRSA)       |
 | `karpenter_queue_url`                  | SQS queue URL for Karpenter interruption handling  |
 | `karpenter_node_instance_profile_name` | Instance profile for Karpenter-provisioned nodes   |
 | `bootstrap_report`                     | Bootstrap process information and status           |
@@ -143,7 +142,7 @@ The ECS bootstrap task:
 - Enables ArgoCD to take over cluster management
 
 - **`karpenter-bootstrap` managed node group**: 2x AL2023 m7i.xlarge nodes. ArgoCD and Karpenter schedule here via the `bootstrap-critical` PriorityClass (able to preempt lower-priority pods rather than excluding them via a taint). Hosts Karpenter controller, CoreDNS, and metrics-server.
-- **Karpenter controller IAM role**: IRSA-backed, scoped to `kube-system/karpenter` ServiceAccount with SQS, EC2, and IAM instance profile permissions.
+- **Karpenter controller IAM role**: Bound via EKS Pod Identity to `kube-system/karpenter` ServiceAccount with SQS, EC2, and IAM instance profile permissions.
 - **Karpenter node IAM role**: Full `AmazonEKSWorkerNodePolicy`, VPC CNI, ECR pull-only, and optional KMS decrypt for FIPS AMI snapshots.
 - **SQS queue**: Receives EC2 interruption events (spot reclamation, instance health, rebalance) for graceful node draining.
 - **EventBridge rules**: Four rules forward EC2 lifecycle events to the SQS queue.

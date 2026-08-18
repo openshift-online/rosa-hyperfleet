@@ -91,11 +91,6 @@ output "node_iam_role_arn" {
   value       = aws_iam_role.karpenter_node.arn
 }
 
-output "karpenter_controller_role_arn" {
-  description = "IAM role ARN for the Karpenter controller (IRSA)"
-  value       = aws_iam_role.karpenter_controller.arn
-}
-
 output "karpenter_queue_url" {
   description = "SQS queue URL for Karpenter interruption handling"
   value       = aws_sqs_queue.karpenter_interruption.url
