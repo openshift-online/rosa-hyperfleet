@@ -48,11 +48,13 @@ resource "aws_iam_role_policy" "kube_applier_specs" {
         Action = [
           "dynamodb:DescribeTable",
           "dynamodb:GetItem",
+          "dynamodb:BatchGetItem",
           "dynamodb:Scan",
           "dynamodb:Query",
         ]
         Resource = [
           "arn:aws:dynamodb:${var.aws_region}:${var.rc_aws_account_id}:table/${var.management_id}-specs-*",
+          "arn:aws:dynamodb:${var.aws_region}:${var.rc_aws_account_id}:table/${var.management_id}-specs-*/index/*",
         ]
       },
       {
