@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-desire_timing_test.py
+scripts/test-timing.py
 
 Run locally. Directly drives DynamoDB for an ephemeral env MC to measure
 end-to-end desire round-trip latency.
@@ -18,9 +18,9 @@ Flow:
  10. Print full timing summary
 
 Usage:
-  python3 desire_timing_test.py [--env-id <id>] [--mc mc01] [--profile <aws-profile>]
-                                [--region <region>] [--namespace <ns>] [--no-cleanup]
-                                [--timeout <seconds>] [--poll-interval <seconds>]
+  python3 scripts/test-timing.py [--env-id <id>] [--mc mc01] [--profile <aws-profile>]
+                                 [--region <region>] [--namespace <ns>] [--no-cleanup]
+                                 [--timeout <seconds>] [--poll-interval <seconds>]
 """
 
 import argparse
@@ -32,6 +32,36 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _parse_iso(ts: str) -> datetime:
+    """Parse an ISO-8601 timestamp from DynamoDB into a timezone-aware datetime.
+
+    Handles the formats the operator emits:
+      - ``2026-08-20T14:05:03.123Z``   (milliseconds, Z suffix)
+      - ``2026-08-20T14:05:03Z``       (no milliseconds, Z suffix)
+      - ``2026-08-20T14:05:03+00:00``  (numeric UTC offset)
+    Returns epoch start on empty/unparseable input so comparisons degrade
+    gracefully rather than raising.
+    """
+    if not ts:
+        return datetime.fromtimestamp(0, tz=timezone.utc)
+    # Normalise Z suffix so fromisoformat works on Python < 3.11.
+    normalised = ts.rstrip("Z")
+    if normalised == ts:
+        # Had a numeric offset — fromisoformat handles it directly.
+        pass
+    else:
+        normalised += "+00:00"
+    try:
+        return datetime.fromisoformat(normalised)
+    except ValueError:
+        return datetime.fromtimestamp(0, tz=timezone.utc)
 
 
 # ---------------------------------------------------------------------------
@@ -329,14 +359,17 @@ def poll_apply_status(
         item = resp.get("Item", {})
         if item:
             status_map = item.get("status", {}).get("M", {})
-            observed_time = status_map.get("observedDesireUpdateTime", {}).get("S", "")
+            observed_str = status_map.get("observedDesireUpdateTime", {}).get("S", "")
             conditions = status_map.get("conditions", {}).get("L", [])
             for cond in conditions:
                 m = cond.get("M", {})
                 if (
                     m.get("Type", {}).get("S") == "Successful"
                     and m.get("Status", {}).get("S") == "True"
-                    and (after_time is None or observed_time >= after_time)
+                    and (
+                        after_time is None
+                        or _parse_iso(observed_str) >= _parse_iso(after_time)
+                    )
                 ):
                     return (time.monotonic() - start) * 1000
         time.sleep(poll_interval)

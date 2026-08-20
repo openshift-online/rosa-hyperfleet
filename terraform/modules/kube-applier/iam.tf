@@ -3,7 +3,7 @@
 #
 # The controller needs cross-account DynamoDB access to tables in the RC account.
 # Permissions are scoped to only the tables for this specific MC:
-#   Specs tables ({mc}-specs-*): read-only + DynamoDB Streams
+#   Specs tables ({mc}-specs-*): read-only + GSI query
 #   Status tables ({mc}-status-*): read-write
 # =============================================================================
 
@@ -34,7 +34,7 @@ resource "aws_iam_role" "kube_applier" {
   )
 }
 
-# Policy: Read specs tables + DynamoDB Streams (for the DynamoDB Streams-backed informers)
+# Policy: Read specs tables + GSI query (for the hyperfleet-dynamo two-speed polling watcher)
 resource "aws_iam_role_policy" "kube_applier_specs" {
   name = "${var.management_id}-kube-applier-specs"
   role = aws_iam_role.kube_applier.id
@@ -55,20 +55,6 @@ resource "aws_iam_role_policy" "kube_applier_specs" {
         Resource = [
           "arn:aws:dynamodb:${var.aws_region}:${var.rc_aws_account_id}:table/${var.management_id}-specs-*",
           "arn:aws:dynamodb:${var.aws_region}:${var.rc_aws_account_id}:table/${var.management_id}-specs-*/index/*",
-        ]
-      },
-      {
-        Sid    = "SpecsTableStreams"
-        Effect = "Allow"
-        Action = [
-          "dynamodb:DescribeStream",
-          "dynamodb:GetRecords",
-          "dynamodb:GetShardIterator",
-          "dynamodb:ListStreams",
-        ]
-        Resource = [
-          "arn:aws:dynamodb:${var.aws_region}:${var.rc_aws_account_id}:table/${var.management_id}-specs-*",
-          "arn:aws:dynamodb:${var.aws_region}:${var.rc_aws_account_id}:table/${var.management_id}-specs-*/stream/*",
         ]
       },
     ]

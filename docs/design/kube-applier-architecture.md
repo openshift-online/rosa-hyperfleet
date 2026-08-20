@@ -42,7 +42,7 @@ graph LR
     end
 
     HF -->|"UpsertApplyDesire\nUpsertReadDesire"| DBS
-    DBS -->|"GSI two-speed poll\n(15 s fast / 5 m relist)"| KA
+    DBS -->|"GSI two-speed poll\n(default: 15 s fast / 5 m relist)"| KA
     KA -->|"SSA / Delete / Watch"| API
     KA -->|"PutItem (status)"| DBT
     DBT -->|"GetDesireStatus"| HF
@@ -69,7 +69,8 @@ The MC account EKS cluster hosts kube-applier. EKS Pod Identity associates the
 `kube-applier` ServiceAccount to an IAM role in the MC account. That role
 carries cross-account policies scoped to the RC account table ARNs:
 
-- **Specs tables**: `GetItem`, `BatchGetItem`, `Scan`, `Query` (table + index)
+- **Specs tables**: `DescribeTable`, `GetItem`, `BatchGetItem`, `Scan`, `Query`
+  (table + index)
 - **Status tables**: `GetItem`, `BatchGetItem`, `Scan`, `Query`, `PutItem`,
   `DeleteItem` (table + index)
 
@@ -106,15 +107,15 @@ without DynamoDB Streams. Two concurrent loops share an in-memory stub cache
 
 ```mermaid
 flowchart LR
-    subgraph "Fast poll (every 15 s)"
+    subgraph "Fast poll (default every 15 s, --dynamo-poll-interval)"
         Q["Query updateTime-index\nacross 4 GSI shards in parallel"]
         D["Dedup against stub cache\n(skip unchanged updateTimes)"]
         B["BatchGetItem\n(full items for changed IDs)"]
         Q --> D --> B
     end
 
-    subgraph "Full relist (every 5 m)"
-        S["Consistent Scan\n(all items)"]
+    subgraph "Full relist (default every 5 m, --dynamo-relist-interval)"
+        S["Scan base table\n(ConsistentRead=true)"]
         DIFF["Three-way diff\n(added / modified / deleted)"]
         S --> DIFF
     end
@@ -125,9 +126,18 @@ flowchart LR
     INF --> CTL["Controllers"]
 ```
 
+**Fast poll** queries the `updateTime-index` GSI, which is eventually
+consistent by design (DynamoDB does not support strongly consistent reads on
+GSIs). The dedup step and full relist ensure correctness despite this.
+
+**Full relist** scans the base table directly with `ConsistentRead=true`,
+giving a strongly consistent snapshot used to detect additions, modifications,
+and deletions.
+
 **Expanding lookback window**: immediately after a relist, the fast-poll window
 starts near zero and grows by elapsed time each tick, capped at the relist
-interval. This avoids rescanning records the relist just covered.
+interval. This avoids rescanning records the relist just covered. Configurable
+via `--dynamo-max-lookback`.
 
 **Deletions**: only detected by the relist (items vanish from the GSI on hard
 delete). The relist delivers `OnChange(docID, nil)`, which the WatchAdapter
@@ -164,24 +174,29 @@ sequenceDiagram
 
 ### Status Conditions
 
-Both condition types (`Successful`, `Degraded`) are written on every reconcile.
+The status writer serializes two condition types on every reconcile pass —
+`Successful` is always present; `Degraded` is present only when `True`.
+`GetDesireStatus` consumers should treat an absent `Degraded` condition as
+equivalent to `Degraded=False`.
 
 | Outcome                                                      | Successful                   | Degraded |
 | ------------------------------------------------------------ | ---------------------------- | -------- |
-| SSA accepted / object deleted                                | `True`                       | absent   |
-| Finalizers draining                                          | `False` (WaitingForDeletion) | absent   |
-| Bad spec (invalid JSON, missing fields)                      | `False` (PreCheckError)      | absent   |
-| Kube API 4xx                                                 | `False` (ReconcileError)     | absent   |
+| SSA accepted / object deleted                                | `True` (ReconcileSuccess)    | omitted  |
+| Finalizers draining                                          | `False` (WaitingForDeletion) | omitted  |
+| Bad spec (invalid JSON, missing fields, unknown type)        | `False` (PreCheckError)      | omitted  |
+| Kube API 4xx                                                 | `False` (ReconcileError)     | omitted  |
 | Infrastructure error (unreachable apiserver, DynamoDB error) | `False` (ReconcileError)     | `True`   |
 
 ### Cooldown
 
-| Type              | Cooldown | Reason                                       |
-| ----------------- | -------- | -------------------------------------------- |
-| `ServerSideApply` | 10 min   | Prevents busy-looping on status write echoes |
-| `Delete`          | 1 min    | Keeps polling for finalizer completion       |
+Unchanged desires (same `UpdateTime`) are rate-limited to avoid busy-looping
+on informer resyncs and status write echoes. Desires with a changed `UpdateTime`
+always bypass the cooldown gate.
 
-Desires with a changed `UpdateTime` always bypass the cooldown gate.
+| Type              | Default cooldown | Override flag              |
+| ----------------- | ---------------- | -------------------------- |
+| `ServerSideApply` | 10 min           | none (currently hardcoded) |
+| `Delete`          | 1 min            | none (currently hardcoded) |
 
 ## ReadDesire Reconcile Flow
 
@@ -206,14 +221,14 @@ sequenceDiagram
 
 The manager owns per-instance controller lifecycle — it starts a new controller
 when a ReadDesire appears, restarts it if `spec.targetItem` changes, and stops
-it when the ReadDesire is deleted. A 60-second unconditional resync ticker
+it when the ReadDesire is deleted. An unconditional resync ticker (default 60 s)
 ensures non-existence is reflected even when the Watch stream delivers no events.
 
 ## Document IDs
 
 Every desire document carries a deterministic UUID v5:
 
-```
+```text
 documentID = UUIDv5(a3f1b2c4-d5e6-4f7a-8b9c-0d1e2f3a4b5c,
                     "{taskKey}/{group}/{version}/{resource}/{namespace}/{name}")
 ```
@@ -232,13 +247,16 @@ at render time. The DynamoDB tables for each MC are provisioned by the
 
 ### Scale Characteristics
 
-| Dimension                   | Value                                |
-| --------------------------- | ------------------------------------ |
-| Replicas                    | 1 active (leader elected); N standby |
-| GSI fast-poll interval      | 15 s                                 |
-| Full relist interval        | 5 m                                  |
-| ApplyDesire SSA cooldown    | 10 min                               |
-| ApplyDesire Delete cooldown | 1 min                                |
-| ReadDesire resync ticker    | 60 s                                 |
-| Apply worker threads        | 4                                    |
-| Read manager threads        | 1                                    |
+All timing values are defaults; see the corresponding CLI flag to override.
+
+| Dimension                   | Default                              | CLI flag                   |
+| --------------------------- | ------------------------------------ | -------------------------- |
+| Replicas                    | 1 active (leader elected); N standby | —                          |
+| GSI fast-poll interval      | 15 s                                 | `--dynamo-poll-interval`   |
+| Full relist interval        | 5 m                                  | `--dynamo-relist-interval` |
+| Lookback window cap         | relist interval                      | `--dynamo-max-lookback`    |
+| ApplyDesire SSA cooldown    | 10 min                               | —                          |
+| ApplyDesire Delete cooldown | 1 min                                | —                          |
+| ReadDesire resync ticker    | 60 s                                 | —                          |
+| Apply worker threads        | 4                                    | —                          |
+| Read manager threads        | 1                                    | —                          |

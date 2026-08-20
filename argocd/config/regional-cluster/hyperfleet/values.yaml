@@ -38,8 +38,3 @@ hyperfleet:
         cpu: 100m
         memory: 128Mi
 
-    dynamoWatcher:
-      pollInterval: ""
-      relistInterval: ""
-      lookbackMax: ""
-      syncInterval: ""
