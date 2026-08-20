@@ -17,11 +17,11 @@ locals {
   common_tags = merge(
     var.tags,
     {
+      function          = "oidc"
+      module            = "hypershift-oidc"
       Component         = "hypershift-oidc"
       ManagementCluster = var.cluster_id
       ManagedBy         = "terraform"
-    
-    function  = "oidc"
-    module    = "hypershift-oidc"}
+    }
   )
 }

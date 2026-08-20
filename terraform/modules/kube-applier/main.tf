@@ -16,10 +16,9 @@ locals {
   common_tags = merge(
     var.tags,
     {
+      function  = "messaging"
+      module    = "kube-applier"
       ManagedBy = "terraform"
-      Module    = "kube-applier"
-    
-    function  = "messaging"
-    module    = "kube-applier"}
+    }
   )
 }
