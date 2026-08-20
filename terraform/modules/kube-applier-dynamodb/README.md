@@ -1,32 +1,38 @@
 # kube-applier-dynamodb Module
 
-Creates the six DynamoDB tables and backend IAM role for `kube-applier-aws` for one
-Management Cluster. Runs in the **Regional Cluster account**, invoked from
-`regional-cluster/main.tf`.
+Creates the four DynamoDB tables and cross-account IAM policies for
+`kube-applier-aws` for one Management Cluster. Runs in the **Regional Cluster
+account**, invoked from `regional-cluster/main.tf`.
 
 ## Tables Created
 
-For each MC (`mc-{mc_name}`), six tables are created:
+For each MC, four tables are created:
 
-| Table                          | Type   | Streams                  |
-| ------------------------------ | ------ | ------------------------ |
-| `mc-{mc}-specs-applydesires`   | specs  | yes (NEW_AND_OLD_IMAGES) |
-| `mc-{mc}-specs-deletedesires`  | specs  | yes                      |
-| `mc-{mc}-specs-readdesires`    | specs  | yes                      |
-| `mc-{mc}-status-applydesires`  | status | no                       |
-| `mc-{mc}-status-deletedesires` | status | no                       |
-| `mc-{mc}-status-readdesires`   | status | yes (NEW_AND_OLD_IMAGES) |
+| Table | Type | GSI | Streams |
+| --- | --- | --- | --- |
+| `{mc}-specs-applydesires` | specs | `updateTime-index` | no |
+| `{mc}-specs-readdesires` | specs | `updateTime-index` | no |
+| `{mc}-status-applydesires` | status | `updateTime-index` | no |
+| `{mc}-status-readdesires` | status | `updateTime-index` | no |
 
-All tables use `PAY_PER_REQUEST` billing with `DocumentID` (string) as the partition key.
+All tables use `PAY_PER_REQUEST` billing with `documentID` (string) as the
+partition key. Deletion is expressed as an `ApplyDesire` with `spec.type=Delete`
+— there are no separate `deletedesires` tables.
 
-## Backend IAM Role
+The `updateTime-index` GSI (hash key: `shard`, range key: `updateTime`) is
+present on all four tables and is used by the `hyperfleet-dynamo` two-speed
+polling watcher. DynamoDB Streams are not enabled.
 
-A single backend role (`{rc_id}-kube-applier-backend`) is created (or referenced) with:
+## Cross-Account IAM Policies
 
-- **Specs tables** (`mc-*-specs-*`): `PutItem`, `UpdateItem`, `DeleteItem`, `GetItem`, `Scan`, `Query`
-- **Status tables** (`mc-*-status-*`): `GetItem`, `Scan`, `Query`
+Resource-based policies are attached to each table granting the MC
+kube-applier role (`{mc}-kube-applier` in the MC account) the minimum required
+permissions for cross-account access:
 
-This role is for the future backend service that writes desires and reads status across all MCs.
+- **Specs tables**: `DescribeTable`, `GetItem`, `BatchGetItem`, `Scan`, `Query`
+  (on table and index ARNs)
+- **Status tables**: `GetItem`, `BatchGetItem`, `Scan`, `Query`, `PutItem`,
+  `DeleteItem` (on table and index ARNs)
 
 ## Usage
 
@@ -34,9 +40,9 @@ This role is for the future backend service that writes desires and reads status
 module "kube_applier_dynamodb" {
   source = "../../modules/kube-applier-dynamodb"
 
-  mc_name    = var.management_cluster_id
-  rc_id      = var.regional_id
-  aws_region = var.region
-  enable_pitr = var.environment != "ephemeral"
+  mc_name            = var.management_cluster_id
+  mc_aws_account_id  = var.mc_aws_account_id
+  aws_region         = var.region
+  enable_pitr        = var.environment != "ephemeral"
 }
 ```
