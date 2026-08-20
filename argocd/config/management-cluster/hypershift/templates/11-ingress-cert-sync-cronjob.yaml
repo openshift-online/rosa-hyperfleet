@@ -105,6 +105,12 @@ spec:
                 tls.key: ${TLS_KEY}
               EOF
 
+                # Patch IngressController to use the custom cert
+                oc --kubeconfig="$TMPKC" patch ingresscontroller default -n openshift-ingress-operator \
+                  --type=merge -p '{"spec":{"defaultCertificate":{"name":"custom-default-cert"}}}' 2>/dev/null \
+                  && echo "  Patched IngressController default cert" \
+                  || echo "  Failed to patch IngressController (may not exist yet)"
+
                 rm -f "$TMPKC"
               done <<< "$HCP_LIST"
 
