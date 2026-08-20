@@ -10,8 +10,9 @@
 #   Prefix (--status-table): mc-{mc}-status
 #   Suffixes appended by the client: -applydesires, -readdesires
 #
-# Specs tables have DynamoDB Streams enabled — the controller uses them to
-# drive its SharedIndexInformer (TRIM_HORIZON shard polling).
+# All four tables carry the updateTime-index GSI used by hyperfleet-dynamo's
+# two-speed polling watcher (fast GSI fan-out + full relist). DynamoDB Streams
+# have been removed entirely.
 # =============================================================================
 
 locals {
@@ -40,7 +41,7 @@ locals {
 }
 
 # =============================================================================
-# Specs Tables (read-only for the agent, with DynamoDB Streams)
+# Specs Tables (read-only for the agent, with updateTime-index GSI)
 # =============================================================================
 
 resource "aws_dynamodb_table" "specs" {
@@ -55,8 +56,24 @@ resource "aws_dynamodb_table" "specs" {
     type = "S"
   }
 
-  stream_enabled   = true
-  stream_view_type = "NEW_AND_OLD_IMAGES"
+  attribute {
+    name = "shard"
+    type = "S"
+  }
+
+  attribute {
+    name = "updateTime"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "updateTime-index"
+    hash_key        = "shard"
+    range_key       = "updateTime"
+    projection_type = "ALL"
+  }
+
+  stream_enabled = false
 
   point_in_time_recovery {
     enabled = var.enable_pitr
@@ -72,12 +89,11 @@ resource "aws_dynamodb_table" "specs" {
 }
 
 # =============================================================================
-# Status Tables (read-write for the agent)
+# Status Tables (read-write for the agent, with updateTime-index GSI)
 #
-# All status tables have DynamoDB Streams enabled so the hyperfleet-operator
-# can react to status changes written by kube-applier-aws within seconds
-# instead of polling. This is the inverse of the specs tables pattern:
-# kube-applier watches specs streams, the operator watches status streams.
+# All status tables have the updateTime-index GSI so the hyperfleet-operator
+# can watch for status changes written by kube-applier-aws via the same
+# two-speed GSI polling watcher used for specs tables.
 # =============================================================================
 
 resource "aws_dynamodb_table" "status" {
@@ -92,8 +108,24 @@ resource "aws_dynamodb_table" "status" {
     type = "S"
   }
 
-  stream_enabled   = true
-  stream_view_type = "NEW_AND_OLD_IMAGES"
+  attribute {
+    name = "shard"
+    type = "S"
+  }
+
+  attribute {
+    name = "updateTime"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "updateTime-index"
+    hash_key        = "shard"
+    range_key       = "updateTime"
+    projection_type = "ALL"
+  }
+
+  stream_enabled = false
 
   point_in_time_recovery {
     enabled = var.enable_pitr
@@ -131,49 +163,14 @@ resource "aws_dynamodb_resource_policy" "specs" {
       Action = [
         "dynamodb:DescribeTable",
         "dynamodb:GetItem",
+        "dynamodb:BatchGetItem",
         "dynamodb:Scan",
         "dynamodb:Query",
       ]
-      Resource = aws_dynamodb_table.specs[each.key].arn
-    }]
-  })
-}
-
-# Cross-account resource-based policy on each specs stream.
-#
-# For cross-account DynamoDB Streams access, AWS requires BOTH an identity-based
-# policy on the caller's role (kube-applier/iam.tf) AND a resource-based policy
-# on the stream itself. The stream resource type is distinct from the table — the
-# AWS IAM reference confirms PutResourcePolicy supports the stream ARN, and
-# DescribeStream/GetRecords/GetShardIterator/ListStreams all target the stream
-# resource type. Without this policy the identity-based policy alone is
-# insufficient for cross-account calls.
-#
-# stream_arn is a Terraform-computed attribute and will always reflect the
-# current stream. It only changes if streams are explicitly disabled and
-# re-enabled on the table, in which case a re-apply updates this policy
-# automatically.
-resource "aws_dynamodb_resource_policy" "specs_stream" {
-  for_each     = local.specs_tables
-  resource_arn = aws_dynamodb_table.specs[each.key].stream_arn
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid    = "AllowMCKubeApplierStreams"
-      Effect = "Allow"
-      Principal = {
-        AWS = local.mc_kube_applier_role_arn
-      }
-      # dynamodb:ListStreams is an account-level action with no resource target
-      # and is not valid in a stream resource policy — it remains covered by
-      # the identity-based policy on the MC kube-applier role.
-      Action = [
-        "dynamodb:DescribeStream",
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
+      Resource = [
+        aws_dynamodb_table.specs[each.key].arn,
+        "${aws_dynamodb_table.specs[each.key].arn}/index/*",
       ]
-      Resource = aws_dynamodb_table.specs[each.key].stream_arn
     }]
   })
 }
@@ -192,12 +189,16 @@ resource "aws_dynamodb_resource_policy" "status" {
       }
       Action = [
         "dynamodb:GetItem",
+        "dynamodb:BatchGetItem",
         "dynamodb:Scan",
         "dynamodb:Query",
         "dynamodb:PutItem",
         "dynamodb:DeleteItem",
       ]
-      Resource = aws_dynamodb_table.status[each.key].arn
+      Resource = [
+        aws_dynamodb_table.status[each.key].arn,
+        "${aws_dynamodb_table.status[each.key].arn}/index/*",
+      ]
     }]
   })
 }

@@ -48,6 +48,26 @@ spec:
             {{- if .Values.kubeApplier.config.awsEndpointUrl }}
             - --aws-endpoint-url={{ .Values.kubeApplier.config.awsEndpointUrl }}
             {{- end }}
+            {{- with .Values.kubeApplier.config.dynamoPollInterval }}
+            {{- if . }}
+            - --dynamo-poll-interval={{ . }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.kubeApplier.config.dynamoRelistInterval }}
+            {{- if . }}
+            - --dynamo-relist-interval={{ . }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.kubeApplier.config.dynamoLookbackMax }}
+            {{- if . }}
+            - --dynamo-lookback-max={{ . }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.kubeApplier.config.informerResyncPeriod }}
+            {{- if . }}
+            - --informer-resync-period={{ . }}
+            {{- end }}
+            {{- end }}
           ports:
             - name: metrics
               containerPort: {{ trimPrefix ":" .Values.kubeApplier.config.metricsListenAddress | int }}

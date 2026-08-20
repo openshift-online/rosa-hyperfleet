@@ -10,10 +10,9 @@ API. It uses EKS Pod Identity to obtain cross-account IAM credentials.
 
 ## IAM Permissions
 
-**Specs tables** (`mc-{mc}-specs-*` in RC account) — read-only + DynamoDB Streams:
+**Specs tables** (`mc-{mc}-specs-*` in RC account) — read-only + GSI Query:
 
-- `dynamodb:GetItem`, `dynamodb:Scan`, `dynamodb:Query`
-- `dynamodb:DescribeStream`, `dynamodb:GetRecords`, `dynamodb:GetShardIterator`, `dynamodb:ListStreams`
+- `dynamodb:GetItem`, `dynamodb:Scan`, `dynamodb:Query` (updateTime-index GSI)
 
 **Status tables** (`mc-{mc}-status-*` in RC account) — read-write:
 
