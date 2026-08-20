@@ -342,7 +342,7 @@ resource "aws_route53_zone" "regional" {
   name = "${var.deployment_name}.${var.environment_domain}"
 
   tags = {
-    Name = "${var.deployment_name}.${var.environment_domain}"
+    Name     = "${var.deployment_name}.${var.environment_domain}"
     function = "dns"
     module   = "regional-cluster"
   }
