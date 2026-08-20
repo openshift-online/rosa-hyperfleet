@@ -22,9 +22,9 @@ resource "aws_s3_bucket" "access_logs" {
   bucket        = "${var.regional_id}-sre-alb-logs"
   force_destroy = true
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-sre-alb-logs"
-  }
+  })
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "access_logs" {

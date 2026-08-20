@@ -10,6 +10,16 @@
 # Resolve current account ID for the KMS key policy
 data "aws_caller_identity" "current" {}
 
+locals {
+  common_tags = merge(
+    var.tags,
+    {
+      function = "platform-api"
+      module   = "elasticache-valkey"
+    }
+  )
+}
+
 # KMS key for ElastiCache encryption at rest (FedRAMP SC-13).
 # Explicit key policy scopes usage to ElastiCache (CKV2_AWS_64) rather than
 # relying on the implicit default that grants kms:* to the account root.
@@ -49,10 +59,10 @@ resource "aws_kms_key" "elasticache" {
     ]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name      = "${var.cluster_id}-elasticache-valkey"
     Component = "rate-limiting"
-  }
+  })
 }
 
 resource "aws_kms_alias" "elasticache" {
@@ -68,10 +78,10 @@ resource "aws_security_group" "valkey" {
 
   revoke_rules_on_delete = false
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name      = "${var.cluster_id}-valkey-sg"
     Component = "rate-limiting"
-  }
+  })
 }
 
 # Ingress rules as standalone resources — these depend on EKS SG IDs but
@@ -102,10 +112,10 @@ resource "aws_elasticache_subnet_group" "valkey" {
   name       = "${var.cluster_id}-valkey"
   subnet_ids = var.private_subnet_ids
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name      = "${var.cluster_id}-valkey-subnet-group"
     Component = "rate-limiting"
-  }
+  })
 }
 
 # Parameter Group
@@ -118,10 +128,10 @@ resource "aws_elasticache_parameter_group" "valkey" {
     value = "volatile-ttl"
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name      = "${var.cluster_id}-valkey-params"
     Component = "rate-limiting"
-  }
+  })
 }
 
 # ElastiCache Valkey Replication Group (single node, no HA, no backups)
@@ -147,8 +157,8 @@ resource "aws_elasticache_replication_group" "valkey" {
   at_rest_encryption_enabled = true
   kms_key_id                 = aws_kms_key.elasticache.arn
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name      = "${var.cluster_id}-valkey"
     Component = "rate-limiting"
-  }
+  })
 }

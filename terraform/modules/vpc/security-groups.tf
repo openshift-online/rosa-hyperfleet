@@ -10,14 +10,14 @@ resource "aws_security_group" "eks_cluster" {
   name        = "${var.resource_name_base}-cluster-sg"
   description = "EKS cluster control plane security group"
   vpc_id      = aws_vpc.main.id
-  tags        = { Name = "${var.resource_name_base}-cluster-sg" }
+  tags        = merge(local.common_tags, { Name = "${var.resource_name_base}-cluster-sg" })
 }
 
 resource "aws_security_group" "vpc_endpoints" {
   name        = "${var.resource_name_base}-vpc-endpoints-sg"
   description = "Security group for VPC interface endpoints"
   vpc_id      = aws_vpc.main.id
-  tags        = { Name = "${var.resource_name_base}-vpc-endpoints-sg" }
+  tags        = merge(local.common_tags, { Name = "${var.resource_name_base}-vpc-endpoints-sg" })
 }
 
 resource "aws_vpc_security_group_ingress_rule" "vpc_endpoints_https" {

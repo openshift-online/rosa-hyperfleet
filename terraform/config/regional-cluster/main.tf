@@ -19,12 +19,15 @@ provider "aws" {
   }
 
   default_tags {
-    tags = {
-      app-code      = var.app_code
-      service-phase = var.service_phase
-      cost-center   = var.cost_center
-      environment   = var.environment
-    }
+    tags = merge(
+      {
+        app-code      = var.app_code
+        service-phase = var.service_phase
+        cost-center   = var.cost_center
+        environment   = var.environment
+      },
+      var.eph_prefix != "" ? { ephemeral-prefix = var.eph_prefix } : {}
+    )
   }
 }
 
@@ -90,6 +93,8 @@ resource "aws_iam_role" "external_secrets_operator" {
 
   tags = {
     Name      = "${var.regional_id}-external-secrets-operator-role"
+    function  = "cluster-infra"
+    module    = "regional-cluster"
     ManagedBy = "terraform"
   }
 }
@@ -147,6 +152,8 @@ resource "aws_eks_pod_identity_association" "external_secrets_operator" {
 
   tags = {
     Name      = "${var.regional_id}-external-secrets-operator-pod-identity"
+    function  = "cluster-infra"
+    module    = "regional-cluster"
     ManagedBy = "terraform"
   }
 }
@@ -336,6 +343,8 @@ resource "aws_route53_zone" "regional" {
 
   tags = {
     Name = "${var.deployment_name}.${var.environment_domain}"
+    function = "dns"
+    module   = "regional-cluster"
   }
 }
 
@@ -375,8 +384,10 @@ resource "aws_route53_zone" "zone_shard" {
   name = "${count.index}.${var.deployment_name}.${var.environment_domain}"
 
   tags = {
-    Name  = "${count.index}.${var.deployment_name}.${var.environment_domain}"
-    Shard = tostring(count.index)
+    Name     = "${count.index}.${var.deployment_name}.${var.environment_domain}"
+    Shard    = tostring(count.index)
+    function = "dns"
+    module   = "regional-cluster"
   }
 }
 
@@ -529,6 +540,8 @@ resource "aws_iam_role" "hyperfleet_operator" {
   tags = {
     Name      = "${var.regional_id}-hyperfleet-operator-role"
     Component = "hyperfleet-operator"
+    function  = "messaging"
+    module    = "regional-cluster"
     ManagedBy = "terraform"
   }
 }
@@ -542,6 +555,8 @@ resource "aws_eks_pod_identity_association" "hyperfleet_operator" {
   tags = {
     Name      = "${var.regional_id}-hyperfleet-operator-pod-identity"
     Component = "hyperfleet-operator"
+    function  = "messaging"
+    module    = "regional-cluster"
     ManagedBy = "terraform"
   }
 }

@@ -22,9 +22,9 @@ resource "aws_lb" "rhobs" {
   security_groups    = [aws_security_group.alb.id]
   subnets            = var.private_subnet_ids
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-rhobs"
-  }
+  })
 }
 
 # -----------------------------------------------------------------------------
@@ -53,10 +53,10 @@ resource "aws_lb_target_group" "thanos_receive" {
     matcher             = "200"
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name                   = "${var.regional_id}-th-recv"
     "eks:eks-cluster-name" = var.cluster_name
-  }
+  })
 }
 
 # -----------------------------------------------------------------------------
@@ -130,10 +130,10 @@ resource "aws_lb_target_group" "thanos_query" {
     matcher             = "200"
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name                   = "${var.regional_id}-th-query"
     "eks:eks-cluster-name" = var.cluster_name
-  }
+  })
 }
 
 resource "aws_lb_listener_rule" "thanos_query" {
@@ -194,10 +194,10 @@ resource "aws_lb_target_group" "loki_distributor" {
     matcher             = "200"
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name                   = "${var.regional_id}-loki-dist"
     "eks:eks-cluster-name" = var.cluster_name
-  }
+  })
 }
 
 resource "aws_lb_listener_rule" "loki_push" {
@@ -242,10 +242,10 @@ resource "aws_lb_target_group" "loki_query_frontend" {
     matcher             = "200"
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name                   = "${var.regional_id}-loki-qfe"
     "eks:eks-cluster-name" = var.cluster_name
-  }
+  })
 }
 
 resource "aws_lb_listener_rule" "loki_query" {

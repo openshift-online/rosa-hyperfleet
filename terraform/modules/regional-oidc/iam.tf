@@ -36,9 +36,9 @@ resource "aws_iam_role" "oidc_writer" {
     }]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-oidc-writer"
-  }
+  })
 }
 
 resource "aws_iam_role_policy" "oidc_writer" {

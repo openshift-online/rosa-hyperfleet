@@ -16,6 +16,10 @@ resource "aws_iam_role" "execution" {
       }
     ]
   })
+
+  tags = merge(local.common_tags, {
+    Name = "${var.cluster_id}-bootstrap-execution-role"
+  })
 }
 
 # Attach AWS managed policy for ECS task execution
@@ -39,6 +43,10 @@ resource "aws_iam_role" "task" {
         }
       }
     ]
+  })
+
+  tags = merge(local.common_tags, {
+    Name = "${var.cluster_id}-bootstrap-task-role"
   })
 }
 

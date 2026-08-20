@@ -18,6 +18,14 @@ locals {
   fips_regions = ["us-east-1", "us-east-2", "us-west-1", "us-west-2", "us-gov-east-1", "us-gov-west-1"]
   use_fips     = contains(local.fips_regions, data.aws_region.current.region)
   s3_endpoint  = local.use_fips ? "s3-fips.${data.aws_region.current.region}.amazonaws.com" : "s3.${data.aws_region.current.region}.amazonaws.com"
+
+  common_tags = merge(
+    var.tags,
+    {
+      function = "observability"
+      module   = "thanos-infrastructure"
+    }
+  )
 }
 
 # =============================================================================
@@ -69,9 +77,9 @@ resource "aws_kms_key" "thanos" {
     ]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_id}-thanos"
-  }
+  })
 }
 
 resource "aws_kms_alias" "thanos" {
@@ -87,9 +95,9 @@ resource "aws_s3_bucket" "thanos" {
   bucket        = local.bucket_name
   force_destroy = true
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = local.bucket_name
-  }
+  })
 }
 
 resource "aws_s3_bucket_versioning" "thanos" {
@@ -167,9 +175,9 @@ resource "aws_iam_role" "thanos_receiver" {
     ]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = local.role_name
-  }
+  })
 }
 
 # Write role policy: used by Receiver ingester, Compactor, and operator SA
@@ -233,9 +241,9 @@ resource "aws_iam_role" "thanos_store" {
     ]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = local.store_role_name
-  }
+  })
 }
 
 resource "aws_iam_role_policy" "thanos_s3_read" {
@@ -286,9 +294,9 @@ resource "aws_eks_pod_identity_association" "thanos_receiver" {
   service_account = var.thanos_service_account
   role_arn        = aws_iam_role.thanos_receiver.arn
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_id}-thanos"
-  }
+  })
 }
 
 # Service accounts created by thanos-community operator
@@ -305,9 +313,9 @@ resource "aws_eks_pod_identity_association" "thanos_store" {
   service_account = "thanos-store-thanos-store"
   role_arn        = aws_iam_role.thanos_store.arn
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_id}-thanos-store"
-  }
+  })
 }
 
 # ThanosCompact: Compacts and downsamples metrics in object storage
@@ -317,9 +325,9 @@ resource "aws_eks_pod_identity_association" "thanos_compact" {
   service_account = "thanos-compact-thanos-compact"
   role_arn        = aws_iam_role.thanos_receiver.arn
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_id}-thanos-compact"
-  }
+  })
 }
 
 # ThanosRuler: Evaluates rules against Thanos Query, writes TSDB blocks to S3
@@ -329,9 +337,9 @@ resource "aws_eks_pod_identity_association" "thanos_ruler" {
   service_account = "thanos-ruler-thanos-ruler"
   role_arn        = aws_iam_role.thanos_receiver.arn
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_id}-thanos-ruler"
-  }
+  })
 }
 
 # ThanosReceive Ingester: Receives and stores metrics from remote_write endpoints
@@ -341,7 +349,7 @@ resource "aws_eks_pod_identity_association" "thanos_receive_ingester" {
   service_account = "thanos-receive-ingester-thanos-receive-default"
   role_arn        = aws_iam_role.thanos_receiver.arn
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_id}-thanos-receive-ingester"
-  }
+  })
 }

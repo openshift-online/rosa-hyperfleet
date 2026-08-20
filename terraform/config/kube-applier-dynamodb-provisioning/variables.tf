@@ -53,3 +53,9 @@ variable "environment" {
   description = "Environment name (staging, production, etc.)"
   type        = string
 }
+
+variable "eph_prefix" {
+  description = "Ephemeral environment prefix for cost attribution (empty string in non-ephemeral environments)"
+  type        = string
+  default     = ""
+}

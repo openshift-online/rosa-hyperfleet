@@ -4,6 +4,12 @@
 locals {
   bootstrap_container_name = "bootstrap"
   log_retention_days       = 365
+
+  common_tags = {
+    function  = "cluster-infra"
+    module    = "ecs-bootstrap"
+    ManagedBy = "terraform"
+  }
 }
 
 # Current AWS region information
@@ -55,9 +61,9 @@ resource "aws_kms_key" "bootstrap_logs" {
     ]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_id}-bootstrap-logs"
-  }
+  })
 }
 
 # CloudWatch Log Group for bootstrap tasks

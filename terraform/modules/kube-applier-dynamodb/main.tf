@@ -21,7 +21,9 @@ locals {
       ManagedBy         = "terraform"
       Module            = "kube-applier-dynamodb"
       ManagementCluster = var.mc_name
-    }
+    
+    function  = "messaging"
+    module    = "kube-applier-dynamodb"}
   )
 
   # The four table names for this MC

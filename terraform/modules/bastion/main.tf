@@ -5,6 +5,15 @@
 locals {
   container_name               = "bastion"
   effective_log_retention_days = max(365, var.log_retention_days)
+
+  common_tags = merge(
+    var.tags,
+    {
+      function  = "cluster-infra"
+      module    = "bastion"
+      ManagedBy = "terraform"
+    }
+  )
 }
 
 data "aws_region" "current" {}
@@ -53,7 +62,7 @@ resource "aws_kms_key" "bastion_logs" {
     ]
   })
 
-  tags = merge(var.tags, {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_id}-bastion-logs"
   })
 }
@@ -74,30 +83,7 @@ resource "aws_cloudwatch_log_group" "bastion" {
 
   depends_on = [aws_kms_key.bastion_logs]
 
-  tags = var.tags
-}
-
-# =============================================================================
-# Security Group
-# =============================================================================
-
-resource "aws_security_group" "bastion" {
-  name        = "${var.cluster_id}-bastion"
-  description = "Security group for bastion ECS tasks"
-  vpc_id      = var.vpc_id
-
-  # Allow all outbound traffic (needed for tool downloads, EKS API, SSM endpoints)
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound traffic"
-  }
-
-  tags = merge(var.tags, {
-    Name = "${var.cluster_id}-bastion"
-  })
+  tags = local.common_tags
 }
 
 # Allow bastion to access EKS control plane
@@ -134,7 +120,7 @@ resource "aws_ecs_cluster" "bastion" {
     }
   }
 
-  tags = var.tags
+  tags = local.common_tags
 }
 
 # =============================================================================

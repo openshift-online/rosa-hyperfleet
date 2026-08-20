@@ -14,6 +14,8 @@ locals {
   common_tags = merge(
     var.tags,
     {
+      function          = "observability"
+      module            = "loki-log-forwarder"
       Component         = "loki-log-forwarder"
       ManagementCluster = var.management_id
       ManagedBy         = "terraform"

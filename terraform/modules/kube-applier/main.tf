@@ -18,6 +18,8 @@ locals {
     {
       ManagedBy = "terraform"
       Module    = "kube-applier"
-    }
+    
+    function  = "messaging"
+    module    = "kube-applier"}
   )
 }

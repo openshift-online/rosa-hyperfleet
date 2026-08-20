@@ -18,9 +18,9 @@ resource "aws_security_group" "vpc_link" {
 
   revoke_rules_on_delete = false
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-rhobs-vpc-link"
-  }
+  })
 }
 
 resource "aws_vpc_security_group_egress_rule" "vpc_link_to_alb" {
@@ -43,9 +43,9 @@ resource "aws_security_group" "alb" {
 
   revoke_rules_on_delete = false
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-rhobs-alb"
-  }
+  })
 }
 
 resource "aws_vpc_security_group_ingress_rule" "alb_from_vpc_link" {

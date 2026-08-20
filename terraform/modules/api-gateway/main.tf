@@ -12,6 +12,14 @@
 data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
 
+locals {
+  common_tags = {
+    function  = "platform-api"
+    module    = "api-gateway"
+    ManagedBy = "terraform"
+  }
+}
+
 # -----------------------------------------------------------------------------
 # REST API
 # -----------------------------------------------------------------------------
@@ -28,9 +36,9 @@ resource "aws_api_gateway_rest_api" "main" {
     types = ["REGIONAL"]
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-api"
-  }
+  })
 }
 
 # -----------------------------------------------------------------------------
@@ -128,9 +136,9 @@ resource "aws_iam_role" "api_gateway_cloudwatch" {
     }]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-api-gateway-cloudwatch"
-  }
+  })
 }
 
 resource "aws_iam_role_policy_attachment" "api_gateway_cloudwatch" {
@@ -191,9 +199,9 @@ resource "aws_kms_key" "api_gateway_logs" {
     ]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-api-gateway-logs"
-  }
+  })
 }
 
 resource "aws_kms_alias" "api_gateway_logs" {
@@ -209,9 +217,9 @@ resource "aws_cloudwatch_log_group" "api_gateway_access" {
 
   depends_on = [aws_kms_key.api_gateway_logs]
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-api-access-logs"
-  }
+  })
 
   lifecycle {
     # NOTE: prevent_destroy breaks ephemeral environment teardown
@@ -247,9 +255,9 @@ resource "aws_api_gateway_stage" "main" {
     })
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-api-${var.stage_name}"
-  }
+  })
 
   depends_on = [
     aws_cloudwatch_log_group.api_gateway_access,
@@ -331,9 +339,9 @@ resource "aws_cloudwatch_log_group" "api_gateway_execution" {
   retention_in_days = 365
   kms_key_id        = aws_kms_key.api_gateway_logs.arn
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-api-execution-logs"
-  }
+  })
 }
 
 # -----------------------------------------------------------------------------
