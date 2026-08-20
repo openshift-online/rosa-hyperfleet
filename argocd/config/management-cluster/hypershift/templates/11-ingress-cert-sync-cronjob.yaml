@@ -35,7 +35,7 @@ metadata:
   name: ingress-cert-sync
   namespace: hypershift
 spec:
-  schedule: "*/5 * * * *"
+  schedule: "* * * * *"
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 3
   concurrencyPolicy: Forbid
