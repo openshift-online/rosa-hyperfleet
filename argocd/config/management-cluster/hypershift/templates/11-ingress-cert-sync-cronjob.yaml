@@ -57,8 +57,8 @@ spec:
               set -euo pipefail
 
               # Find all HCPs with managed-ingress-dns annotation
-              HCP_LIST=$(oc get hostedcontrolplanes -A -o json | \
-                jq -r '.items[] | select(.metadata.annotations["hypershift.openshift.io/managed-ingress-dns"] == "true") | "\(.metadata.namespace) \(.metadata.name)"')
+              HCP_LIST=$(oc get hostedcontrolplanes -A \
+                -o go-template='{{range .items}}{{if eq (index .metadata.annotations "hypershift.openshift.io/managed-ingress-dns") "true"}}{{.metadata.namespace}} {{.metadata.name}}{{"\n"}}{{end}}{{end}}' 2>/dev/null || true)
 
               if [[ -z "$HCP_LIST" ]]; then
                 echo "No HCPs with managed-ingress-dns annotation found"
@@ -68,18 +68,16 @@ spec:
               while IFS=' ' read -r NS NAME; do
                 echo "Processing HCP $NAME in $NS"
 
-                # Check if ingress-serving-cert secret exists and is ready
-                CERT_DATA=$(oc get secret ingress-serving-cert -n "$NS" -o json 2>/dev/null) || {
+                # Check if ingress-serving-cert secret exists and has tls.crt
+                TLS_CRT=$(oc get secret ingress-serving-cert -n "$NS" -o jsonpath='{.data.tls\.crt}' 2>/dev/null) || {
                   echo "  ingress-serving-cert not found in $NS, skipping"
                   continue
                 }
-
-                # Check if cert has tls.crt and tls.key (cert-manager populated it)
-                HAS_CRT=$(echo "$CERT_DATA" | jq -r '.data["tls.crt"] // empty')
-                if [[ -z "$HAS_CRT" ]]; then
+                if [[ -z "$TLS_CRT" ]]; then
                   echo "  ingress-serving-cert in $NS not yet populated, skipping"
                   continue
                 fi
+                TLS_KEY=$(oc get secret ingress-serving-cert -n "$NS" -o jsonpath='{.data.tls\.key}' 2>/dev/null)
 
                 # Get admin kubeconfig for guest cluster
                 KUBECONFIG_SECRET="${NAME}-admin-kubeconfig"
@@ -93,10 +91,6 @@ spec:
 
                 TMPKC=$(mktemp)
                 echo "$KUBECONFIG_DATA" > "$TMPKC"
-
-                # Extract cert and key
-                TLS_CRT=$(echo "$CERT_DATA" | jq -r '.data["tls.crt"]')
-                TLS_KEY=$(echo "$CERT_DATA" | jq -r '.data["tls.key"]')
 
                 # Create/update secret in guest cluster
                 oc --kubeconfig="$TMPKC" apply -f - <<EOF 2>/dev/null && echo "  Synced ingress cert to guest cluster $NAME" || echo "  Failed to sync cert to $NAME"
