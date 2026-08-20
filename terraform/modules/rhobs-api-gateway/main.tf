@@ -23,6 +23,16 @@
 data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
 
+locals {
+  common_tags = merge(
+    var.tags,
+    {
+      function = "platform-api"
+      module   = "rhobs-api-gateway"
+    }
+  )
+}
+
 # -----------------------------------------------------------------------------
 # REST API
 # -----------------------------------------------------------------------------
@@ -39,9 +49,9 @@ resource "aws_api_gateway_rest_api" "rhobs" {
     types = ["REGIONAL"]
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-rhobs"
-  }
+  })
 }
 
 # -----------------------------------------------------------------------------
@@ -224,9 +234,9 @@ resource "aws_kms_key" "api_gateway_logs" {
     ]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-rhobs-api-gateway-logs"
-  }
+  })
 }
 
 resource "aws_kms_alias" "api_gateway_logs" {
@@ -242,9 +252,9 @@ resource "aws_cloudwatch_log_group" "api_gateway_access" {
 
   depends_on = [aws_kms_key.api_gateway_logs]
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-rhobs-api-access-logs"
-  }
+  })
 }
 
 resource "aws_api_gateway_stage" "rhobs" {
@@ -275,9 +285,9 @@ resource "aws_api_gateway_stage" "rhobs" {
     })
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-rhobs-${var.stage_name}"
-  }
+  })
 
   depends_on = [aws_cloudwatch_log_group.api_gateway_access]
 }

@@ -20,6 +20,8 @@ locals {
       Component         = "hypershift-oidc"
       ManagementCluster = var.cluster_id
       ManagedBy         = "terraform"
-    }
+    
+    function  = "oidc"
+    module    = "hypershift-oidc"}
   )
 }

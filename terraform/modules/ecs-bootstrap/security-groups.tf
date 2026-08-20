@@ -5,6 +5,10 @@ resource "aws_security_group" "bootstrap_task" {
   name_prefix = "${var.cluster_id}-bootstrap-task"
   description = "Security group for ArgoCD bootstrap ECS tasks"
   vpc_id      = var.vpc_id
+
+  tags = merge(local.common_tags, {
+    Name = "${var.cluster_id}-bootstrap-task-sg"
+  })
 }
 
 # Allow all outbound traffic for downloading tools and accessing external services

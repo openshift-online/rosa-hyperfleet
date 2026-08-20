@@ -104,7 +104,7 @@ resource "aws_ecs_task_definition" "bastion" {
     }
   ])
 
-  tags = var.tags
+  tags = local.common_tags
 }
 
 # =============================================================================
@@ -127,7 +127,7 @@ resource "aws_iam_role" "task" {
     ]
   })
 
-  tags = var.tags
+  tags = local.common_tags
 }
 
 resource "aws_iam_role_policy" "task_eks" {
@@ -203,7 +203,7 @@ resource "aws_eks_access_entry" "bastion" {
   principal_arn = aws_iam_role.task.arn
   type          = "STANDARD"
 
-  tags = var.tags
+  tags = local.common_tags
 }
 
 resource "aws_eks_access_policy_association" "bastion" {

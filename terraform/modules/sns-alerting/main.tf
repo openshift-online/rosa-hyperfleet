@@ -10,6 +10,16 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 data "aws_partition" "current" {}
 
+locals {
+  common_tags = merge(
+    var.tags,
+    {
+      function = "observability"
+      module   = "sns-alerting"
+    }
+  )
+}
+
 # =============================================================================
 # KMS Key for SNS Topic Encryption
 # =============================================================================
@@ -53,11 +63,11 @@ resource "aws_kms_key" "sns_alerts" {
     ]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name      = "${var.regional_id}-sns-alerts"
     Module    = "sns-alerting"
     ManagedBy = "terraform"
-  }
+  })
 }
 
 resource "aws_kms_alias" "sns_alerts" {
@@ -73,11 +83,11 @@ resource "aws_sns_topic" "alerts" {
   name              = "${var.regional_id}-alerts"
   kms_master_key_id = aws_kms_key.sns_alerts.id
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name      = "${var.regional_id}-alerts"
     Module    = "sns-alerting"
     ManagedBy = "terraform"
-  }
+  })
 }
 
 # =============================================================================
@@ -90,11 +100,11 @@ resource "aws_ssm_parameter" "sns_topic_arn" {
   type        = "String"
   value       = aws_sns_topic.alerts.arn
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name      = "${var.regional_id}-alerting-sns-topic-arn"
     Module    = "sns-alerting"
     ManagedBy = "terraform"
-  }
+  })
 }
 
 # =============================================================================
@@ -122,11 +132,11 @@ resource "aws_iam_role" "alertmanager" {
     }]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name      = "${var.regional_id}-alertmanager-sns-role"
     Module    = "sns-alerting"
     ManagedBy = "terraform"
-  }
+  })
 }
 
 resource "aws_iam_role_policy" "alertmanager_sns" {
@@ -166,9 +176,9 @@ resource "aws_eks_pod_identity_association" "alertmanager" {
   service_account = var.alertmanager_service_account
   role_arn        = aws_iam_role.alertmanager.arn
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name      = "${var.regional_id}-alertmanager-sns-pod-identity"
     Module    = "sns-alerting"
     ManagedBy = "terraform"
-  }
+  })
 }

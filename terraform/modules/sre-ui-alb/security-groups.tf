@@ -19,9 +19,9 @@ resource "aws_security_group" "alb" {
 
   revoke_rules_on_delete = false
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-sre-alb"
-  }
+  })
 }
 
 # Ingress: HTTPS from VPC CIDR (internal mode)

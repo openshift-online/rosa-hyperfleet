@@ -12,6 +12,8 @@ locals {
   common_tags = merge(
     var.tags,
     {
+      function          = "observability"
+      module            = "prometheus-remote-write"
       Component         = "prometheus-remote-write"
       ManagementCluster = var.management_id
       ManagedBy         = "terraform"

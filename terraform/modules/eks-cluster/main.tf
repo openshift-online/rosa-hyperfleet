@@ -56,9 +56,9 @@ resource "aws_kms_key" "cloudwatch_logs" {
     ]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${local.cluster_id}-cloudwatch-logs"
-  }
+  })
 }
 
 resource "aws_kms_alias" "cloudwatch_logs" {
@@ -281,9 +281,9 @@ resource "aws_eks_node_group" "karpenter_bootstrap" {
     max_size     = 2
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     "karpenter.sh/discovery" = aws_eks_cluster.main.name
-  }
+  })
 
   depends_on = [
     aws_iam_role_policy_attachment.karpenter_node_managed,

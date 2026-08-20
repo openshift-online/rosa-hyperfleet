@@ -8,6 +8,16 @@
 
 data "aws_caller_identity" "current" {}
 
+locals {
+  common_tags = merge(
+    var.tags,
+    {
+      function = "hyperfleet-db"
+      module   = "hyperfleet-db"
+    }
+  )
+}
+
 # =============================================================================
 # Networking
 # =============================================================================
@@ -17,9 +27,9 @@ resource "aws_db_subnet_group" "hyperfleet_db" {
   description = "HyperFleet DB Aurora subnet group"
   subnet_ids  = var.private_subnet_ids
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_id}-hyperfleet-db"
-  }
+  })
 }
 
 resource "aws_security_group" "hyperfleet_db" {
@@ -27,9 +37,9 @@ resource "aws_security_group" "hyperfleet_db" {
   description = "Allow PostgreSQL access from VPC to HyperFleet DB Aurora"
   vpc_id      = var.vpc_id
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_id}-hyperfleet-db"
-  }
+  })
 }
 
 resource "aws_vpc_security_group_ingress_rule" "hyperfleet_db_postgres" {
@@ -87,9 +97,9 @@ resource "aws_kms_key" "hyperfleet_db" {
     ]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_id}-hyperfleet-db"
-  }
+  })
 }
 
 resource "aws_kms_alias" "hyperfleet_db" {
@@ -123,9 +133,9 @@ resource "aws_rds_cluster_parameter_group" "hyperfleet_db" {
     apply_method = "pending-reboot"
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_id}-hyperfleet-db-aurora-pg16-cluster"
-  }
+  })
 }
 
 resource "aws_db_parameter_group" "hyperfleet_db" {
@@ -138,9 +148,9 @@ resource "aws_db_parameter_group" "hyperfleet_db" {
     value = "1000"
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_id}-hyperfleet-db-aurora-pg16"
-  }
+  })
 }
 
 # =============================================================================
@@ -163,9 +173,9 @@ resource "aws_iam_role" "rds_monitoring" {
     }]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_id}-hyperfleet-db-monitoring"
-  }
+  })
 }
 
 resource "aws_iam_role_policy_attachment" "rds_monitoring" {
@@ -185,9 +195,9 @@ resource "aws_secretsmanager_secret" "master" {
   kms_key_id              = aws_kms_key.hyperfleet_db.arn
   recovery_window_in_days = 7
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_id}-hyperfleet-db-master-password"
-  }
+  })
 }
 
 resource "random_password" "master" {
@@ -233,11 +243,11 @@ resource "aws_rds_cluster" "hyperfleet_db" {
 
   iam_database_authentication_enabled = true
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name      = "${var.cluster_id}-hyperfleet-db"
     Component = "hyperfleet-db"
     ManagedBy = "terraform"
-  }
+  })
 }
 
 # =============================================================================
@@ -263,11 +273,11 @@ resource "aws_rds_cluster_instance" "hyperfleet_db" {
 
   auto_minor_version_upgrade = true
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name      = "${var.cluster_id}-hyperfleet-db-writer"
     Component = "hyperfleet-db"
     ManagedBy = "terraform"
-  }
+  })
 }
 
 # =============================================================================
@@ -284,11 +294,11 @@ resource "aws_secretsmanager_secret" "dsn" {
   kms_key_id              = aws_kms_key.hyperfleet_db.arn
   recovery_window_in_days = 7
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name      = "${var.cluster_id}-hyperfleet-db-dsn"
     Component = "hyperfleet-db"
     ManagedBy = "terraform"
-  }
+  })
 }
 
 resource "aws_secretsmanager_secret_version" "dsn" {

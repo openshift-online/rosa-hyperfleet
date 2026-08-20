@@ -133,7 +133,7 @@ resource "aws_ecs_task_definition" "log_collector" {
     }
   ])
 
-  tags = var.tags
+  tags = local.common_tags
 }
 
 # =============================================================================
@@ -156,7 +156,7 @@ resource "aws_iam_role" "log_collector" {
     ]
   })
 
-  tags = var.tags
+  tags = local.common_tags
 }
 
 resource "aws_iam_role_policy" "log_collector_eks" {
@@ -215,7 +215,7 @@ resource "aws_eks_access_entry" "log_collector" {
   principal_arn = aws_iam_role.log_collector.arn
   type          = "STANDARD"
 
-  tags = var.tags
+  tags = local.common_tags
 }
 
 resource "aws_eks_access_policy_association" "log_collector" {

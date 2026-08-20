@@ -27,7 +27,9 @@ resource "aws_iam_role" "execution" {
     ]
   })
 
-  tags = var.tags
+  tags = merge(local.common_tags, {
+    Name = "${var.cluster_id}-bastion-execution-role"
+  })
 }
 
 resource "aws_iam_role_policy_attachment" "execution_managed" {

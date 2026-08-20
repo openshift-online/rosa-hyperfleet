@@ -26,6 +26,14 @@ locals {
   oidc_token_endpoint         = "${var.oidc_issuer_url}/protocol/openid-connect/token"
   oidc_user_info_endpoint     = "${var.oidc_issuer_url}/protocol/openid-connect/userinfo"
 
+  common_tags = merge(
+    var.tags,
+    {
+      function = "platform-api"
+      module   = "sre-ui-alb"
+    }
+  )
+
   # Service map — single source of truth for per-service config.
   # tg_port/protocol: target group settings.
   # sg_port: actual container port used for security group rules.
@@ -82,9 +90,9 @@ resource "aws_lb" "sre" {
     enabled = true
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-sre"
-  }
+  })
 
   depends_on = [aws_s3_bucket_policy.access_logs]
 
@@ -122,10 +130,10 @@ resource "aws_lb_target_group" "services" {
     matcher             = "200"
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name                   = "${var.regional_id}-sre-${each.key}"
     "eks:eks-cluster-name" = var.cluster_name
-  }
+  })
 }
 
 # -----------------------------------------------------------------------------

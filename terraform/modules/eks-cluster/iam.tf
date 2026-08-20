@@ -23,6 +23,10 @@ resource "aws_iam_role" "eks_cluster" {
       Principal = { Service = "eks.amazonaws.com" }
     }]
   })
+
+  tags = merge(local.common_tags, {
+    Name = "${local.cluster_id}-cluster-role"
+  })
 }
 
 resource "aws_iam_role_policy_attachment" "eks_cluster_managed" {
@@ -51,6 +55,10 @@ resource "aws_iam_role" "karpenter_node" {
       Effect    = "Allow"
       Principal = { Service = "ec2.amazonaws.com" }
     }]
+  })
+
+  tags = merge(local.common_tags, {
+    Name = "${local.cluster_id}-karpenter-node-role"
   })
 }
 
@@ -91,6 +99,10 @@ resource "aws_iam_role" "karpenter_controller" {
       Action    = ["sts:AssumeRole", "sts:TagSession"]
     }]
   })
+
+  tags = merge(local.common_tags, {
+    Name = "${local.cluster_id}-karpenter-controller"
+  })
 }
 
 resource "aws_eks_pod_identity_association" "karpenter" {
@@ -98,6 +110,10 @@ resource "aws_eks_pod_identity_association" "karpenter" {
   namespace       = "karpenter"
   service_account = "karpenter"
   role_arn        = aws_iam_role.karpenter_controller.arn
+
+  tags = merge(local.common_tags, {
+    Name = "${local.cluster_id}-karpenter-pod-identity"
+  })
 }
 
 resource "aws_iam_role_policy" "karpenter_controller" {
@@ -296,6 +312,10 @@ resource "aws_sqs_queue" "karpenter_interruption" {
 
   message_retention_seconds = 300
   sqs_managed_sse_enabled   = true
+
+  tags = merge(local.common_tags, {
+    Name = "${local.cluster_id}-karpenter-interruption"
+  })
 }
 
 resource "aws_sqs_queue_policy" "karpenter_interruption" {
@@ -344,6 +364,10 @@ resource "aws_cloudwatch_event_rule" "karpenter" {
   name          = "${local.cluster_id}-karpenter-${each.key}"
   description   = each.value.description
   event_pattern = each.value.event_pattern
+
+  tags = merge(local.common_tags, {
+    Name = "${local.cluster_id}-karpenter-${each.key}"
+  })
 }
 
 resource "aws_cloudwatch_event_target" "karpenter" {
@@ -371,6 +395,10 @@ resource "aws_iam_role" "ebs_csi" {
       Action    = ["sts:AssumeRole", "sts:TagSession"]
     }]
   })
+
+  tags = merge(local.common_tags, {
+    Name = "${local.cluster_id}-ebs-csi-role"
+  })
 }
 
 resource "aws_iam_role_policy_attachment" "ebs_csi" {
@@ -383,4 +411,8 @@ resource "aws_eks_pod_identity_association" "ebs_csi" {
   namespace       = "kube-system"
   service_account = "ebs-csi-controller-sa"
   role_arn        = aws_iam_role.ebs_csi.arn
+
+  tags = merge(local.common_tags, {
+    Name = "${local.cluster_id}-ebs-csi-pod-identity"
+  })
 }

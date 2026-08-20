@@ -8,6 +8,8 @@ locals {
     {
       Component = "cloudwatch-exporter"
       ManagedBy = "terraform"
-    }
+    
+    function  = "observability"
+    module    = "cloudwatch-exporter"}
   )
 }
