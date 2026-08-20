@@ -20,7 +20,7 @@ hyperfleet:
   helmValues:
     image:
       repository: quay.io/cbusse_openshift/hyperfleet-operator
-      tag: "managed-ingress-poc-cfcac56"
+      tag: "managed-ingress-dns"
       pullPolicy: Always
 
     replicaCount: 2
