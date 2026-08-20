@@ -249,6 +249,10 @@ resource "aws_iam_role" "cloudtrail_cloudwatch" {
       }
     ]
   })
+
+  tags = merge(local.common_tags, {
+    Name = "${var.cluster_id}-cloudtrail-cloudwatch"
+  })
 }
 
 resource "aws_iam_role_policy" "cloudtrail_cloudwatch" {

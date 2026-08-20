@@ -167,13 +167,22 @@ check-docs: ## Check documentation formatting
 	@npx --no-install prettier --check '**/*.md'
 	@echo "✅ Documentation formatting check complete"
 
+check-default-tags: ## Check all AWS resources have required tags (function, module)
+	@echo "🔍 Checking AWS resource tag coverage..."
+	@tflint --init --config .tflint.hcl
+	@echo "$(TERRAFORM_DIRS)" | tr ' ' '\n' | xargs -P 4 -I{} sh -c ' \
+		echo "   Checking $$1"; \
+		tflint --config "$(CURDIR)/.tflint.hcl" --chdir "$$1" \
+	' _ {} || { echo "❌ Tag coverage check failed — add missing tags or update .tflint.hcl"; exit 1; }
+	@echo "✅ Tag coverage check complete"
+
 pre-push: ## Run all CI validation checks (parallel)
 	@echo "🚀 Running all CI validation checks..."
 	@echo ""
 	@echo "Formatting Terraform files..."
 	@$(MAKE) terraform-fmt
 	@echo ""
-	@$(MAKE) -j4 check-docs check-rendered-files helm-lint terraform-validate promtool-test
+	@$(MAKE) -j4 check-docs check-rendered-files helm-lint terraform-validate promtool-test check-default-tags
 	@echo ""
 	@echo "✅ All pre-push checks passed!"
 
