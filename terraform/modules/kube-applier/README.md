@@ -10,11 +10,12 @@ API. It uses EKS Pod Identity to obtain cross-account IAM credentials.
 
 ## IAM Permissions
 
-**Specs tables** (`mc-{mc}-specs-*` in RC account) — read-only + GSI Query:
+**Specs tables** (`{mc}-specs-*` in RC account) — read-only + GSI query:
 
-- `dynamodb:GetItem`, `dynamodb:Scan`, `dynamodb:Query` (updateTime-index GSI)
+- `dynamodb:DescribeTable`, `dynamodb:GetItem`, `dynamodb:BatchGetItem`,
+  `dynamodb:Scan`, `dynamodb:Query` (table and `updateTime-index` GSI ARNs)
 
-**Status tables** (`mc-{mc}-status-*` in RC account) — read-write:
+**Status tables** (`{mc}-status-*` in RC account) — read-write:
 
 - `dynamodb:GetItem`, `dynamodb:Scan`, `dynamodb:PutItem`, `dynamodb:DeleteItem`
 
@@ -34,11 +35,12 @@ module "kube_applier" {
 ## DynamoDB Tables
 
 Tables are created in the RC account by the `kube-applier-dynamodb` module
-(invoked from `regional-cluster/main.tf`). Six tables are created per MC:
+(invoked from `regional-cluster/main.tf`). Four tables are created per MC:
 
-- `mc-{mc}-specs-applydesires`
-- `mc-{mc}-specs-deletedesires`
-- `mc-{mc}-specs-readdesires`
-- `mc-{mc}-status-applydesires`
-- `mc-{mc}-status-deletedesires`
-- `mc-{mc}-status-readdesires`
+- `{mc}-specs-applydesires`
+- `{mc}-specs-readdesires`
+- `{mc}-status-applydesires`
+- `{mc}-status-readdesires`
+
+Deletion is expressed as an `ApplyDesire` with `spec.type=Delete` — there are
+no separate `deletedesires` tables.
