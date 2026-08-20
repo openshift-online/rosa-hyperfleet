@@ -23,6 +23,10 @@ resource "aws_ecs_cluster" "bootstrap" {
     name  = "containerInsights"
     value = "enabled"
   }
+
+  tags = merge(local.common_tags, {
+    Name = "${var.cluster_id}-bootstrap"
+  })
 }
 
 # KMS key for CloudWatch log group encryption (FedRAMP AU-09)
@@ -73,6 +77,10 @@ resource "aws_cloudwatch_log_group" "bootstrap" {
   kms_key_id        = aws_kms_key.bootstrap_logs.arn
 
   depends_on = [aws_kms_key.bootstrap_logs]
+
+  tags = merge(local.common_tags, {
+    Name = "${var.cluster_id}-bootstrap"
+  })
 }
 
 # Idempotent task: installs/updates ArgoCD, the cluster secret, and root Application.
@@ -294,4 +302,8 @@ resource "aws_ecs_task_definition" "bootstrap" {
       }
     }
   ])
+
+  tags = merge(local.common_tags, {
+    Name = "${var.cluster_id}-bootstrap"
+  })
 }

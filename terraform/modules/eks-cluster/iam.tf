@@ -79,6 +79,7 @@ resource "aws_iam_role_policy_attachment" "karpenter_node_managed" {
 resource "aws_iam_instance_profile" "karpenter_node" {
   name = "${local.cluster_id}-karpenter-node-role"
   role = aws_iam_role.karpenter_node.name
+  tags = local.common_tags
 }
 
 # -----------------------------------------------------------------------------

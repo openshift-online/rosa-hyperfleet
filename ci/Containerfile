@@ -24,6 +24,7 @@ ARG KUBECTL_VERSION=v1.36.2
 ARG K6_VERSION=0.55.0
 ARG PROMETHEUS_VERSION=3.4.1
 ARG LEAKTK_VERSION=0.3.3
+ARG TFLINT_VERSION=0.64.0
 
 # Global curl retry and timeout settings for improved download reliability
 ARG CURL_RETRY=3
@@ -229,6 +230,26 @@ RUN arch=$(uname -m) && \
     chmod +x /usr/local/bin/leaktk && \
     rm -f "${LEAKTK_TAR}" "${LEAKTK_CHECKSUMS}" && \
     leaktk version
+
+# tflint (Terraform linter for tag coverage checks, checksum-verified)
+ARG TFLINT_VERSION
+ARG CURL_RETRY
+ARG CURL_RETRY_DELAY
+ARG CURL_MAX_TIME
+RUN arch=$(uname -m) && \
+    case "${arch}" in \
+        x86_64)  TFLINT_ARCH="amd64" ;; \
+        aarch64) TFLINT_ARCH="arm64" ;; \
+    esac && \
+    TFLINT_ZIP="tflint_linux_${TFLINT_ARCH}.zip" && \
+    TFLINT_BASE="https://github.com/terraform-linters/tflint/releases/download/v${TFLINT_VERSION}" && \
+    curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -fsSLO "${TFLINT_BASE}/${TFLINT_ZIP}" && \
+    curl --retry ${CURL_RETRY} --retry-delay ${CURL_RETRY_DELAY} --max-time ${CURL_MAX_TIME} -fsSLO "${TFLINT_BASE}/checksums.txt" && \
+    grep "${TFLINT_ZIP}" checksums.txt | sha256sum -c - && \
+    unzip -qo "${TFLINT_ZIP}" -d /usr/local/bin && \
+    chmod +x /usr/local/bin/tflint && \
+    rm -f "${TFLINT_ZIP}" checksums.txt && \
+    tflint --version
 
 # Pre-create cache directories writable by any UID (OpenShift runs as random UID)
 RUN mkdir -p /tmp/.uv-cache /tmp/.uv-python /tmp/.terraform.d /tmp/.cache/go-build /tmp/gopath && \
