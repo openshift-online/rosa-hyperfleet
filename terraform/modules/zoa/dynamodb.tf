@@ -39,8 +39,12 @@
 resource "aws_dynamodb_table" "executions" {
   name                        = local.table_name
   billing_mode                = var.billing_mode
-  hash_key                    = "executionId"
   deletion_protection_enabled = var.environment != "ephemeral"
+
+  key_schema {
+    attribute_name = "executionId"
+    key_type       = "HASH"
+  }
 
   attribute {
     name = "executionId"
@@ -165,9 +169,17 @@ resource "aws_dynamodb_resource_policy" "executions_cross_account" {
 resource "aws_dynamodb_table" "audit_log" {
   name                        = local.audit_table_name
   billing_mode                = var.billing_mode
-  hash_key                    = "accountId"
-  range_key                   = "timestamp"
   deletion_protection_enabled = var.environment != "ephemeral"
+
+  key_schema {
+    attribute_name = "accountId"
+    key_type       = "HASH"
+  }
+
+  key_schema {
+    attribute_name = "timestamp"
+    key_type       = "RANGE"
+  }
 
   attribute {
     name = "accountId"
