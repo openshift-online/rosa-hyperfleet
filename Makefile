@@ -228,7 +228,8 @@ ephemeral-sre-ui: ## Tunnel SRE UI tools (Grafana, ArgoCD, Prometheus, Thanos, L
 	@ID="$(ID)" ./scripts/dev/ephemeral-env.sh sre-ui
 
 ephemeral-e2e: ## Run e2e tests against an ephemeral env
-	@ID="$(ID)" E2E_REF="$(or $(E2E_REF),main)" E2E_REPO="$(E2E_REPO)" ./scripts/dev/ephemeral-env.sh e2e
+	@ID="$(ID)" E2E_REF="$(or $(E2E_REF),main)" E2E_REPO="$(E2E_REPO)" \
+		CLI_REF="$(or $(CLI_REF),main)" CLI_REPO="$(CLI_REPO)" ./scripts/dev/ephemeral-env.sh e2e
 
 ephemeral-dump-env: ## Dump EKS must-gather and DB state from an ephemeral env (CLUSTER=rc|mc)
 	@ID="$(ID)" ./scripts/dev/ephemeral-env.sh dump-env $(CLUSTER)
