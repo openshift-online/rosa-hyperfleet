@@ -21,4 +21,4 @@ hypershift:
     # - hypershift.openshift.io/aws-iam-authenticator annotation propagation
     # - managed ingress DNS zone creation (RFE-9235)
     # Branch: https://github.com/typeid/hypershift/tree/managed_ingress
-    image: quay.io/cbusse_openshift/hypershift-operator:managed-ingress-dns-efc243a1ad
+    image: quay.io/cbusse_openshift/hypershift-operator:managed-ingress-dns-e5091c18cb
