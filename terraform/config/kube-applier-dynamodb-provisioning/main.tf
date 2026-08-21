@@ -33,8 +33,6 @@ module "kube_applier_dynamodb" {
 
   mc_name           = var.mc_name
   mc_aws_account_id = var.mc_aws_account_id
-  rc_id             = var.rc_id
-  aws_region        = var.region
   enable_pitr       = var.enable_pitr
 }
 

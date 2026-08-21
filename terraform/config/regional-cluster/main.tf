@@ -176,10 +176,8 @@ module "regional_cluster" {
   source = "../../modules/eks-cluster"
 
   # Required variables
-  cluster_type                    = "regional-cluster"
   cluster_id                      = var.regional_id
   vpc_id                          = module.vpc.vpc_id
-  vpc_cidr                        = module.vpc.vpc_cidr
   private_subnet_ids              = module.vpc.private_subnet_ids
   cluster_security_group_id       = module.vpc.cluster_security_group_id
   vpc_endpoints_security_group_id = module.vpc.vpc_endpoints_security_group_id
@@ -236,7 +234,6 @@ module "bastion" {
 
   cluster_id                = var.regional_id
   cluster_name              = module.regional_cluster.cluster_name
-  cluster_endpoint          = module.regional_cluster.cluster_endpoint
   cluster_security_group_id = module.vpc.cluster_security_group_id
   vpc_id                    = module.vpc.vpc_id
   private_subnet_ids        = module.vpc.private_subnet_ids

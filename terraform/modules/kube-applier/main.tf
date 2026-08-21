@@ -10,8 +10,6 @@
 # IAM credentials to the controller pod.
 # =============================================================================
 
-data "aws_region" "current" {}
-
 locals {
   common_tags = merge(
     var.tags,
