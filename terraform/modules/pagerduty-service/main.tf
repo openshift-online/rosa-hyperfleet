@@ -65,7 +65,6 @@ resource "aws_secretsmanager_secret" "pagerduty_integration_key" {
 
   tags = merge(local.common_tags, {
     Name      = "${var.regional_id}-pagerduty-integration-key"
-    Module    = "pagerduty-service"
     ManagedBy = "terraform"
   })
 }

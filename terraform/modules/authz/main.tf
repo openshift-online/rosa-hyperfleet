@@ -23,11 +23,10 @@ locals {
   common_tags = merge(
     var.tags,
     {
-      Module    = "authz"
       ManagedBy = "terraform"
-
-      function = "authz"
-    module = "authz" }
+      function  = "authz"
+      module    = "authz"
+    }
   )
 
   # Table names following the pattern: ${regional_id}-authz-${purpose}
