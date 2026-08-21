@@ -70,7 +70,7 @@ variable "public_subnet_cidrs" {
 }
 
 # Ensure private and public subnet counts match
-# tflint-ignore: terraform_unused_declarations
 locals {
+  # tflint-ignore: terraform_unused_declarations
   subnet_count_validation = length(var.private_subnet_cidrs) == length(var.public_subnet_cidrs) ? true : tobool("Private and public subnet counts must match")
 }
