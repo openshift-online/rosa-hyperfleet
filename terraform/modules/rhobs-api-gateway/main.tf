@@ -23,6 +23,16 @@
 data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
 
+locals {
+  common_tags = merge(
+    var.tags,
+    {
+      function = "platform-api"
+      module   = "rhobs-api-gateway"
+    }
+  )
+}
+
 # -----------------------------------------------------------------------------
 # REST API
 # -----------------------------------------------------------------------------
@@ -39,9 +49,9 @@ resource "aws_api_gateway_rest_api" "rhobs" {
     types = ["REGIONAL"]
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-rhobs"
-  }
+  })
 }
 
 # -----------------------------------------------------------------------------
@@ -205,7 +215,7 @@ resource "aws_kms_key" "api_gateway_logs" {
         Sid    = "AllowCloudWatchLogs"
         Effect = "Allow"
         Principal = {
-          Service = "logs.${data.aws_region.current.name}.amazonaws.com"
+          Service = "logs.${data.aws_region.current.region}.amazonaws.com"
         }
         Action = [
           "kms:Encrypt",
@@ -217,16 +227,16 @@ resource "aws_kms_key" "api_gateway_logs" {
         Resource = "*"
         Condition = {
           ArnLike = {
-            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/api-gateway/${var.regional_id}-rhobs/*"
+            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/api-gateway/${var.regional_id}-rhobs/*"
           }
         }
       }
     ]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-rhobs-api-gateway-logs"
-  }
+  })
 }
 
 resource "aws_kms_alias" "api_gateway_logs" {
@@ -242,9 +252,9 @@ resource "aws_cloudwatch_log_group" "api_gateway_access" {
 
   depends_on = [aws_kms_key.api_gateway_logs]
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-rhobs-api-access-logs"
-  }
+  })
 }
 
 resource "aws_api_gateway_stage" "rhobs" {
@@ -275,9 +285,9 @@ resource "aws_api_gateway_stage" "rhobs" {
     })
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-rhobs-${var.stage_name}"
-  }
+  })
 
   depends_on = [aws_cloudwatch_log_group.api_gateway_access]
 }

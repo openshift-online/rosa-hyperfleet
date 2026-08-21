@@ -26,6 +26,14 @@ locals {
   oidc_token_endpoint         = "${var.oidc_issuer_url}/protocol/openid-connect/token"
   oidc_user_info_endpoint     = "${var.oidc_issuer_url}/protocol/openid-connect/userinfo"
 
+  common_tags = merge(
+    var.tags,
+    {
+      function = "platform-api"
+      module   = "sre-ui-alb"
+    }
+  )
+
   # Service map — single source of truth for per-service config.
   # tg_port/protocol: target group settings.
   # sg_port: actual container port used for security group rules.
@@ -82,9 +90,9 @@ resource "aws_lb" "sre" {
     enabled = true
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-sre"
-  }
+  })
 
   depends_on = [aws_s3_bucket_policy.access_logs]
 
@@ -122,10 +130,10 @@ resource "aws_lb_target_group" "services" {
     matcher             = "200"
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name                   = "${var.regional_id}-sre-${each.key}"
     "eks:eks-cluster-name" = var.cluster_name
-  }
+  })
 }
 
 # -----------------------------------------------------------------------------
@@ -143,6 +151,7 @@ resource "aws_lb_listener" "https" {
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
   certificate_arn   = aws_acm_certificate_validation.sre[0].certificate_arn
+  tags              = local.common_tags
 
   default_action {
     type = "fixed-response"
@@ -160,6 +169,7 @@ resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.sre.arn
   port              = 80
   protocol          = "HTTP"
+  tags              = local.common_tags
 
   default_action {
     type = "fixed-response"
@@ -187,6 +197,7 @@ resource "aws_lb_listener_rule" "services" {
 
   listener_arn = local.listener_arn
   priority     = each.value.priority
+  tags         = local.common_tags
 
   dynamic "action" {
     for_each = var.oidc_enabled ? [1] : []

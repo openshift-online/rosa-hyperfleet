@@ -14,6 +14,8 @@ locals {
   common_tags = merge(
     var.tags,
     {
+      function  = "observability"
+      module    = "grafana-cloudwatch-logs"
       Component = "grafana-cloudwatch-logs"
       ManagedBy = "terraform"
     }

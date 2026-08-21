@@ -81,7 +81,7 @@ output "vpc_link_security_group_id" {
 output "test_command" {
   description = "awscurl command to test the API"
   value       = <<-EOT
-    awscurl --service execute-api --region ${data.aws_region.current.name} \
+    awscurl --service execute-api --region ${data.aws_region.current.region} \
       ${aws_api_gateway_stage.main.invoke_url}/v0/live
   EOT
 }

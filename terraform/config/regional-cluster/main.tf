@@ -19,12 +19,15 @@ provider "aws" {
   }
 
   default_tags {
-    tags = {
-      app-code      = var.app_code
-      service-phase = var.service_phase
-      cost-center   = var.cost_center
-      environment   = var.environment
-    }
+    tags = merge(
+      {
+        app-code      = var.app_code
+        service-phase = var.service_phase
+        cost-center   = var.cost_center
+        environment   = var.environment
+      },
+      var.eph_prefix != "" ? { ephemeral-prefix = var.eph_prefix } : {}
+    )
   }
 }
 
@@ -90,6 +93,8 @@ resource "aws_iam_role" "external_secrets_operator" {
 
   tags = {
     Name      = "${var.regional_id}-external-secrets-operator-role"
+    function  = "cluster-infra"
+    module    = "regional-cluster"
     ManagedBy = "terraform"
   }
 }
@@ -147,6 +152,8 @@ resource "aws_eks_pod_identity_association" "external_secrets_operator" {
 
   tags = {
     Name      = "${var.regional_id}-external-secrets-operator-pod-identity"
+    function  = "cluster-infra"
+    module    = "regional-cluster"
     ManagedBy = "terraform"
   }
 }
@@ -169,10 +176,8 @@ module "regional_cluster" {
   source = "../../modules/eks-cluster"
 
   # Required variables
-  cluster_type                    = "regional-cluster"
   cluster_id                      = var.regional_id
   vpc_id                          = module.vpc.vpc_id
-  vpc_cidr                        = module.vpc.vpc_cidr
   private_subnet_ids              = module.vpc.private_subnet_ids
   cluster_security_group_id       = module.vpc.cluster_security_group_id
   vpc_endpoints_security_group_id = module.vpc.vpc_endpoints_security_group_id
@@ -229,7 +234,6 @@ module "bastion" {
 
   cluster_id                = var.regional_id
   cluster_name              = module.regional_cluster.cluster_name
-  cluster_endpoint          = module.regional_cluster.cluster_endpoint
   cluster_security_group_id = module.vpc.cluster_security_group_id
   vpc_id                    = module.vpc.vpc_id
   private_subnet_ids        = module.vpc.private_subnet_ids
@@ -335,7 +339,9 @@ resource "aws_route53_zone" "regional" {
   name = "${var.deployment_name}.${var.environment_domain}"
 
   tags = {
-    Name = "${var.deployment_name}.${var.environment_domain}"
+    Name     = "${var.deployment_name}.${var.environment_domain}"
+    function = "dns"
+    module   = "regional-cluster"
   }
 }
 
@@ -375,8 +381,10 @@ resource "aws_route53_zone" "zone_shard" {
   name = "${count.index}.${var.deployment_name}.${var.environment_domain}"
 
   tags = {
-    Name  = "${count.index}.${var.deployment_name}.${var.environment_domain}"
-    Shard = tostring(count.index)
+    Name     = "${count.index}.${var.deployment_name}.${var.environment_domain}"
+    Shard    = tostring(count.index)
+    function = "dns"
+    module   = "regional-cluster"
   }
 }
 
@@ -529,6 +537,8 @@ resource "aws_iam_role" "hyperfleet_operator" {
   tags = {
     Name      = "${var.regional_id}-hyperfleet-operator-role"
     Component = "hyperfleet-operator"
+    function  = "messaging"
+    module    = "regional-cluster"
     ManagedBy = "terraform"
   }
 }
@@ -542,6 +552,8 @@ resource "aws_eks_pod_identity_association" "hyperfleet_operator" {
   tags = {
     Name      = "${var.regional_id}-hyperfleet-operator-pod-identity"
     Component = "hyperfleet-operator"
+    function  = "messaging"
+    module    = "regional-cluster"
     ManagedBy = "terraform"
   }
 }

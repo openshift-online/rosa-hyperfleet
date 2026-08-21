@@ -27,6 +27,7 @@ variable "oidc_bucket_name" {
   }
 }
 
+# tflint-ignore: terraform_unused_declarations
 variable "oidc_bucket_arn" {
   description = "S3 bucket ARN for OIDC discovery documents (owned by the Regional Cluster)"
   type        = string

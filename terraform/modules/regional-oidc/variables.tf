@@ -2,6 +2,12 @@
 # Regional OIDC Module - Input Variables
 # =============================================================================
 
+variable "tags" {
+  description = "Base tags to merge with module-specific tags (function, module)"
+  type        = map(string)
+  default     = {}
+}
+
 variable "regional_id" {
   description = "Regional cluster identifier, used for resource naming"
   type        = string

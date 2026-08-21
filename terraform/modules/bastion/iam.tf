@@ -4,7 +4,6 @@ data "aws_caller_identity" "current" {}
 
 locals {
   account_id = data.aws_caller_identity.current.account_id
-  region     = data.aws_region.current.name
 }
 
 # =============================================================================
@@ -27,7 +26,9 @@ resource "aws_iam_role" "execution" {
     ]
   })
 
-  tags = var.tags
+  tags = merge(local.common_tags, {
+    Name = "${var.cluster_id}-bastion-execution-role"
+  })
 }
 
 resource "aws_iam_role_policy_attachment" "execution_managed" {

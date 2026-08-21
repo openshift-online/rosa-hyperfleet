@@ -8,6 +8,14 @@
 
 locals {
   service_name = var.eph_prefix != "" ? "rrp-${var.eph_prefix}-${var.environment}-${var.region}" : "rrp-${var.environment}-${var.region}"
+
+  common_tags = merge(
+    var.tags,
+    {
+      function = "observability"
+      module   = "pagerduty-service"
+    }
+  )
 }
 
 # =============================================================================
@@ -55,11 +63,10 @@ resource "aws_secretsmanager_secret" "pagerduty_integration_key" {
   description             = "PagerDuty Events API v2 integration key for AlertManager"
   recovery_window_in_days = 0
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name      = "${var.regional_id}-pagerduty-integration-key"
-    Module    = "pagerduty-service"
     ManagedBy = "terraform"
-  }
+  })
 }
 
 resource "aws_secretsmanager_secret_version" "pagerduty_integration_key" {

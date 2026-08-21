@@ -18,9 +18,10 @@ locals {
   common_tags = merge(
     var.tags,
     {
-      ManagedBy         = "terraform"
-      Module            = "kube-applier-dynamodb"
+      function          = "messaging"
+      module            = "kube-applier-dynamodb"
       ManagementCluster = var.mc_name
+      ManagedBy         = "terraform"
     }
   )
 

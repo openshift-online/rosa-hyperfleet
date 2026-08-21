@@ -7,5 +7,7 @@ locals {
   common_tags = {
     Component = "zoa"
     ManagedBy = "terraform"
+    function  = "zoa"
+    module    = "zoa"
   }
 }

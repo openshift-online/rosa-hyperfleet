@@ -16,6 +16,10 @@ resource "aws_iam_role" "execution" {
       }
     ]
   })
+
+  tags = merge(local.common_tags, {
+    Name = "${var.cluster_id}-bootstrap-execution-role"
+  })
 }
 
 # Attach AWS managed policy for ECS task execution
@@ -39,6 +43,10 @@ resource "aws_iam_role" "task" {
         }
       }
     ]
+  })
+
+  tags = merge(local.common_tags, {
+    Name = "${var.cluster_id}-bootstrap-task-role"
   })
 }
 
@@ -72,7 +80,7 @@ resource "aws_iam_role_policy" "task_bootstrap" {
           "eks:DescribeAddon",
           "eks:UpdateAddon"
         ]
-        Resource = "arn:aws:eks:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:addon/${var.eks_cluster_name}/*/*"
+        Resource = "arn:aws:eks:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:addon/${var.eks_cluster_name}/*/*"
       },
       {
         Effect = "Allow"
@@ -83,8 +91,8 @@ resource "aws_iam_role_policy" "task_bootstrap" {
           "ssm:GetParametersByPath"
         ]
         Resource = [
-          "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/${var.cluster_id}/*",
-          "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/argocd/*"
+          "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.cluster_id}/*",
+          "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/argocd/*"
         ]
       },
       {
@@ -93,7 +101,7 @@ resource "aws_iam_role_policy" "task_bootstrap" {
           "secretsmanager:GetSecretValue",
           "secretsmanager:DescribeSecret"
         ]
-        Resource = "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:${var.cluster_id}/*"
+        Resource = "arn:aws:secretsmanager:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:secret:${var.cluster_id}/*"
       }
     ]
   })
@@ -108,6 +116,10 @@ resource "aws_eks_access_entry" "bootstrap_task" {
   cluster_name  = var.eks_cluster_name
   principal_arn = aws_iam_role.task.arn
   type          = "STANDARD"
+
+  tags = merge(local.common_tags, {
+    Name = "${var.cluster_id}-bootstrap-task-access"
+  })
 }
 
 # Associate cluster admin policy with the access entry

@@ -22,9 +22,9 @@ resource "aws_acm_certificate" "api" {
   domain_name       = var.api_domain_name
   validation_method = "DNS"
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-api-cert"
-  }
+  })
 
   lifecycle {
     create_before_destroy = true
@@ -67,9 +67,9 @@ resource "aws_api_gateway_domain_name" "api" {
     types = ["REGIONAL"]
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-api-domain"
-  }
+  })
 }
 
 # -----------------------------------------------------------------------------

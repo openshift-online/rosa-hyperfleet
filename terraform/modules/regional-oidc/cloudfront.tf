@@ -45,7 +45,7 @@ resource "aws_cloudfront_distribution" "oidc" {
     cloudfront_default_certificate = true
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-oidc"
-  }
+  })
 }

@@ -2,16 +2,6 @@
 # Required variables
 # =============================================================================
 
-variable "cluster_type" {
-  description = "Type of cluster: 'regional-cluster' or 'management-cluster'"
-  type        = string
-
-  validation {
-    condition     = contains(["regional-cluster", "management-cluster", "fleet-db"], var.cluster_type)
-    error_message = "Cluster type must be 'regional-cluster', 'management-cluster', or 'fleet-db'."
-  }
-}
-
 variable "cluster_id" {
   description = "Unique identifier for the cluster, used as the base name for all resources."
   type        = string
@@ -41,11 +31,6 @@ variable "vpc_id" {
   type        = string
 }
 
-variable "vpc_cidr" {
-  description = "VPC CIDR block (used for security group rules)"
-  type        = string
-}
-
 variable "private_subnet_ids" {
   description = "Private subnet IDs for EKS worker nodes"
   type        = list(string)
@@ -59,16 +44,6 @@ variable "cluster_security_group_id" {
 variable "vpc_endpoints_security_group_id" {
   description = "Pre-created security group ID for VPC endpoints"
   type        = string
-}
-
-# =============================================================================
-# Advanced security configuration options
-# =============================================================================
-
-variable "enable_pod_security_standards" {
-  description = "Enable Kubernetes Pod Security Standards"
-  type        = bool
-  default     = true
 }
 
 # =============================================================================

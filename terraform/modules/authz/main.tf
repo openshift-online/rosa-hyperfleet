@@ -12,6 +12,7 @@
 
 data "aws_region" "current" {}
 
+# tflint-ignore: terraform_unused_declarations
 data "aws_caller_identity" "current" {}
 
 # =============================================================================
@@ -22,8 +23,9 @@ locals {
   common_tags = merge(
     var.tags,
     {
-      Module    = "authz"
       ManagedBy = "terraform"
+      function  = "authz"
+      module    = "authz"
     }
   )
 

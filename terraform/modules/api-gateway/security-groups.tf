@@ -18,9 +18,9 @@ resource "aws_security_group" "vpc_link" {
   # Prevent Terraform from trying to detach VPC Link-managed ENIs
   revoke_rules_on_delete = false
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-api-vpc-link"
-  }
+  })
 }
 
 resource "aws_vpc_security_group_egress_rule" "vpc_link_to_alb" {
@@ -30,6 +30,7 @@ resource "aws_vpc_security_group_egress_rule" "vpc_link_to_alb" {
   from_port                    = 80
   to_port                      = 80
   referenced_security_group_id = aws_security_group.alb.id
+  tags                         = local.common_tags
 }
 
 # -----------------------------------------------------------------------------
@@ -44,9 +45,9 @@ resource "aws_security_group" "alb" {
   # Prevent Terraform from trying to detach ALB-managed ENIs
   revoke_rules_on_delete = false
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-api-alb"
-  }
+  })
 }
 
 resource "aws_vpc_security_group_ingress_rule" "alb_from_vpc_link" {
@@ -56,6 +57,7 @@ resource "aws_vpc_security_group_ingress_rule" "alb_from_vpc_link" {
   from_port                    = 80
   to_port                      = 80
   referenced_security_group_id = aws_security_group.vpc_link.id
+  tags                         = local.common_tags
 }
 
 resource "aws_vpc_security_group_egress_rule" "alb_to_targets" {
@@ -65,6 +67,7 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_targets" {
   from_port                    = var.target_port
   to_port                      = var.target_port
   referenced_security_group_id = var.node_security_group_id
+  tags                         = local.common_tags
 }
 
 
@@ -83,5 +86,6 @@ resource "aws_vpc_security_group_ingress_rule" "nodes_from_alb" {
   from_port                    = var.target_port
   to_port                      = var.target_port
   referenced_security_group_id = aws_security_group.alb.id
+  tags                         = local.common_tags
 }
 

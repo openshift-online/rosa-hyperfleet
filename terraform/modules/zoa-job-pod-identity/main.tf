@@ -6,6 +6,16 @@
 # (execution.log, output.json) to the regional ZOA outputs bucket.
 # =============================================================================
 
+locals {
+  common_tags = merge(
+    var.tags,
+    {
+      function = "zoa"
+      module   = "zoa-job-pod-identity"
+    }
+  )
+}
+
 resource "aws_iam_role" "zoa_job" {
   name        = "${var.management_id}-zoa-job"
   description = "Pod Identity role for ZOA jobs to upload artifacts to regional S3 bucket"
@@ -24,9 +34,9 @@ resource "aws_iam_role" "zoa_job" {
     }]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.management_id}-zoa-job"
-  }
+  })
 }
 
 resource "aws_iam_role_policy" "zoa_job_s3" {
@@ -77,9 +87,9 @@ resource "aws_eks_pod_identity_association" "zoa_uploader" {
   service_account = "zoa-uploader"
   role_arn        = aws_iam_role.zoa_job.arn
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.management_id}-zoa-uploader-pod-identity"
-  }
+  })
 }
 
 # AWS-scoped TAs use static SAs that need direct AWS access
@@ -89,9 +99,9 @@ resource "aws_eks_pod_identity_association" "zoa_aws_read" {
   service_account = "zoa-aws-read"
   role_arn        = aws_iam_role.zoa_job.arn
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.management_id}-zoa-aws-read-pod-identity"
-  }
+  })
 }
 
 resource "aws_eks_pod_identity_association" "zoa_aws_write" {
@@ -100,9 +110,9 @@ resource "aws_eks_pod_identity_association" "zoa_aws_write" {
   service_account = "zoa-aws-write"
   role_arn        = aws_iam_role.zoa_job.arn
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.management_id}-zoa-aws-write-pod-identity"
-  }
+  })
 }
 
 resource "aws_eks_pod_identity_association" "zoa_breakglass_read" {
@@ -111,9 +121,9 @@ resource "aws_eks_pod_identity_association" "zoa_breakglass_read" {
   service_account = "zoa-breakglass-read"
   role_arn        = aws_iam_role.zoa_job.arn
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.management_id}-zoa-breakglass-read-pod-identity"
-  }
+  })
 }
 
 resource "aws_eks_pod_identity_association" "zoa_breakglass_write" {
@@ -122,7 +132,7 @@ resource "aws_eks_pod_identity_association" "zoa_breakglass_write" {
   service_account = "zoa-breakglass-write"
   role_arn        = aws_iam_role.zoa_job.arn
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.management_id}-zoa-breakglass-write-pod-identity"
-  }
+  })
 }

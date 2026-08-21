@@ -18,9 +18,9 @@ resource "aws_lb" "platform" {
   security_groups    = [aws_security_group.alb.id]
   subnets            = var.private_subnet_ids
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-api"
-  }
+  })
 }
 
 # -----------------------------------------------------------------------------
@@ -48,10 +48,10 @@ resource "aws_lb_target_group" "platform" {
     matcher             = "200"
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name                   = "${var.regional_id}-api"
     "eks:eks-cluster-name" = var.cluster_name
-  }
+  })
 }
 
 # -----------------------------------------------------------------------------
@@ -62,6 +62,7 @@ resource "aws_lb_listener" "platform" {
   load_balancer_arn = aws_lb.platform.arn
   port              = 80
   protocol          = "HTTP"
+  tags              = local.common_tags
 
   default_action {
     type             = "forward"

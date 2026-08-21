@@ -10,14 +10,13 @@
 # IAM credentials to the controller pod.
 # =============================================================================
 
-data "aws_region" "current" {}
-
 locals {
   common_tags = merge(
     var.tags,
     {
+      function  = "messaging"
+      module    = "kube-applier"
       ManagedBy = "terraform"
-      Module    = "kube-applier"
     }
   )
 }

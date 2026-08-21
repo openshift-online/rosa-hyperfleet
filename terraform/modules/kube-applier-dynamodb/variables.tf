@@ -22,16 +22,6 @@ variable "mc_name" {
   }
 }
 
-variable "rc_id" {
-  description = "Regional cluster identifier for resource naming (e.g., 'regional')"
-  type        = string
-}
-
-variable "aws_region" {
-  description = "AWS region where DynamoDB tables will be created"
-  type        = string
-}
-
 variable "enable_pitr" {
   description = "Enable Point-In-Time Recovery on DynamoDB tables. Enable for staging/production environments."
   type        = bool

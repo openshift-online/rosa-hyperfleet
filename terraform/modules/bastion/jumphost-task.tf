@@ -84,7 +84,7 @@ resource "aws_ecs_task_definition" "bastion" {
         },
         {
           name  = "AWS_REGION"
-          value = data.aws_region.current.name
+          value = data.aws_region.current.region
         }
       ]
 
@@ -92,7 +92,7 @@ resource "aws_ecs_task_definition" "bastion" {
         logDriver = "awslogs"
         options = {
           awslogs-group         = aws_cloudwatch_log_group.bastion.name
-          awslogs-region        = data.aws_region.current.name
+          awslogs-region        = data.aws_region.current.region
           awslogs-stream-prefix = "bastion"
         }
       }
@@ -104,7 +104,7 @@ resource "aws_ecs_task_definition" "bastion" {
     }
   ])
 
-  tags = var.tags
+  tags = local.common_tags
 }
 
 # =============================================================================
@@ -127,7 +127,7 @@ resource "aws_iam_role" "task" {
     ]
   })
 
-  tags = var.tags
+  tags = local.common_tags
 }
 
 resource "aws_iam_role_policy" "task_eks" {
@@ -156,7 +156,7 @@ resource "aws_iam_role_policy" "task_eks" {
           "eks:DescribeUpdate",
           "eks:AccessKubernetesApi"
         ]
-        Resource = "arn:aws:eks:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:cluster/${var.cluster_name}"
+        Resource = "arn:aws:eks:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:cluster/${var.cluster_name}"
       }
     ]
   })
@@ -203,7 +203,7 @@ resource "aws_eks_access_entry" "bastion" {
   principal_arn = aws_iam_role.task.arn
   type          = "STANDARD"
 
-  tags = var.tags
+  tags = local.common_tags
 }
 
 resource "aws_eks_access_policy_association" "bastion" {

@@ -22,9 +22,9 @@ resource "aws_lb" "rhobs" {
   security_groups    = [aws_security_group.alb.id]
   subnets            = var.private_subnet_ids
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-rhobs"
-  }
+  })
 }
 
 # -----------------------------------------------------------------------------
@@ -53,10 +53,10 @@ resource "aws_lb_target_group" "thanos_receive" {
     matcher             = "200"
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name                   = "${var.regional_id}-th-recv"
     "eks:eks-cluster-name" = var.cluster_name
-  }
+  })
 }
 
 # -----------------------------------------------------------------------------
@@ -70,6 +70,7 @@ resource "aws_lb_listener" "rhobs" {
   load_balancer_arn = aws_lb.rhobs.arn
   port              = 80
   protocol          = "HTTP"
+  tags              = local.common_tags
 
   default_action {
     type = "fixed-response"
@@ -91,6 +92,7 @@ resource "aws_lb_listener" "rhobs" {
 resource "aws_lb_listener_rule" "thanos_receive" {
   listener_arn = aws_lb_listener.rhobs.arn
   priority     = 100
+  tags         = local.common_tags
 
   action {
     type             = "forward"
@@ -130,15 +132,16 @@ resource "aws_lb_target_group" "thanos_query" {
     matcher             = "200"
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name                   = "${var.regional_id}-th-query"
     "eks:eks-cluster-name" = var.cluster_name
-  }
+  })
 }
 
 resource "aws_lb_listener_rule" "thanos_query" {
   listener_arn = aws_lb_listener.rhobs.arn
   priority     = 200
+  tags         = local.common_tags
 
   action {
     type             = "forward"
@@ -155,6 +158,7 @@ resource "aws_lb_listener_rule" "thanos_query" {
 resource "aws_lb_listener_rule" "thanos_rules" {
   listener_arn = aws_lb_listener.rhobs.arn
   priority     = 250
+  tags         = local.common_tags
 
   action {
     type             = "forward"
@@ -194,15 +198,16 @@ resource "aws_lb_target_group" "loki_distributor" {
     matcher             = "200"
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name                   = "${var.regional_id}-loki-dist"
     "eks:eks-cluster-name" = var.cluster_name
-  }
+  })
 }
 
 resource "aws_lb_listener_rule" "loki_push" {
   listener_arn = aws_lb_listener.rhobs.arn
   priority     = 300
+  tags         = local.common_tags
 
   action {
     type             = "forward"
@@ -242,15 +247,16 @@ resource "aws_lb_target_group" "loki_query_frontend" {
     matcher             = "200"
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name                   = "${var.regional_id}-loki-qfe"
     "eks:eks-cluster-name" = var.cluster_name
-  }
+  })
 }
 
 resource "aws_lb_listener_rule" "loki_query" {
   listener_arn = aws_lb_listener.rhobs.arn
   priority     = 400
+  tags         = local.common_tags
 
   action {
     type             = "forward"
