@@ -426,3 +426,33 @@ output "zoa_kms_key_arn" {
   description = "KMS key ARN for ZOA encryption (used by MC Pod Identity for S3 SSE-KMS)"
   value       = module.zoa.kms_key_arn
 }
+
+output "zoa_table_arn" {
+  description = "DynamoDB executions table ARN (for MC Lambda cross-account access)"
+  value       = module.zoa.table_arn
+}
+
+output "zoa_audit_table_arn" {
+  description = "DynamoDB audit table ARN (for MC Lambda cross-account access)"
+  value       = module.zoa.audit_table_arn
+}
+
+output "zoa_uploader_role_arn" {
+  description = "ARN of the ZOA uploader role (MC Lambdas assume this for scoped S3 creds)"
+  value       = module.zoa.uploader_role_arn
+}
+
+output "zoa_data_access_role_arn" {
+  description = "ARN of the ZOA data-access role (MC Lambdas assume this for cross-account DynamoDB+S3)"
+  value       = module.zoa.data_access_role_arn
+}
+
+output "zoa_lambda_ecr_url" {
+  description = "ECR repository URL for ZOA Lambda (MC appends tag for cross-account pull)"
+  value       = module.zoa.lambda_ecr_url
+}
+
+output "zoa_api_function_url" {
+  description = "Function URL for the ZOA API Lambda (used by rosa-boundary CLI)"
+  value       = try(module.zoa_lambda[0].api_function_url, "")
+}

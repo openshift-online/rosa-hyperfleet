@@ -44,9 +44,7 @@ Detailed architecture and rationale for key technical decisions:
 | [Terraform Resource Adoption](design/terraform-resource-adoption.md)                 | Idempotent import of auto-created AWS resources into Terraform            |
 | [Testing Strategy](design/testing-strategy.md)                                       | Ephemeral and long-lived test environments                                |
 | [Thanos Metrics Infrastructure](design/thanos-metrics-infrastructure.md)             | Thanos S3 storage, operator, and Pod Identity setup                       |
-| [ZOA Architecture](design/zoa-architecture.md)                                       | Zero Operator Access -- system components, flows, infrastructure          |
-| [ZOA Trusted Actions](design/zoa-trusted-actions.md)                                 | TA template format, API design, CLI, dispatch flow                        |
-| [ZOA Security Model](design/zoa-security-model.md)                                   | SA isolation, RBAC, audit trail, threat model, FIPS                       |
+| [ZOA Architecture](design/zoa-architecture.md)                                       | Zero Operator Access — Lambda architecture, Terraform modules, security   |
 
 ### How-To Guides
 

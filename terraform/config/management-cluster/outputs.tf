@@ -166,3 +166,12 @@ output "kube_applier_role_arn" {
   description = "IAM role ARN for the kube-applier-aws controller"
   value       = module.kube_applier.kube_applier_role_arn
 }
+
+# =============================================================================
+# ZOA Outputs
+# =============================================================================
+
+output "zoa_api_function_url" {
+  description = "ZOA API Lambda Function URL (per-VPC endpoint for this MC)"
+  value       = try(module.zoa_lambda[0].api_function_url, "")
+}

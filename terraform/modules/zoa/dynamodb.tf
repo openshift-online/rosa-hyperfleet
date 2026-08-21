@@ -32,6 +32,16 @@ resource "aws_dynamodb_table" "executions" {
     type = "S"
   }
 
+  attribute {
+    name = "targetCluster"
+    type = "S"
+  }
+
+  attribute {
+    name = "targetStatusKey"
+    type = "S"
+  }
+
   global_secondary_index {
     name            = "account-index"
     hash_key        = "accountId"
@@ -43,6 +53,20 @@ resource "aws_dynamodb_table" "executions" {
     name            = "status-index"
     hash_key        = "status"
     range_key       = "createdAt"
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name            = "target-index"
+    hash_key        = "targetCluster"
+    range_key       = "createdAt"
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name            = "target-status-index"
+    hash_key        = "targetCluster"
+    range_key       = "targetStatusKey"
     projection_type = "ALL"
   }
 
@@ -67,6 +91,41 @@ resource "aws_dynamodb_table" "executions" {
       Component = "zoa"
     }
   )
+}
+
+# Cross-account access for MC Lambda roles
+resource "aws_dynamodb_resource_policy" "executions_cross_account" {
+  resource_arn = aws_dynamodb_table.executions.arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "AllowCrossAccountLambdaAccess"
+      Effect = "Allow"
+      Principal = {
+        AWS = "*"
+      }
+      Action = [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:Query",
+        "dynamodb:DescribeTable",
+      ]
+      Resource = [
+        aws_dynamodb_table.executions.arn,
+        "${aws_dynamodb_table.executions.arn}/index/*",
+      ]
+      Condition = {
+        "ForAnyValue:StringLike" = {
+          "aws:PrincipalOrgPaths" = "${var.mc_ou_path}*"
+        }
+        StringLike = {
+          "aws:PrincipalArn" = "arn:*:iam::*:role/*-zoa-lambda"
+        }
+      }
+    }]
+  })
 }
 
 # =============================================================================
@@ -114,4 +173,36 @@ resource "aws_dynamodb_table" "audit_log" {
       Component = "zoa"
     }
   )
+}
+
+# Cross-account access for MC Lambda roles (audit writes)
+resource "aws_dynamodb_resource_policy" "audit_cross_account" {
+  resource_arn = aws_dynamodb_table.audit_log.arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "AllowCrossAccountLambdaAuditWrite"
+      Effect = "Allow"
+      Principal = {
+        AWS = "*"
+      }
+      Action = [
+        "dynamodb:PutItem",
+        "dynamodb:Query",
+      ]
+      Resource = [
+        aws_dynamodb_table.audit_log.arn,
+        "${aws_dynamodb_table.audit_log.arn}/index/*",
+      ]
+      Condition = {
+        "ForAnyValue:StringLike" = {
+          "aws:PrincipalOrgPaths" = "${var.mc_ou_path}*"
+        }
+        StringLike = {
+          "aws:PrincipalArn" = "arn:*:iam::*:role/*-zoa-lambda"
+        }
+      }
+    }]
+  })
 }

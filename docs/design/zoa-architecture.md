@@ -1,732 +1,436 @@
 # Zero Operator Access (ZOA) — Architecture
 
-**Last Updated Date**: 2026-07-29
+**Last Updated Date**: 2026-08-21
 
 ## Summary
 
-Zero Operator Access (ZOA) is the operational access framework for ROSA HCP v2 Regional Platform. It eliminates persistent operator access to managed clusters by routing all operational tasks through mediated, auditable channels. Operators never SSH, kubectl, or assume roles into customer infrastructure — they execute pre-approved Trusted Actions via an API.
+ZOA ensures that operators have **no persistent, interactive, or unaudited access** to customer infrastructure. All operational actions are executed through pre-defined, audited Trusted Actions (TAs) via a fully serverless execution engine (Lambda, DynamoDB, S3, EventBridge).
 
-## Problem Statement
+ZOA is independent of the Regional Cluster's Platform API or any Kubernetes workload — the tool to fix the platform does not depend on the platform being healthy.
 
-Traditional managed-service operations require operators to have standing access (kubeconfig, IAM roles, bastion hosts) to diagnose and remediate issues. This creates:
+> For code-level architecture details (execution flows, SA isolation, streaming adapter, TA development), see the [ZOA repository documentation](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/README.md).
 
-- **Unaudited access paths**: Operators can run arbitrary commands without record
-- **Persistent credentials**: Long-lived kubeconfigs and IAM roles expand the attack surface
-- **No accountability**: Shared credentials obscure who did what and when
-- **Compliance gaps**: FedRAMP requires complete audit trails for privileged operations
+## Context
 
-ZOA eliminates all of these by making every operational action:
+- **Problem Statement**: Traditional managed-service operations require operators to have standing access (kubeconfig, IAM roles, bastion hosts). This creates unaudited access paths, persistent credentials, no accountability, and compliance gaps. FedRAMP requires complete audit trails for all privileged operations.
+- **Failure Domain Minimization**: The tool used to fix the platform must not depend on the platform being healthy. For sync TAs (the common case), the execution path has 3 failure domains — all AWS-managed: Lambda, DynamoDB, EKS API server. No custom K8s workloads, no pods, no operators in the critical path. Lambdas deploy per-VPC to isolate failure domains — one cluster's ZOA outage cannot cascade to another.
+- **Constraints**: Lambda only admits ECR as image source; Function URLs require IAM auth; cross-account access must use STS AssumeRole; all data encrypted at rest (KMS).
+- **Assumptions**: Each target VPC has an EKS cluster reachable from the Lambda's subnet. DynamoDB is the shared state store (regional, in RC account). CLI authenticates via SigV4.
 
-- Pre-defined (approved via PR)
-- Mediated (routed through the Platform API)
-- Auditable (recorded in DynamoDB with full caller identity)
-- Time-bounded (ephemeral, auto-cleaned)
-- Least-privileged (scoped RBAC per execution)
+## Architecture
 
-## System Components
+**Composite sync availability: 99.95%** (~22 min/month downtime budget). The sync execution path has only 3 failure domains — all AWS-managed: Lambda (99.95%), DynamoDB (99.999%), and EKS API (99.95%). No custom K8s workloads, no pods, no operators in the critical path.
 
-### Component Overview
+Each target VPC (RC and every MC) gets an independent pair of Lambda functions from the same container image (`zoa-lambda`), differentiated by the `HANDLER_MODE` environment variable:
+
+| Lambda     | Invoke Mode       | Trigger                             | Purpose                                                           | Timeout | Concurrency |
+| ---------- | ----------------- | ----------------------------------- | ----------------------------------------------------------------- | ------- | ----------- |
+| **API**    | `RESPONSE_STREAM` | Function URL (IAM auth)             | HTTP handler for CLI, sync TA execution, streaming responses      | 300s    | 50          |
+| **Worker** | `BUFFERED`        | EventBridge Scheduler + self-invoke | Reconciler (1m), GC (5m), async/approved TA execution via fan-out | 300s    | 10          |
+
+Both use `lambda.Start()` from `aws-lambda-go`. The API Lambda uses a native Go streaming adapter (`LambdaFunctionURLStreamingResponse`) supporting responses up to 200MB — no external proxy or sidecar. The Worker uses standard JSON responses for EventBridge and self-invocation events.
 
 ```mermaid
-graph TB
-    classDef awsAccount fill:#fefce8,stroke:#a16207,stroke-width:2px,stroke-dasharray: 8 4
-    classDef cluster fill:#f9f9f9,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
-    classDef jobsNamespace fill:#edf2f7,stroke:#4a5568,stroke-width:2px
-    classDef component fill:#fff,stroke:#3182ce,stroke-width:1px
-    classDef storage fill:#fff,stroke:#dd6b20,stroke-width:1px
+graph TD
+    subgraph laptop["SRE Laptop"]
+        L["$ kinit / rh-saml<br/>$ zoa run"]
+    end
 
-    subgraph AWSrosa ["AWS Account"]
-        subgraph rosa ["rosa-boundary (ECS Fargate)"]
-            CLI[ZOA CLI]:::component
+    subgraph rc["RC Account"]
+        DDB["DynamoDB + S3<br/>(centralized state)"]
+        subgraph rc_vpc["RC VPC"]
+            EB_RC["EventBridge"]
+            API_RC["API Lambda<br/>(Function URL, streaming)"]
+            WORKER_RC["Worker Lambda<br/>(self-invoke)"]
+            EKS_RC["RC EKS"]
         end
     end
 
-    CLI -->|SigV4 auth| APIGW
-
-    subgraph grid [" "]
-        direction LR
-
-        subgraph AWSrc ["AWS Account — Regional"]
-            direction TB
-            DynamoExec[DynamoDB<br/>executions]:::storage
-            DynamoAudit[DynamoDB<br/>audit log]:::storage
-            DynamoApply[DynamoDB<br/>ApplyDesire]:::storage
-            S3[S3 Bucket<br/>artifacts]:::storage
-            PG[PostgreSQL<br/>hyperfleet-db]:::storage
-
-            subgraph RC ["Regional Cluster (RC)"]
-                direction TB
-                APIGW[API Gateway]:::component
-
-                subgraph PAPI [Platform API — ZOA handlers]
-                    direction TB
-                    Reconciler[Reconciler<br/>5s loop]:::component
-                end
-
-                APIGW --> PAPI
-
-                HFOperator[hyperfleet-operator<br/>ManifestReconciler]:::component
-                KubeApplierRC[kube-applier<br/>RC-targeted TAs]:::component
-
-                PAPI --> PG
-                HFOperator -->|watches Manifest CRs| PG
-                HFOperator -->|writes ApplyDesire| DynamoApply
-                DynamoApply -->|DynamoDB Streams| KubeApplierRC
-            end
-
-            PAPI -.-> DynamoExec
-            PAPI -.-> DynamoAudit
-        end
-
-        subgraph AWSmc ["AWS Account — Management"]
-            direction TB
-
-            subgraph MC ["Management Cluster (MC)"]
-                direction TB
-                KubeApplierMC[kube-applier<br/>applies manifests]:::component
-
-                subgraph NS ["Namespace: zoa-jobs"]
-                    direction TB
-                    CMScripts[ConfigMap<br/>shared scripts]:::storage
-                    Runner[Runner Job<br/>zoa-exec-id]:::component
-                    Uploader[Uploader Job<br/>zoa-exec-id]:::component
-                    CMOutput[ConfigMap<br/>output]:::storage
-                    SA[SA per-exec<br/>SA uploader]:::component
-                    RBAC[Role / ClusterRole<br/>per-execution RBAC]:::component
-
-                    CMScripts -->|mounted by| Runner
-                    CMScripts -->|mounted by| Uploader
-                    Uploader -.->|waits until completion| Runner
-                    Runner -->|writes final output| CMOutput
-                    Uploader -->|reads after Runner exits| CMOutput
-                end
-
-                KubeApplierMC -->|applies manifests| NS
-            end
+    subgraph mc["MC Account"]
+        subgraph mc_vpc["MC VPC"]
+            EB_MC["EventBridge"]
+            API_MC["API Lambda<br/>(Function URL, streaming)"]
+            WORKER_MC["Worker Lambda<br/>(self-invoke)"]
+            EKS_MC["MC EKS"]
         end
     end
 
-    DynamoApply -->|"DynamoDB Streams (no direct network)"| KubeApplierMC
-    Uploader -->|S3 output upload| S3
+    L -->|"SigV4"| API_RC
+    L -->|"SigV4"| API_MC
 
-    class rosa cluster
-    class AWSrosa,AWSrc,AWSmc awsAccount
-    class RC,MC cluster
-    class NS jobsNamespace
-    style grid fill:none,stroke:none
+    EB_RC -->|"1m / 5m"| WORKER_RC
+    EB_MC -->|"1m / 5m"| WORKER_MC
+
+    API_RC --> EKS_RC
+    WORKER_RC --> EKS_RC
+    API_MC --> EKS_MC
+    WORKER_MC --> EKS_MC
+
+    API_RC -->|"read/write"| DDB
+    WORKER_RC --> DDB
+    API_MC -.->|"cross-account"| DDB
+    WORKER_MC -.->|"cross-account"| DDB
 ```
 
-### Component Responsibilities
+> For the complete architecture diagram including all component interactions, see the [ZOA README — Architecture](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/README.md#architecture).
 
-| Component                      | Location          | Role                                                                           |
-| ------------------------------ | ----------------- | ------------------------------------------------------------------------------ |
-| **API Gateway**                | AWS (regional)    | SigV4 authentication, request routing                                          |
-| **Platform API**               | RC (EKS pod)      | TA validation, job generation, Manifest CR creation, reconciliation            |
-| **hyperfleet-operator**        | RC (EKS pod)      | ManifestReconciler watches Manifest CRs, writes ApplyDesire to DynamoDB        |
-| **kube-applier**               | RC + MC (EKS pod) | Reads ApplyDesire from DynamoDB Streams, applies manifests, writes status back |
-| **PostgreSQL (hyperfleet-db)** | AWS (regional)    | Manifest CR storage (single source of truth)                                   |
-| **DynamoDB (ApplyDesire)**     | AWS (regional)    | Resource distribution layer between RC and target clusters                     |
-| **DynamoDB (executions)**      | AWS (regional)    | Execution metadata, status tracking                                            |
-| **DynamoDB (audit)**           | AWS (regional)    | API call audit trail                                                           |
-| **S3**                         | AWS (regional)    | Artifact storage (output.json, execution.log)                                  |
-| **KMS**                        | AWS (regional)    | Encryption at rest for DynamoDB, PostgreSQL, and S3                            |
-| **zoa-jobs namespace**         | RC + MC           | Execution environment (Jobs, RBAC, ConfigMaps)                                 |
+### Authentication & Caller Boundaries
 
-## Request Flow — Sequence Diagram
+#### Current State
 
-The following diagram shows what happens for every API call, covering all component interactions:
+Today, SREs call the per-VPC Lambda Function URL directly from their laptop:
 
-```mermaid
-sequenceDiagram
-    participant Op as Operator (zoa CLI)
-    participant GW as API Gateway
-    participant API as Platform API
-    participant PG as PostgreSQL (hyperfleet-db)
-    participant DB as DynamoDB (executions)
-    participant HFO as hyperfleet-operator
-    participant DDB as DynamoDB (ApplyDesire)
-    participant KA as kube-applier
-    participant MC as Target Cluster K8s API
-    participant Runner as Runner Job
-    participant CM as ConfigMap
-    participant Uploader as Uploader Job
-    participant S3 as S3 Bucket
+1. `kinit` (requires Red Hat VPN) → `rh-aws-saml-login` → IAM role with `lambda:InvokeFunctionUrl` permission
+2. `zoa` CLI calls the Function URL directly (SigV4 with the operator's IAM role)
+3. Lambda extracts caller identity from SigV4 headers (Account ID, ARN, session name) and records it on every execution
 
-    Note over Op,S3: 1. Submission (POST /{action}/run)
-    Op->>GW: POST /trusted-actions/get_pods/run (SigV4)
-    GW->>GW: Validate SigV4, extract caller identity
-    GW->>API: Forward request + X-Amz headers
-    API->>API: Validate params, build manifest payload
-    API->>DB: Create execution record (status=pending, jira, ttl)
-    API->>PG: Create Manifest CR in PostgreSQL
-    API-->>Op: 202 {id, status: "pending"}
+The Function URL's resource-based policy restricts which IAM principals can invoke it. Caller identity is immutable (derived from SigV4, not from request body).
 
-    Note over Op,S3: 2. Dispatch (DynamoDB, no direct network)
-    HFO->>PG: ManifestReconciler watches Manifest CR
-    HFO->>DDB: Write ApplyDesire to DynamoDB
-    DDB->>KA: DynamoDB Streams delivers ApplyDesire
-    KA->>MC: Apply manifests (SA, RBAC, CMs, Jobs) on target cluster
-    KA->>DDB: Write "Applied" status back to DynamoDB
-    HFO->>DDB: Read status update
-    HFO->>PG: Update Manifest CR status
+#### Target State (with rosa-boundary + ZOA Access Lambda)
 
-    Note over Op,S3: 3. Execution (Two-Job model on target cluster)
-    MC->>Runner: Start runner Job (per-exec SA)
-    MC->>Uploader: Start uploader Job (static SA)
-    Runner->>Runner: Execute /zoa/run.sh
-    Runner->>CM: Patch output ConfigMap (base64 log + output)
-    Runner->>Runner: Exit
-    Uploader->>Uploader: Poll runner Job (Complete/Failed) every 1s
-    Uploader->>CM: Read output ConfigMap
-    Uploader->>Uploader: Decode base64 → files
-    Uploader->>S3: aws s3 cp (execution.log + output.json)
-    Uploader->>Uploader: Exit
-
-    Note over Op,S3: 4. Reconciliation (5s loop)
-    API->>PG: Read Manifest CR status (poll for updates)
-    PG-->>API: Status: succeeded/failed + Job timestamps
-    API->>PG: Delete Manifest CR (cleanup)
-    HFO->>DDB: Remove ApplyDesire from DynamoDB
-    KA->>MC: Delete all ZOA resources from target cluster
-    API->>DB: Update: status, runner_seconds, upload_seconds, duration_seconds, output_status
-
-    Note over Op,S3: 5. Retrieval
-    Op->>GW: GET /runs/{id}?include=output (SigV4)
-    GW->>API: Forward
-    API->>DB: Get execution metadata
-    API->>S3: GetObject (output.json + execution.log)
-    API-->>Op: {metadata + output + logs}
-```
-
-### Per-Endpoint Data Flow Summary
-
-| Endpoint                   | Components Touched                                                                                                                                           |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `POST /{action}/run`       | API Gateway → Platform API → DynamoDB (executions) → PostgreSQL (Manifest CR) → hyperfleet-operator → DynamoDB (ApplyDesire) → kube-applier → Target (RC/MC) |
-| `GET /runs/{id}`           | API Gateway → Platform API → DynamoDB (executions) + S3                                                                                                      |
-| `GET /runs`                | API Gateway → Platform API → DynamoDB (executions)                                                                                                           |
-| `GET /` (catalog)          | API Gateway → Platform API (in-memory registry)                                                                                                              |
-| `GET /{action}` (describe) | API Gateway → Platform API (in-memory registry)                                                                                                              |
-| `GET /audit`               | API Gateway → Platform API → DynamoDB (audit table)                                                                                                          |
-
-## Network Architecture
-
-### Key Constraint: No Direct Network Path from RC to MC
-
-The Regional Cluster cannot reach the Management Cluster's Kubernetes API directly. All communication to MCs flows through DynamoDB as an intermediary:
-
-```text
-RC → Platform API (creates Manifest CR in PostgreSQL) → hyperfleet-operator (writes ApplyDesire to DynamoDB) → kube-applier (reads from DynamoDB Streams on target) → Target Kubernetes API
-```
-
-For MC-targeted TAs, the DynamoDB path crosses the network boundary. For RC-targeted TAs, kube-applier on the RC reads the ApplyDesire and applies it locally.
-
-This means:
-
-- Platform API cannot kubectl into remote clusters
-- Status feedback flows back through DynamoDB: Target kube-applier → DynamoDB (status) → hyperfleet-operator → Manifest CR status update → Platform API
-- Output must be uploaded to S3 directly from the target cluster (via the uploader Job)
-
-### Authentication Flow
+Two distinct authentication domains will protect ZOA endpoints:
 
 ```
-Operator Terminal
-  │
-  │ eval "$(aws configure export-credentials --format env --profile rrp-regional-dev)"
-  │
-  ▼
-curl/zoa CLI
-  │
-  │ SigV4 signature (AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY + AWS_SESSION_TOKEN)
-  │
-  ▼
-API Gateway (us-east-1)
-  │
-  │ Validates SigV4, extracts caller identity (Account ID + ARN)
-  │ Passes identity via X-Amz-* headers
-  │
-  ▼
-Platform API
-  │
-  │ Reads: Account ID, Caller ARN, Operator name (from session name in ARN)
-  │ Records in DynamoDB: full caller identity with every execution
-  │
-  ▼
-PostgreSQL (creates Manifest CR)
-  │
-  │ No additional auth — internal database within RC
-  │
-  ▼
-hyperfleet-operator → DynamoDB (ApplyDesire) → kube-applier → Job on target cluster
+SRE Laptop                                      rosa-boundary (ECS task in target VPC)
+    │                                                       │
+    │ kinit → rh-aws-saml-login                             │ ECS task IAM role
+    │ → Jump Account IAM role                               │ (injected at task creation)
+    │                                                       │
+    ▼                                                       ▼
+ZOA Access API Gateway                          Lambda Function URL (per-VPC)
+(public, IAM auth, custom domain)               (private, IAM auth, no custom domain)
+    │                                                       │
+    │ Resource policy:                                      │ Resource-based policy:
+    │ ONLY Jump Account roles                               │ ONLY rosa-boundary task roles
+    │                                                       │
+    ▼                                                       ▼
+ZOA Access Lambda                               ZOA Lambda (per-VPC)
+(session mgmt, approvals)                       (TA execution, break-glass)
 ```
 
-### S3 Output Pipeline (Two-Job Architecture)
+**From laptop** (session management + approvals only):
+
+1. `kinit` (requires Red Hat VPN — only step that does)
+2. `rh-aws-saml-login jump-account-{env}` → temporary IAM role in Jump Account
+3. `rosa-boundary start-task --region R --target T` → calls ZOA Access API Gateway (SigV4, custom domain derived from `--region`)
+4. ZOA Access Lambda creates an ECS Fargate task in the target VPC, injects `ZOA_ENDPOINT` (Function URL)
+5. SRE connects to the container via AWS SSM (`aws ecs execute-command`) → interactive shell
+
+**From rosa-boundary** (all TA operations):
+
+1. SRE is inside the ECS container (connected via SSM session)
+2. ECS task role provides SigV4 identity automatically
+3. `zoa` CLI reads `ZOA_ENDPOINT` env var → calls the per-VPC Lambda Function URL
+4. Lambda validates that the caller ARN matches the rosa-boundary task role for this VPC
+
+**From laptop** (approvals — no container needed):
+
+1. `zoa approve <id> --region R --target T` → calls ZOA Access API Gateway directly (SigV4, Jump Account role)
+2. ZOA Access Lambda writes `status=approved` to DynamoDB
+3. Per-VPC Lambda reconciler picks it up on next tick
+
+This separation means: a compromised laptop credential (Jump Account role) cannot execute TAs — it can only create sessions and approve requests. A compromised rosa-boundary task role can only reach its own VPC's Lambda — it has no path to other clusters.
+
+### Execution Modes (Sync vs Async)
+
+Each Trusted Action declares its execution mode. The mode determines how the TA runs and where output is generated:
+
+|                       | Sync                                                       | Async                                                                           |
+| --------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| **Executor**          | API Lambda (inline) or self-invoked Worker Lambda          | K8s Job (`zoa-runner` container) on target EKS                                  |
+| **Output delivery**   | Streamed in Lambda response (up to 200MB) + archived to S3 | Written to S3 by the Job; retrieved via API Lambda streaming (same 200MB limit) |
+| **Use case**          | Read operations, quick mutations (seconds)                 | Long-running operations, large outputs, needs its own pod lifecycle             |
+| **Timeout**           | Bounded by Lambda timeout (300s)                           | Bounded by K8s Job `activeDeadlineSeconds` (configurable per TA)                |
+| **CLI experience**    | Blocks until complete, streams output                      | Returns immediately with execution ID; poll with `zoa get` or `--wait`          |
+| **Output size limit** | 200MB (Lambda streaming)                                   | 200MB (retrieved via API Lambda streaming; S3 stores the full artifact)         |
+
+Both modes create per-execution K8s RBAC (ServiceAccount + Role + RoleBinding) that is destroyed after completion. For `kube-api` scope TAs, the Lambda uses SA impersonation (`rest.ImpersonationConfig`) so the K8s audit log reflects only the declared RBAC — not the Lambda's own broad permissions. For async mode, a scoped STS Secret is also created (S3 upload-only credentials restricted to the execution's prefix via session policy). For `aws-api` scope TAs, dedicated IAM roles (`zoa-aws-read` / `zoa-aws-write`) are assumed per-execution via STS with a session policy scoped to the specific TA's declared permissions.
+
+> For full sequence diagrams of both modes, see [Implementation Details](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/architecture/implementation.md).
+
+### Per-VPC Isolation
+
+Each cluster's ZOA is fully independent. A failure in one VPC cannot cascade — no cross-VPC networking, no shared control plane in the execution path. Blast radius = 1 cluster.
+
+### Self-Invocation (Worker Fan-Out)
+
+The Worker Lambda invokes **itself** to dispatch approved TA executions. Each self-invocation handles exactly one execution in its own concurrent slot:
+
+1. Reconciler tick (every 1m) queries DynamoDB for `status=approved` executions
+2. Atomically transitions each to `status=dispatched` (conditional write prevents double-dispatch)
+3. Self-invokes once per execution with `InvocationType=Event` (async, fire-and-forget):
+   ```json
+   { "route": "execute", "execution_id": "abc123" }
+   ```
+4. AWS Lambda queues each invocation and executes it in a separate concurrent slot
+5. The new Lambda instance then operates based on the TA's execution mode:
+   - **Sync mode**: Creates SA + RBAC → impersonates SA → executes TA directly against EKS API → uploads output to S3 → cleans up K8s resources → updates DynamoDB. All within one Lambda invocation.
+   - **Async mode**: Creates SA + RBAC + STS Secret (scoped S3 upload credentials) + K8s Job → updates DynamoDB to `running` → returns. Future reconciler ticks monitor the Job status, update DynamoDB on completion, and clean up K8s resources.
+
+`reserved_concurrency=10` ensures max 9 concurrent TA executions + 1 slot reserved for the reconciler/GC tick. Excess invocations queue in Lambda's internal retry queue (up to 6 hours). This avoids SQS complexity while maintaining concurrency control and backpressure.
+
+### DLQ Semantics
+
+The SQS dead-letter queue (SSE-SQS encrypted, 14-day retention) is only effective for the **Worker** Lambda:
+
+- EventBridge and self-invoke are async — failures land in the DLQ after retry exhaustion
+- The API Lambda returns errors directly to the caller (429/5xx) — DLQ cannot capture synchronous Function URL failures
+
+### Response Streaming
+
+The API Lambda uses native Go response streaming (`LambdaFunctionURLStreamingResponse`) via a custom adapter in `pkg/lambdahttp/`. This:
+
+- Converts Function URL events to standard `net/http` requests
+- Passes them through the Go HTTP router
+- Returns streaming responses up to 200MB (bypasses the 6MB synchronous Lambda limit)
+- Uses no external binaries or sidecars (pure Go, UBI-minimal base image)
+
+## Terraform Modules
 
 ```
-Runner Job (on target cluster)
-  │
-  │ SA: zoa-runner-<exec-id> (per-execution, no S3 access)
-  │ Writes output to ConfigMap: zoa-output-<exec-id>
-  │
-  ▼
-Uploader Job (on target cluster)
-  │
-  │ SA: zoa-uploader → IAM Role (S3 PutObject + KMS Encrypt)
-  │ Waits for runner job to complete
-  │ Reads output from ConfigMap
-  │ aws s3 cp output.json s3://<bucket>/<exec-id>/output.json
-  │ aws s3 cp execution.log s3://<bucket>/<exec-id>/execution.log
-  │
-  ▼
-S3 Bucket (regional, SSE-KMS encrypted)
-  │
-  │ Lifecycle: Standard → Intelligent-Tiering (30d) → Expire (365d)
-  │
-  ▼
-Platform API (on RC)
-  │
-  │ Pod Identity: platform-api role → IAM (S3 GetObject + KMS Decrypt)
-  │ Proxies content to consumers (no presigned URLs exposed)
-  │
-  ▼
-Operator (via GET /runs/{id}?include=output)
+terraform/modules/zoa/          → Regional data layer (one per region, lives in RC account)
+                                  DynamoDB, S3, KMS, ECR, IAM roles
+
+terraform/modules/zoa-lambda/   → Per-VPC compute (one per target VPC: RC + each MC)
+                                  Lambdas, EventBridge, SQS DLQ, CloudWatch Logs, EKS access
 ```
 
-## Execution Flow (End-to-End)
+### `modules/zoa/` — Regional Shared Data Layer
 
-### 1. Submission
+| Resource              | Details                                                                                                                                                                      |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DynamoDB (executions) | PK=executionId, 4 GSIs (account-index, status-index, target-index, target-status-index). On-demand billing, PITR enabled, deletion protection (disabled for ephemeral envs). |
+| DynamoDB (audit)      | PK=accountId, SK=timestamp (nanosecond precision for uniqueness). Every audited API call.                                                                                    |
+| S3 bucket             | `zoa-artifacts-{region}`. KMS-SSE, versioning, lifecycle (Intelligent-Tiering 30d, expire 365d). Stores output.json and execution.log per execution.                         |
+| KMS key               | Symmetric key for DynamoDB + S3 encryption at rest. Key policy allows Lambda execution roles and cross-account MC roles.                                                     |
+| ECR repository        | Hosts `zoa-lambda` images mirrored from Quay via skopeo. Lifecycle retains last 20 images. Cross-account pull policy scoped to MC OU path.                                   |
+| IAM: zoa-uploader     | Scoped `s3:PutObject` + `kms:GenerateDataKey` for async runner K8s Jobs. Assumed via STS from runner pods.                                                                   |
+| IAM: zoa-data-access  | Cross-account role for MC Lambdas to reach RC's DynamoDB and S3. Trust policy scoped to MC account OU.                                                                       |
 
-```
-Operator: zoa run get_pods -t mc-useast1-1 -n hyperfleet
-         │
-         ▼
-Platform API receives POST /api/v0/trusted-actions/get_pods/run
-  - Validates SigV4 identity
-  - Validates required fields: `target_cluster` and `jira` (e.g. ROSAENG-1234)
-  - Loads TA template from registry (ConfigMap)
-  - Validates params (namespace required for get_pods)
-  - Enforces write cooldown and max-concurrent limits (write TAs; skipped for dry-run and force)
-  - Derives runner SA from scope + type (kube-api → per-exec SA)
-  - Generates execution UUID
-  - Creates DynamoDB record (status: pending, output_status: pending, jira, ttl=365d)
-  - Builds manifest payload (SA, RBAC, output CM, scripts CM, uploader RBAC, runner Job, upload Job)
-  - Creates Manifest CR in PostgreSQL (hyperfleet-db)
-  - Returns {id, status: "pending"} to caller
-```
+### `modules/zoa-lambda/` — Per-VPC Compute
 
-### 2. Dispatch
+| Resource                    | Details                                                                                                                                                               |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API Lambda                  | Function URL (`AWS_IAM` auth type), invoke mode `RESPONSE_STREAM`, x86_64 container from ECR, VPC-attached to private subnets, 512MB memory.                          |
+| Worker Lambda               | No Function URL. EventBridge-triggered + self-invoke. Same image, VPC, memory.                                                                                        |
+| IAM execution role (shared) | Single role for both Lambdas: DynamoDB read/write, S3 read/write, EKS describe, STS AssumeRole (for TA-scoped roles + uploader), Lambda self-invoke, CloudWatch Logs. |
+| IAM: zoa-aws-read           | Per-TA scoped role for AWS read operations (EKS DescribeCluster, EC2 DescribeInstances/VPCs/Subnets/SecurityGroups). Assumed per-execution via STS.                   |
+| IAM: zoa-aws-write          | Per-TA scoped role for AWS write operations. Grows incrementally as write TAs are added.                                                                              |
+| SQS DLQ                     | Dead letters for Worker async failures. SSE-SQS, 14-day retention. One per Lambda pair.                                                                               |
+| CloudWatch Logs             | Log groups with 365-day retention, KMS-encrypted (customer-managed key, consistent with platform standard). JSON structured logging.                                  |
+| EKS access entry            | Grants Lambda execution role access to target EKS cluster with a Kubernetes group for RBAC binding.                                                                   |
+| Security group              | Egress to EKS API (443) and AWS service endpoints. No inbound rules (Function URL handles ingress).                                                                   |
+| EventBridge Scheduler       | Two schedules: reconciler (1m) + GC (5m). Both gated by `enable_reconciler` variable.                                                                                 |
 
-```text
-hyperfleet-operator (ManifestReconciler on RC)
-  - Watches Manifest CRs in PostgreSQL (hyperfleet-db)
-  - Writes ApplyDesire to DynamoDB for the target cluster (RC or MC)
-         │
-         ▼ DynamoDB Streams
-         │
-kube-applier (on target cluster — RC or MC)
-  - Receives ApplyDesire via DynamoDB Streams
-  - Applies all manifests to target cluster Kubernetes API:
-    1. ServiceAccount: zoa-runner-<exec-id> (per-execution)
-    2. ClusterRole/Role (per-execution RBAC)
-    3. ClusterRoleBinding/RoleBinding → runner SA
-    4. ConfigMap: zoa-output-<exec-id> (empty, for output transfer)
-    5. Role/RoleBinding: output CM patch permission for runner SA
-    6. ConfigMap: zoa-scripts-<exec-id> (entrypoint.sh + run.sh)
-    7. Role/RoleBinding: zoa-uploader-<exec-id> (dynamic, scoped to output CM + runner Job)
-    8. Runner Job: zoa-<exec-id> (executes TA, writes to output CM)
-    9. Uploader Job: zoa-<exec-id>-upload (reads CM, uploads to S3)
-  - Writes status back to DynamoDB (Applied, Available)
-```
+### RC/MC Config Wiring
 
-### 3. Execution (Two-Job Model)
+- **RC** instantiates both modules: `modules/zoa` (shared resources) + `modules/zoa-lambda` (RC-local Lambda pair). Exports data-access role ARN and ECR URL as outputs for MC consumption.
+- **MC** instantiates `modules/zoa-lambda` only, consuming RC outputs (ECR URL, DynamoDB ARNs/names, S3 bucket, KMS key ARN, data-access role ARN, uploader role ARN).
+- **Cross-account access**: MC Lambdas assume `zoa-data-access` role via STS to reach RC's DynamoDB and S3. Both DynamoDB tables and S3 bucket also have resource-based policies scoped by MC OU path — defense in depth (either mechanism alone would suffice).
 
-```
-Kubernetes Job Controller (on target cluster) — starts BOTH Jobs in parallel:
+## Tunable Parameters
 
-Runner Job (zoa-<exec-id>):
-  - SA: zoa-runner-<exec-id> (per-execution, Kubernetes-only permissions)
-  - Image: quay.io/slopezz/zoa-tools:<pinned-tag>
-  /zoa/entrypoint.sh
-    │
-    ├── Logs metadata: [zoa] execution_id=... action=... target=...
-    ├── Executes /zoa/run.sh (the TA script)
-    │     └── kubectl get pods -n hyperfleet -o json > /artifacts/output.json
-    ├── Captures exit code
-    ├── Patches ConfigMap zoa-output-<exec-id> with:
-    │     - data.output.json (if exists)
-    │     - data.execution.log
-    │     - data.exit-code
-    └── Exits with TA script's exit code
+All configuration is via Terraform variables that map to Lambda environment variables — no code changes or redeployment required beyond `terraform apply`:
 
-Uploader Job (zoa-<exec-id>-upload):
-  - SA: zoa-uploader (static, S3 PutObject + KMS Encrypt only)
-  - Image: quay.io/slopezz/zoa-tools:<pinned-tag>
-  /zoa/upload_entrypoint.sh
-    │
-    ├── Poll runner Job every 1s for Complete or Failed condition
-    │     Budget: EXECUTION_TIMEOUT env var (from execution_timeout_seconds or per-TA override)
-    │     Detects failed runners in ~1s (no wasted wait)
-    ├── Reads ConfigMap zoa-output-<exec-id>
-    ├── Uploads execution.log to S3 (always)
-    ├── Uploads output.json to S3 (if present in CM)
-    └── Exits 0 on success, 1 on upload failure
-```
+| Variable                      | Default | Lambda Env Var                | Purpose                                             |
+| ----------------------------- | ------- | ----------------------------- | --------------------------------------------------- |
+| `lambda_api_timeout`          | 300     | (Lambda config)               | API Lambda hard ceiling (seconds)                   |
+| `lambda_worker_timeout`       | 300     | (Lambda config)               | Worker Lambda hard ceiling (seconds)                |
+| `lambda_api_concurrency`      | 50      | (Lambda config)               | Max concurrent API invocations                      |
+| `lambda_worker_concurrency`   | 10      | (Lambda config)               | Max concurrent Worker invocations                   |
+| `reconciler_deadline_seconds` | 55      | `RECONCILER_DEADLINE_SECONDS` | Code-level deadline for reconciler/GC ticks         |
+| `max_batch_per_tick`          | 30      | `MAX_BATCH_PER_TICK`          | Items processed per scheduled phase per tick        |
+| `lambda_memory_size`          | 512     | (Lambda config)               | Memory in MB (CPU scales proportionally)            |
+| `enable_reconciler`           | true    | (EventBridge state)           | Toggle EventBridge schedules on/off                 |
+| `dynamodb_ttl_days`           | 365     | `DYNAMODB_TTL_DAYS`           | Record retention (FedRAMP: minimum 365 days)        |
+| `write_cooldown_seconds`      | 300     | `WRITE_COOLDOWN_SECONDS`      | Per-target rate limit between same write TA         |
+| `max_concurrent_per_target`   | 10      | `MAX_CONCURRENT_PER_TARGET`   | Max parallel pending+running executions per target  |
+| `log_level`                   | info    | `LOG_LEVEL`                   | Structured log verbosity (debug, info, warn, error) |
 
-### 4. Reconciliation
+## Security Model
+
+| Layer                  | Mechanism                                                                                                                                                                                                                               |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API authentication     | Function URL with `AWS_IAM` auth type — requires valid SigV4 signature from caller                                                                                                                                                      |
+| Caller identity        | Extracted from SigV4: Account ID, Caller ARN, operator name (from session name). Recorded on every execution.                                                                                                                           |
+| Network isolation      | Lambda runs inside the target VPC (private subnets only). No public endpoints.                                                                                                                                                          |
+| Cross-account data     | STS AssumeRole (identity-based) + resource-based policies on DynamoDB/S3 (defense in depth)                                                                                                                                             |
+| TA-scoped permissions  | Separate `zoa-aws-read` and `zoa-aws-write` IAM roles assumed per execution via STS session policy                                                                                                                                      |
+| K8s RBAC per execution | Per-execution ServiceAccount (`zoa-runner-<exec-id>`) with minimal Role from TA template                                                                                                                                                |
+| Encryption at rest     | KMS for DynamoDB + S3 + CloudWatch Logs; SQS server-side encryption (SSE-SQS) for DLQ                                                                                                                                                   |
+| Audit trail            | Every API call → DynamoDB audit table. Every execution → DynamoDB executions table. Logs → CloudWatch (365d).                                                                                                                           |
+| Jira enforcement       | Every execution requires a Jira ticket ID. Validated at API level (format: `PROJECT-123`).                                                                                                                                              |
+| EKS circuit breaker    | Trips after 3 consecutive EKS API failures within 30s; fast-fails for 60s to prevent timeout exhaustion. See [`circuit_breaker.go`](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/pkg/executor/circuit_breaker.go). |
+
+For the full security model (threat model, SA isolation strategies, RBAC design), see [Implementation Details](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/architecture/implementation.md) in the ZOA repository.
+
+## Deployment Flow
 
 ```
-Platform API Reconciler (5-second loop on RC)
-  │
-  ├── Queries DynamoDB: status-index WHERE status IN (pending, running)
-  │
-  ├── For each pending/running execution:
-  │     │
-  │     ├── Reads Manifest CR status from PostgreSQL
-  │     │
-  │     ├── Parses status feedback from BOTH Jobs:
-  │     │     Runner:   .status.succeeded, .status.failed, .status.startTime, .status.completionTime
-  │     │     Uploader: .status.succeeded, .status.failed, .status.completionTime
-  │     │
-  │     ├── On Applied condition (pending → running):
-  │     │     └── UpdateStatus in DynamoDB (updated_at)
-  │     │
-  │     ├── On full completion (both Jobs done):
-  │     │     ├── Compute durations from Job timestamps:
-  │     │     │     runner_seconds  = runner.completionTime - runner.startTime
-  │     │     │     upload_seconds  = uploader.completionTime - runner.completionTime
-  │     │     │     duration_seconds = now - created_at (total wall-clock)
-  │     │     ├── Delete Manifest CR from PostgreSQL
-  │     │     │     └── Cascades: operator removes ApplyDesire → kube-applier removes all resources on target cluster
-  │     │     └── Update DynamoDB: status, completed_at, updated_at, runner_seconds,
-  │     │                          upload_seconds, duration_seconds, output_status (uploaded|failed)
-  │     │
-  │     └── On timeout (exceeded execution_timeout + upload_timeout + 120s dispatch buffer):
-  │           ├── Delete Manifest CR from PostgreSQL (cleanup first)
-  │           └── Update DynamoDB: status=timed_out, duration_seconds
-  │
-  └── Sleep 5s → repeat
+Konflux/Tekton → builds container image (x86_64, UBI-minimal)
+     │
+     ▼
+Quay registry (quay.io/redhat-user-workloads/rosa-tenant/zoa-lambda:<commit-sha>)
+     │
+     ▼ (pipeline step: skopeo mirror — temporary until Konflux pushes to ECR directly)
+ECR repository (in RC account, cross-account pull policy for MC accounts)
+     │
+     ▼ (Terraform variable: zoa_image_tag)
+terraform apply → updates both Lambda functions to use new image
 ```
 
-### 5. Retrieval
-
-```
-Operator: zoa get <exec-id>
-         │
-         ▼
-Platform API receives GET /api/v0/trusted-actions/runs/<exec-id>?include=output
-  - Reads DynamoDB for execution metadata
-  - Reads output_path (full S3 URI from DynamoDB)
-  - Fetches s3://<bucket>/<exec-id>/output.json
-  - Returns combined response: metadata + output JSON
-         │
-         ▼
-Operator sees structured output (pipeable to jq)
-```
-
-## Infrastructure
-
-### DynamoDB Executions Table
-
-```
-Table: <env>-regional-zoa-executions
-  PK: executionId (String)
-
-GSI: account-index
-  PK: accountId (String)
-  SK: createdAt (String, RFC3339)
-  Projection: ALL
-
-GSI: status-index
-  PK: status (String)
-  SK: createdAt (String, RFC3339)
-  Projection: ALL
-
-TTL: ttl attribute (epoch seconds) — records auto-expire after 365 days
-```
-
-### DynamoDB Audit Table
-
-```
-Table: <env>-regional-zoa-audit-log
-  PK: accountId (String)
-  SK: timestamp (String, RFC3339 with nanosecond precision — format 2006-01-02T15:04:05.000000000Z)
-
-Fields (all present on every entry, empty string when N/A):
-  id, callerArn, operator, method, path, action, targetCluster,
-  executionId, jira, approvalState, statusCode
-
-TTL: ttl attribute (epoch seconds) — entries auto-expire after 365 days
-```
-
-The sort key uses nanosecond-precision timestamps to guarantee uniqueness when multiple API calls arrive in the same second. `approvalState` mirrors the execution's approval lifecycle (`not_required`, `pending`, `approved`, `rejected`).
-
-Records every audited API call with consistent fields. Audited endpoints:
-
-- `POST /{action}/run` — populates action, targetCluster, executionId, jira
-- `GET /runs/{id}` — populates executionId (accessed ID)
-- `GET /runs` — identity + path only
-- `GET /audit` — identity + path only (self-referential for compliance)
-
-Not audited: `GET /` (catalog) and `GET /{action}` (describe) — public metadata, high frequency noise.
-
-Rejected POST requests (400/429) are also recorded with available context at point of failure. The `path` field stores the full request URI including query parameters for GET requests.
-
-### S3 Bucket
-
-```
-Bucket: <env>-regional-zoa-outputs-<account-id>
-  Encryption: SSE-KMS (dedicated ZOA key)
-  Versioning: Enabled
-  Lifecycle:
-    - Transition to Intelligent-Tiering: 30 days
-    - Expiration: 365 days (FedRAMP retention)
-    - Noncurrent version expiration: 30 days
-    - Abort incomplete multipart: 7 days
-```
-
-### IAM Roles (Pod Identity)
-
-| Role                         | Associated SAs                                  | Cluster | Permissions                                                  |
-| ---------------------------- | ----------------------------------------------- | ------- | ------------------------------------------------------------ |
-| `<regional-id>-zoa-job`      | `zoa-uploader`, `zoa-aws-read`, `zoa-aws-write` | RC      | `s3:PutObject` + `kms:GenerateDataKey` + AWS read (EKS, VPC) |
-| `<management-id>-zoa-job`    | `zoa-uploader`, `zoa-aws-read`, `zoa-aws-write` | MC      | `s3:PutObject` + `kms:GenerateDataKey` + AWS read (EKS, VPC) |
-| `<regional-id>-platform-api` | `platform-api`                                  | RC      | `s3:GetObject` + `kms:Decrypt` + `dynamodb:*` on ZOA tables  |
-
-Pod Identity associations are wired on **both** RC and MC — TAs can target either cluster type. The `aws-api-read` and `aws-api-write` policies grow incrementally as new AWS-scoped TAs are added, granting only the minimum required permissions for implemented TAs — never more.
-
-**Key design principle**: Runner SAs (`zoa-runner-<exec-id>`, `zoa-aws-read`, `zoa-aws-write`) have **zero** access to the ZOA S3 bucket. Only `zoa-uploader` can write to S3, ensuring SA isolation between operational actions and output transport.
-
-### Terraform Module
-
-```
-terraform/modules/zoa/
-  ├── dynamodb.tf       # Executions table + GSIs + Audit log table (both with TTL)
-  ├── s3.tf             # Output bucket + lifecycle + encryption
-  ├── kms.tf            # Dedicated KMS key
-  ├── iam.tf            # Job role + Platform API policy attachments (incl. audit table)
-  ├── variables.tf      # Environment prefix, retention, billing mode
-  └── outputs.tf        # Table name, audit table name, bucket name, KMS ARN (consumed by bootstrap)
-```
-
-### Kubernetes Infrastructure (`zoa-jobs` Helm Chart)
-
-Static ZOA infrastructure is deployed via the `zoa-jobs` Helm chart at `argocd/config/shared/zoa-jobs/`. The root ArgoCD ApplicationSet discovers charts under `argocd/config/shared/*` and deploys them to both Regional and Management clusters with `CreateNamespace=true`, which creates the `zoa-jobs` namespace automatically.
-
-The chart provisions static ServiceAccounts (`zoa-uploader`, `zoa-aws-read`, `zoa-aws-write`, plus breakglass SAs). Pod Identity associations for AWS-scoped SAs are wired via Terraform (`terraform/modules/zoa/` and `terraform/modules/zoa-job-pod-identity/`). Per-execution resources (runner SA, RBAC, Jobs, ConfigMaps) are created dynamically by kube-applier when it processes each ApplyDesire on the target cluster.
-
-## TA Template System
-
-Each TA template defines: `name`, `scope`, `type`, `description`, `authorization`, `params`, and `script`. Kube-scoped TAs also include an `rbac` section. Optional fields include `timeout_seconds`, `write_cooldown_seconds`, and `dry_run_action`.
-
-**Scopes:** `kube-api` (Kubernetes operations), `aws-api` (AWS CLI operations)
-
-**Types:** `read`, `write`
-
-**Authorization:** `authorization.approval: none` on all current TAs. The API records `approval_state` on every execution and audit entry. Future TAs may require approval; runtime states are `not_required`, `pending`, `approved`, and `rejected`.
-
-### How TAs Are Loaded
-
-```
-TA YAML files (argocd/config/regional-cluster/platform-api/ta-templates/)
-  │
-  ▼ (Helm template packs them into ConfigMap)
-ConfigMap: zoa-ta-templates (mounted into Platform API pod at /templates/)
-  │
-  ▼ (Platform API reads on startup)
-TemplateRegistry (in-memory map of action_name → TATemplate struct)
-  │
-  ▼ (On each execution request)
-BuildManifestPayload(template, renderContext) → Manifest CR with all K8s manifests
-```
-
-### Template → Manifest CR Generation
-
-What the TA author writes (~15 lines):
-
-```yaml
-name: get_pods
-scope: kube-api
-type: read
-params: [...]
-rbac:
-  rules: [...]
-script: |
-  kubectl get pods ...
-```
-
-What Platform API generates (Manifest CR with ~200 lines of K8s manifests):
-
-- ServiceAccount (per-execution `zoa-runner-<exec-id>`)
-- Role/ClusterRole (from `rbac.rules`)
-- RoleBinding/ClusterRoleBinding (SA → Role)
-- Output ConfigMap (`zoa-output-<exec-id>`)
-- RBAC for runner SA to patch the output ConfigMap
-- Dynamic uploader Role/RoleBinding (`zoa-uploader-<exec-id>`, scoped via `resourceNames`)
-- Script ConfigMap (entrypoint.sh wrapper + run.sh from `script`)
-- Runner Job (executes TA script, writes output to ConfigMap)
-- Uploader Job (reads ConfigMap, uploads to S3)
-- Job (image, volumes, env vars, resources, labels, TTL)
-- Status tracking fields (extract Job status via DynamoDB feedback)
-
-### Job Boilerplate (Centrally Managed)
-
-The Job "frame" is NOT defined by TA authors. It comes from `zoa-job-config` ConfigMap:
-
-| Config                      | Default                           | Purpose                                                            |
-| --------------------------- | --------------------------------- | ------------------------------------------------------------------ |
-| `image`                     | `quay.io/slopezz/zoa-tools:<tag>` | Container image for runner and uploader Jobs                       |
-| `cpu_request`               | `25m`                             | Pod CPU request                                                    |
-| `memory_request`            | `64Mi`                            | Pod memory request                                                 |
-| `cpu_limit`                 | `250m`                            | Pod CPU limit                                                      |
-| `memory_limit`              | `256Mi`                           | Pod memory limit                                                   |
-| `execution_timeout_seconds` | `1800`                            | Global timeout for reconciler (per-TA `timeout_seconds` overrides) |
-| `upload_timeout_seconds`    | `120`                             | Reserved time budget for S3 upload after runner finishes           |
-| `write_cooldown_seconds`    | `300`                             | Global write cooldown (seconds) between same action on same target |
-| `ttl_seconds`               | `3600`                            | K8s TTL after Job completion (safety GC via Job controller)        |
-| `dynamodb_ttl_days`         | `365`                             | DynamoDB record auto-expiry (execution + audit entries)            |
-| `max_concurrent_per_target` | `10`                              | Max running + pending executions per target cluster                |
-| `entrypoint.sh`             | (wrapper script)                  | Runner wrapper: logging, ConfigMap output patch, exit handling     |
-| `upload_entrypoint.sh`      | (wrapper script)                  | Uploader wrapper: waits for runner, reads ConfigMap, uploads to S3 |
-
-Changing any of these updates ALL future TA executions — no per-TA changes needed.
-
-## Cleanup and Lifecycle
-
-### Normal Cleanup (Reconciler-Driven)
-
-```text
-1. Reconciler detects Job terminal status (succeeded/failed) via Manifest CR status feedback
-2. Reconciler deletes Manifest CR from PostgreSQL
-3. hyperfleet-operator sets delete flag on ApplyDesire in DynamoDB
-4. kube-applier processes deletion: Job, Pod, ConfigMap, Role, RoleBinding — all removed from target cluster
-5. After deletion propagates, hyperfleet-operator removes ApplyDesire from DynamoDB
-6. Reconciler updates DynamoDB with terminal status and duration
-```
-
-### Timeout Model
-
-Three layers protect against stuck executions. Each layer is a fallback for the one above — under normal operation, only Layer 1 fires.
-
-**Layer 1 — Reconciler timeout (primary enforcement)**
-
-```
-Formula: execution_timeout + upload_timeout + 120s (dispatch buffer)
-Default: 1800 + 120 + 120 = 2040s (~34 min)
-```
-
-The dispatch buffer (hardcoded 120s) accounts for DynamoDB Streams delivery, pod scheduling, and image pull before the uploader poll loop starts. The reconciler polls DynamoDB every 5s and checks `created_at` against this budget.
-
-When exceeded:
-
-1. Delete Manifest CR from PostgreSQL (stops all Jobs via cascade through operator and kube-applier)
-2. Update DynamoDB: status=timed_out, duration_seconds
-
-Fires when: Normal operation. Every timed-out execution goes through this path.
-
-**Layer 2 — activeDeadlineSeconds (K8s safety net per-Job)**
-
-```
-Formula: execution_timeout + upload_timeout + 180s
-Default: 1800 + 120 + 180 = 2100s (~35 min, intentionally > Layer 1)
-Set on BOTH runner and uploader Job specs.
-```
-
-When exceeded: Kubernetes forcibly terminates the pod and marks the Job as Failed with reason=DeadlineExceeded.
-
-Fires when the reconciler FAILED to delete the Manifest CR:
-
-- Platform API pod crashed or restarted (reconciler loop stopped)
-- PostgreSQL is unreachable (Manifest CR deletion fails repeatedly)
-- DynamoDB query failed (reconciler never found this execution)
-
-In these cases, the ApplyDesire stays in DynamoDB with Jobs still running on the target cluster. `activeDeadlineSeconds` ensures K8s itself kills the pods after ~35 min, preventing infinite resource consumption. The reconciler will eventually recover and clean up the Manifest CR on its next successful poll — by then the Jobs are already dead.
-
-**Layer 3 — ttlSecondsAfterFinished (garbage collection)**
-
-```
-Value: 3600s (1 hour after Job finishes)
-Set on BOTH runner and uploader Job specs.
-```
-
-This is a native K8s Job controller feature — it deletes the **Job object** (not the pod) from the cluster after the specified duration post-completion.
-
-Fires when a Job already reached terminal state (Complete or Failed) but the applied resources were never cleaned up:
-
-- Reconciler deleted the Manifest CR, but kube-applier failed to cascade the resource deletion (applier bug, connectivity issue)
-- `activeDeadlineSeconds` killed the pod (Layer 2), Job became Failed, but the ApplyDesire and applied resources still exist on cluster
-
-What it does NOT cover: Jobs stuck in a running state that never finish — those are handled by Layer 2.
-
-**Summary**
-
-```text
-Happy path:       Reconciler detects completion/timeout → deletes Manifest CR → done (~seconds)
-Reconciler down:  activeDeadlineSeconds kills pods (~2100s) → TTL cleans Job objects (+3600s)
-Both fail:        Jobs run until activeDeadlineSeconds, then GC after TTL
-```
-
-### What Persists After Cleanup
-
-| What                          | Where                  | Retention                  |
-| ----------------------------- | ---------------------- | -------------------------- |
-| Execution metadata            | DynamoDB               | 365 days (TTL auto-expiry) |
-| output.json                   | S3                     | 365 days                   |
-| execution.log                 | S3                     | 365 days                   |
-| API call audit log            | DynamoDB (audit table) | 365 days (TTL auto-expiry) |
-| K8s resources (Job, RBAC, CM) | Target cluster (RC/MC) | Deleted on completion      |
-
-## Audit Trail
-
-Every execution produces audit data at multiple layers:
-
-| Layer                                    | What's Recorded                                                                                                                       | Query Method                                        |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| Platform API (DynamoDB executions table) | execution_id, operator, caller_arn, jira, action, target, status, approval_state, duration, revision, updated_at, dry_run, force      | `zoa runs` CLI or direct API                        |
-| S3 (artifacts)                           | Full execution log, structured output                                                                                                 | `zoa logs <id>` or `zoa get <id>`                   |
-| Kubernetes (labels on all resources)     | execution-id, operator, action, scope, type, revision, target                                                                         | `kubectl get jobs -l zoa.rosa.io/operator=slopezma` |
-| Platform API (DynamoDB audit table)      | Every audited API call: method, path (full URI), action, target, execution_id, jira, approval_state, operator, status_code, timestamp | `zoa audit` CLI                                     |
-| AWS CloudTrail                           | SigV4 caller identity on API Gateway invocation                                                                                       | CloudTrail console                                  |
-| DynamoDB (ApplyDesire)                   | Manifest CR create/delete events, kube-applier status updates                                                                         | DynamoDB console or CloudWatch                      |
-
-### Correlation
-
-Given an execution ID, you can trace the full chain:
-
-```
-DynamoDB: execution metadata + timing
-  → S3: full execution log + structured output
-  → Target cluster (MC/RC, while running): kubectl get jobs -l zoa.rosa.io/execution-id=<id>
-  → CloudTrail: API Gateway access log for the POST request
-```
-
-## Future Considerations
-
-### TA Repository Separation
-
-TAs may move to their own Git repository with independent release cycles. Platform API reads from a mounted directory — the source is transparent. A promotion pipeline would control which revision is active per environment.
-
-### Breakglass API
-
-A future `/api/v0/breakglass/` endpoint will provide escalated access patterns:
-
-- Requires additional approval workflow (not just SigV4 auth)
-- Different CLI verb: `zoa breakglass ...` (deliberately more typing)
-- Uses elevated static ServiceAccounts (`zoa-breakglass-read`, `zoa-breakglass-write`)
-- Stricter audit requirements and time limits
-
-### Approval Workflow
-
-All current TAs declare `authorization.approval: none`, and executions record `approval_state: not_required`. The data model supports future approval-gated TAs:
-
-- `pending` — awaiting required approvers
-- `approved` — authorized to proceed
-- `rejected` — explicitly denied
-
-When enabled, write TAs with structured approval policies will require peer approval before dispatch. `approval_state` is tracked on both execution records and audit entries.
+**Rollback**: Set `zoa_image_tag` to a previous commit SHA and `terraform apply`. Lambda picks up the ECR image immediately on next cold start. No draining, no rolling update — existing warm instances continue until their next invocation timeout.
+
+## Monitoring
+
+| Signal                   | Source               | Status      | How                                                            |
+| ------------------------ | -------------------- | ----------- | -------------------------------------------------------------- |
+| Invocation errors        | AWS/Lambda namespace | Available   | Auto-published: `Errors`, `Throttles` metrics                  |
+| Duration P50/P99         | AWS/Lambda namespace | Available   | Auto-published: `Duration` metric                              |
+| Cold starts              | AWS/Lambda namespace | Available   | `Init Duration` in REPORT log lines                            |
+| Business metrics         | ZOA/Custom namespace | Available   | EMF logs from Go code → CloudWatch Metrics automatically       |
+| Execution outcomes       | DynamoDB             | Available   | Queryable via `zoa runs --status failed --target X`            |
+| Logs                     | CloudWatch Logs      | Available   | 365-day retention, JSON structured, filterable via CW Insights |
+| CW Exporter → Prometheus | —                    | **Planned** | YACE scrapes CloudWatch metrics into Prometheus                |
+| PrometheusRules alerting | —                    | **Planned** | Alert on error rates, execution failures, DLQ depth            |
+
+## Cost
+
+| Component             | Pricing model                                         | Estimate (per cluster, moderate use) |
+| --------------------- | ----------------------------------------------------- | ------------------------------------ |
+| Lambda (API + Worker) | Per-ms execution + per-request ($0.20/1M). Zero idle. | < $5/month                           |
+| DynamoDB (on-demand)  | $1.25/1M writes, $0.25/1M reads                       | < $2/month                           |
+| S3 (artifacts)        | Standard + Intelligent-Tiering (30d) + expire (365d)  | < $1/month                           |
+| EventBridge Scheduler | Free tier covers all schedules                        | $0                                   |
+| CloudWatch Logs       | $0.50/GB ingested                                     | < $3/month                           |
+| ECR                   | $0.10/GB stored                                       | < $0.50/month                        |
+| **Total per VPC**     |                                                       | **< $12/month**                      |
+
+Graviton/arm64 migration planned for ~20% Lambda cost reduction.
 
 ---
 
+> **Everything above this line is implemented and deployed.** Sections below describe features that are designed and validated but not yet built. As each feature ships, it will be moved into the main body of this document.
+
+## Future Considerations
+
+### Observability & SLO Framework
+
+Full observability stack for ZOA, moving from "metrics exist" to "metrics are collected, visualized, alerted on, and tied to SLOs":
+
+1. **Validate/extend EMF metrics** — audit existing CloudWatch EMF emissions from Go code; add missing business metrics (execution success/failure by action, latency percentiles, circuit breaker trips, write cooldown hits)
+2. **Configure CloudWatch Exporter (YACE)** — scrape all relevant CloudWatch namespaces into Prometheus:
+   - `AWS/Lambda`: Errors, Throttles, Duration, ConcurrentExecutions, IteratorAge
+   - `AWS/SQS`: ApproximateNumberOfMessagesVisible (DLQ depth)
+   - `AWS/DynamoDB`: ThrottledRequests, SystemErrors, SuccessfulRequestLatency
+   - `ZOA` (custom namespace): all EMF-emitted business metrics
+3. **Grafana dashboard** — operational dashboard covering: execution pipeline health, per-target success rates, latency distributions, DLQ depth, circuit breaker state, cold start frequency
+4. **PrometheusRules** — alerting on:
+   - Execution failure rate > threshold per target (5m window)
+   - DLQ messages > 0 (any dead-lettered Worker invocation)
+   - P99 latency exceeding execution deadline headroom
+   - Circuit breaker open for > 2 consecutive reconciler ticks
+   - Reconciler/GC not firing (EventBridge missed schedule)
+5. **Define SLIs/SLOs** — draft service level indicators and objectives:
+   - Availability SLI: % of API invocations returning non-5xx responses
+   - Latency SLI: P99 sync execution duration < 30s
+   - Correctness SLI: % of executions reaching terminal state within expected time
+   - Error budget: per-target, per-week rolling window
+
+### ZOA Access Lambda
+
+A dedicated Lambda (no VPC attachment, in the RC account) behind a public API Gateway with a custom domain (`https://zoa-access.{region}.rosa.example.com`):
+
+| Concern                    | Access Lambda                                    | Per-VPC Lambda                                                                                                                                                                 |
+| -------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| VPC-attached               | No                                               | Yes (direct EKS access)                                                                                                                                                        |
+| Cold start                 | ~200ms (no VPC)                                  | Under 100ms to over 1s ([AWS docs](https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtime-environment.html)); VPC adds < 50ms with Hyperplane. Go is in the fastest tier. |
+| Must work when EKS is down | Yes (session creation bootstraps access)         | Partially (TAs need EKS)                                                                                                                                                       |
+| Permitted callers          | Jump Account roles only (API GW resource policy) | rosa-boundary task roles only (Lambda resource policy)                                                                                                                         |
+| WAF protection             | Yes (IP-based rules, geo-blocking)               | Not needed (callers are ECS tasks in same VPC)                                                                                                                                 |
+
+Responsibilities:
+
+- **Session management**: `ecs:RunTask` to create rosa-boundary containers in target VPCs, inject `ZOA_ENDPOINT`
+- **Approval/rejection**: write `approved`/`rejected` status to DynamoDB (per-VPC reconciler handles activation)
+- **Placement routing**: resolve target cluster → VPC → Function URL from `boundary-targets` DynamoDB table
+- **Cross-account session creation**: `sts:AssumeRole` into MC account to run ECS tasks there
+
+Key design choice: the Access Lambda does NOT create EKS access entries or execute TAs. All target operations go through the per-VPC Lambda. This keeps IAM minimal and the architecture uniform.
+
+### Break-Glass Access
+
+A `/breakglass/` API path will provide escalated access when normal TAs are insufficient:
+
+- Requires multi-party approval (approver != requester, same SRE group)
+- Uses `eks:CreateAccessEntry` (per-VPC Lambda, local, same account) to grant temporary cluster access
+- Scopes: `kube-read`, `kube-write`, `kube-admin` (mapped to pre-deployed ClusterRoleBindings); `aws-read`, `aws-write`, `aws-admin` (STS-based)
+- TTL starts at activation (reconciler), not at request time
+- CLI verb: `zoa breakglass ...` (deliberately more typing to prevent muscle-memory accidents)
+- Independent of RC health — runs on the same per-VPC Lambda infrastructure
+
+### Approval Workflow
+
+All current TAs declare `authorization.approval: none`. The data model supports future approval-gated TAs:
+
+```mermaid
+sequenceDiagram
+    participant SRE as SRE (rosa-boundary)
+    participant Lambda as Per-VPC Lambda
+    participant DDB as DynamoDB
+    participant Approver as Approver (laptop)
+    participant Access as ZOA Access Lambda
+
+    SRE->>Lambda: POST /run (requires approval)
+    Lambda->>DDB: PUT execution (pending)
+    Lambda-->>SRE: {id, "pending"}
+
+    Approver->>Access: POST /approve/{id} (SigV4, Jump Account)
+    Access->>DDB: UPDATE status → approved
+
+    Note over Lambda: Reconciler tick (≤1m)
+    Lambda->>DDB: Query approved executions
+    Lambda->>Lambda: Self-invoke (fan-out per execution)
+
+    alt Sync TA
+        Lambda->>Lambda: Execute directly (SA → EKS → S3 → cleanup)
+    else Async TA
+        Lambda->>Lambda: Create K8s Job (future ticks monitor)
+    end
+```
+
+- States: `pending` → `approved` / `rejected` / `expired` (24h DynamoDB TTL)
+- Approval policies: per-TA configuration (e.g., require 1 peer from on-call rotation)
+- Notification: SNS → Slack/PagerDuty for approval requests
+- Approver validation: approver != requester, same LDAP group, SigV4 identity verified
+
+### rosa-boundary Integration
+
+ZOA CLI will run from a `rosa-boundary` ECS Fargate container — a pre-authenticated shell that operators `exec` into:
+
+- **Placement**: ZOA Access Lambda creates the container in the target VPC (direct network path to private EKS)
+- **Identity bridge**: ECS task ARN → DynamoDB lookup → SRE identity (all CLI calls attributed to the originating SRE)
+- **No local credentials needed**: Task IAM role provides SigV4 identity automatically
+- **Auditable sessions**: SSM Session Manager records all terminal I/O; `auditd` captures syscalls; both streamed to S3 (WORM)
+- **Time-boxed**: 4h hard deadline (not extendable — new container = fresh audit trail)
+- **Reconnectable**: SRE can disconnect and `join-task` later (session state persists in container)
+- **Network-isolated**: only reaches Lambda Function URLs (via NAT) and EKS API (same VPC). No internet egress for break-glass kubectl.
+- **99.99% availability** (ECS Fargate SLA)
+- **Pre-installed tooling**: `zoa` CLI, `aws` CLI, `kubectl` (for break-glass only)
+
 ## Related Documentation
 
-- [ZOA Trusted Actions — Implementation Details](./zoa-trusted-actions.md) — TA template format, CLI design, API endpoints
-- [ZOA Security Model](./zoa-security-model.md) — SA isolation strategies, RBAC model, audit
+### In this repository
+
+- Terraform modules: [`terraform/modules/zoa/`](../../terraform/modules/zoa/) and [`terraform/modules/zoa-lambda/`](../../terraform/modules/zoa-lambda/)
+- RC config: [`terraform/config/regional-cluster/`](../../terraform/config/regional-cluster/) (instantiates both modules)
+- MC config: [`terraform/config/management-cluster/`](../../terraform/config/management-cluster/) (instantiates `zoa-lambda` only)
+
+### In [`rosa-hyperfleet-zoa`](https://github.com/openshift-online/rosa-hyperfleet-zoa)
+
+- [README](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/README.md) — Component overview, quick start, container images
+- [Lambda Model](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/architecture/lambda-model.md) — Handler modes, invoke modes, execution flow
+- [Implementation Details](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/architecture/implementation.md) — Streaming adapter, async execution, K8s Jobs, SA isolation
+- [CLI Reference](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/cli-reference.md) — All `zoa` CLI commands, flags, and usage examples
+- [Trusted Actions Guide](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/trusted-actions.md) — TA template format, CLI commands, API endpoints
+- [Development Guide](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/development.md) — Building, testing, local development

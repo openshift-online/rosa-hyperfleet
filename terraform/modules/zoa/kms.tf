@@ -50,6 +50,23 @@ resource "aws_kms_key_policy" "zoa" {
         Resource = "*"
       },
       {
+        Sid    = "AllowLocalLambdaKMS"
+        Effect = "Allow"
+        Principal = {
+          AWS = "*"
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey",
+        ]
+        Resource = "*"
+        Condition = {
+          ArnLike = {
+            "aws:PrincipalArn" = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/*-zoa-lambda"
+          }
+        }
+      },
+      {
         Sid    = "AllowJobRoleAccess"
         Effect = "Allow"
         Principal = {
@@ -78,6 +95,56 @@ resource "aws_kms_key_policy" "zoa" {
             "aws:PrincipalArn" = "arn:*:iam::*:role/*-zoa-job"
           }
         }
+      },
+      {
+        Sid    = "AllowCrossAccountAWSRoleKMS"
+        Effect = "Allow"
+        Principal = {
+          AWS = "*"
+        }
+        Action = [
+          "kms:GenerateDataKey",
+        ]
+        Resource = "*"
+        Condition = {
+          "ForAnyValue:StringLike" = {
+            "aws:PrincipalOrgPaths" = "${var.mc_ou_path}*"
+          }
+          StringLike = {
+            "aws:PrincipalArn" = "arn:*:iam::*:role/*-zoa-aws-*"
+          }
+        }
+      },
+      {
+        Sid    = "AllowCrossAccountLambdaKMS"
+        Effect = "Allow"
+        Principal = {
+          AWS = "*"
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey",
+        ]
+        Resource = "*"
+        Condition = {
+          "ForAnyValue:StringLike" = {
+            "aws:PrincipalOrgPaths" = "${var.mc_ou_path}*"
+          }
+          StringLike = {
+            "aws:PrincipalArn" = "arn:*:iam::*:role/*-zoa-lambda"
+          }
+        }
+      },
+      {
+        Sid    = "AllowLambdaServiceDecrypt"
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+        Action = [
+          "kms:Decrypt",
+        ]
+        Resource = "*"
       },
     ]
   })

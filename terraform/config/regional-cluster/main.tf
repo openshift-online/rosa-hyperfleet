@@ -46,6 +46,8 @@ provider "pagerduty" {
   skip_credentials_validation = true
 }
 
+
+
 # =============================================================================
 # Data Sources
 # =============================================================================
@@ -449,9 +451,36 @@ module "zoa" {
   eks_cluster_name = module.regional_cluster.cluster_name
   mc_ou_path       = var.mc_ou_path
   environment      = var.environment
+  zoa_image_tag    = var.zoa_image_tag
 
   platform_api_role_id  = module.authz.frontend_api_role_name
   platform_api_role_arn = module.authz.frontend_api_role_arn
+}
+
+module "zoa_lambda" {
+  count  = var.zoa_image_tag != "" ? 1 : 0
+  source = "../../modules/zoa-lambda"
+
+  cluster_id = var.regional_id
+
+  lambda_image_uri = module.zoa.lambda_image_uri
+  job_image_uri    = module.zoa.runner_image_uri
+
+  private_subnet_ids        = module.regional_cluster.private_subnet_ids
+  cluster_security_group_id = module.regional_cluster.cluster_security_group_id
+
+  eks_cluster_endpoint = module.regional_cluster.cluster_endpoint
+  eks_cluster_ca       = module.regional_cluster.cluster_certificate_authority_data
+  eks_cluster_name     = module.regional_cluster.cluster_name
+
+  dynamodb_table_name  = module.zoa.table_name
+  dynamodb_table_arn   = module.zoa.table_arn
+  audit_table_name     = module.zoa.audit_table_name
+  audit_table_arn      = module.zoa.audit_table_arn
+  artifact_bucket_name = module.zoa.bucket_name
+  artifact_bucket_arn  = module.zoa.bucket_arn
+  kms_key_arn          = module.zoa.kms_key_arn
+  uploader_role_arn    = module.zoa.uploader_role_arn
 }
 
 # =============================================================================

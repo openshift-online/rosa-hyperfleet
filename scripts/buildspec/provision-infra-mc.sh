@@ -86,7 +86,20 @@ else
 
     # ZOA KMS key ARN (optional — for S3 SSE-KMS cross-account access)
     export TF_VAR_zoa_kms_key_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_kms_key_arn 2>/dev/null | grep -E '^arn:' || echo "")
+
+    # ZOA Lambda data-layer outputs (DynamoDB tables + uploader role in RC account)
+    export TF_VAR_zoa_table_name=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_table_name 2>/dev/null || echo "")
+    export TF_VAR_zoa_table_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_table_arn 2>/dev/null | grep -E '^arn:' || echo "")
+    export TF_VAR_zoa_audit_table_name=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_audit_table_name 2>/dev/null || echo "")
+    export TF_VAR_zoa_audit_table_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_audit_table_arn 2>/dev/null | grep -E '^arn:' || echo "")
+    export TF_VAR_zoa_uploader_role_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_uploader_role_arn 2>/dev/null | grep -E '^arn:' || echo "")
+    export TF_VAR_zoa_data_access_role_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_data_access_role_arn 2>/dev/null | grep -E '^arn:' || echo "")
 fi
+
+# ── Phase 1b: ZOA Lambda image reference ──────────────────────────────────────
+# Lambda image lives in RC's ECR (cross-account pull via OU policy).
+# Runner image (Quay) and tag are hardcoded in Terraform defaults for dev phase.
+export TF_VAR_zoa_lambda_ecr_url=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_lambda_ecr_url 2>/dev/null || echo "")
 
 # ── Phase 2: Apply/Destroy MC infrastructure ─────────────────────────────────
 use_mc_account

@@ -463,3 +463,13 @@ variable "management_clusters" {
   type        = string
   default     = ""
 }
+
+# =============================================================================
+# ZOA Lambda
+# =============================================================================
+
+variable "zoa_image_tag" {
+  description = "ZOA image tag for Quay→ECR mirroring and runner ref."
+  type        = string
+  default     = "a3e5930"
+}

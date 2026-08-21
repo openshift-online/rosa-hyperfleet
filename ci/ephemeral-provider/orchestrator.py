@@ -85,11 +85,12 @@ class EphemeralEnvOrchestrator:
         self.target_monitor: PipelineMonitor | None = None
         self.git: GitManager | None = None
 
-    def provision(self, save_state: str | None = None):
+    def provision(self, save_state: str | None = None, save_mc_state: str | None = None):
         """Provision the ephemeral environment (setup + bootstrap + wait for pipelines).
 
         Args:
-            save_state: If set, save terraform outputs JSON to this path after provisioning.
+            save_state: If set, save RC terraform outputs JSON to this path after provisioning.
+            save_mc_state: If set, save MC terraform outputs JSON to this path after provisioning.
         """
         self._setup_aws()
 
@@ -115,6 +116,8 @@ class EphemeralEnvOrchestrator:
 
         if save_state:
             self._save_terraform_outputs(git, save_state)
+        if save_mc_state:
+            self._save_mc_terraform_outputs(git, save_mc_state)
 
     def teardown(self, fire_and_forget: bool = False):
         """Tear down a previously provisioned ephemeral environment.
@@ -483,6 +486,80 @@ class EphemeralEnvOrchestrator:
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         dest_path.write_text(result.stdout)
         log.info("Terraform outputs written to %s", dest)
+
+    def _save_mc_terraform_outputs(self, git: GitManager, dest: str):
+        """Fetch MC terraform outputs and write them to a file.
+
+        Connects to the management-cluster remote state in the MC account's
+        S3 bucket and runs ``terraform output --json``.
+        """
+        log.info("")
+        log.info("==========================================")
+        log.info("Saving MC Terraform Outputs")
+        log.info("==========================================")
+
+        management_account_id = self.aws.get_target_account_id("management")
+        state_bucket = f"terraform-state-{management_account_id}-{self.region}"
+
+        # MC management_id follows the pattern: {eph_prefix}-{mc_key}
+        # Ephemeral envs support at most 1 MC, so we use the first key from provision_mcs.
+        region_file = git.work_dir / "config" / TARGET_ENVIRONMENT / f"{self.region}.yaml"
+        with open(region_file) as f:
+            region_config = yaml.safe_load(f) or {}
+        mc_keys = list(region_config.get("provision_mcs", {}).keys())
+        if not mc_keys:
+            log.warning("No MCs in provision_mcs — skipping MC state save")
+            return
+        mc_id = f"{self.eph_prefix}-{mc_keys[0]}"
+
+        state_key = f"management-cluster/{mc_id}.tfstate"
+        tf_dir = git.work_dir / "terraform" / "config" / "management-cluster"
+
+        env = os.environ.copy()
+        env.update(self.aws.target_subprocess_env("management"))
+
+        log.info("MC state bucket: %s  key: %s", state_bucket, state_key)
+
+        try:
+            subprocess.run(
+                [
+                    "terraform", "init", "-reconfigure",
+                    f"-backend-config=bucket={state_bucket}",
+                    f"-backend-config=key={state_key}",
+                    f"-backend-config=region={self.region}",
+                    "-backend-config=use_lockfile=true",
+                ],
+                cwd=tf_dir,
+                env=env,
+                check=True,
+                timeout=120,
+            )
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError(
+                f"terraform init timed out for MC {mc_id} "
+                f"(bucket={state_bucket}, key={state_key})"
+            ) from e
+
+        try:
+            result = subprocess.run(
+                ["terraform", "output", "--json"],
+                cwd=tf_dir,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=60,
+            )
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError(
+                f"terraform output timed out for MC {mc_id} "
+                f"(bucket={state_bucket}, key={state_key})"
+            ) from e
+
+        dest_path = Path(dest)
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        dest_path.write_text(result.stdout)
+        log.info("MC terraform outputs written to %s", dest)
 
     def _purge_clusters(self, git: GitManager):
         """Delete all clusters and resource bundles via Platform API before infra teardown.

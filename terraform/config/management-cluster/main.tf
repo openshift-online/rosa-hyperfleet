@@ -23,6 +23,7 @@ provider "aws" {
   }
 }
 
+
 # =============================================================================
 # VPC Module
 # =============================================================================
@@ -113,6 +114,37 @@ module "zoa_job_pod_identity" {
   eks_cluster_name       = module.management_cluster.cluster_name
   zoa_outputs_bucket_arn = var.zoa_outputs_bucket_arn
   zoa_kms_key_arn        = var.zoa_kms_key_arn
+}
+
+# =============================================================================
+# ZOA per-VPC Lambda (direct EKS access for SA impersonation + Job management)
+# =============================================================================
+
+module "zoa_lambda" {
+  count  = var.zoa_lambda_ecr_url != "" ? 1 : 0
+  source = "../../modules/zoa-lambda"
+
+  cluster_id = var.management_id
+
+  lambda_image_uri = "${var.zoa_lambda_ecr_url}:${var.zoa_image_tag}"
+  job_image_uri    = "${var.zoa_runner_source_image}:${var.zoa_image_tag}"
+
+  private_subnet_ids        = module.vpc.private_subnet_ids
+  cluster_security_group_id = module.vpc.cluster_security_group_id
+
+  eks_cluster_endpoint = module.management_cluster.cluster_endpoint
+  eks_cluster_ca       = module.management_cluster.cluster_certificate_authority_data
+  eks_cluster_name     = module.management_cluster.cluster_name
+
+  dynamodb_table_name  = var.zoa_table_name
+  dynamodb_table_arn   = var.zoa_table_arn
+  audit_table_name     = var.zoa_audit_table_name
+  audit_table_arn      = var.zoa_audit_table_arn
+  artifact_bucket_name = try(split(":", var.zoa_outputs_bucket_arn)[5], "")
+  artifact_bucket_arn  = var.zoa_outputs_bucket_arn
+  kms_key_arn          = var.zoa_kms_key_arn
+  uploader_role_arn    = var.zoa_uploader_role_arn
+  data_access_role_arn = var.zoa_data_access_role_arn
 }
 
 # =============================================================================

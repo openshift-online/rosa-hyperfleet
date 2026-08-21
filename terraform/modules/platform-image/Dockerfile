@@ -32,7 +32,8 @@ RUN microdnf install -y \
       postgresql \
       python3 \
       python3-pip \
-      gnupg2 && \
+      gnupg2 \
+      skopeo && \
     pip3 install --no-cache-dir boto3==1.35.86 pyyaml==6.0.2 && \
     microdnf clean all && \
     rm -rf /var/cache/yum
@@ -81,6 +82,8 @@ RUN set -euo pipefail && \
     mv /tmp/oc /usr/local/bin/oc && \
     chmod +x /usr/local/bin/oc && \
     rm -f /tmp/kubectl /tmp/README.md
+
+# skopeo is installed via microdnf (Red Hat native, supports registry-to-registry copy)
 
 # Install Terraform (GPG-verified)
 RUN set -euo pipefail && \

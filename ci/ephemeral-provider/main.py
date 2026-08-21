@@ -126,6 +126,11 @@ def main():
         metavar="PATH",
         help="Save RC terraform outputs (JSON) to PATH after provisioning",
     )
+    parser.add_argument(
+        "--save-management-state",
+        metavar="PATH",
+        help="Save MC terraform outputs (JSON) to PATH after provisioning",
+    )
     args = parser.parse_args()
 
     # Normalize repo format (strip github.com prefix and .git suffix if present)
@@ -204,7 +209,10 @@ def main():
             log.info("Teardown completed successfully!")
             log.info("==========================================")
         else:
-            env.provision(save_state=args.save_regional_state)
+            env.provision(
+                save_state=args.save_regional_state,
+                save_mc_state=args.save_management_state,
+            )
             # Write discovered region to output dir so the Makefile can capture it
             if args.save_regional_state:
                 region_file = Path(args.save_regional_state).parent / "region"

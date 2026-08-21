@@ -16,6 +16,18 @@ trap 'echo "FAILED: line $LINENO, exit code $?" >&2' ERR
 
 echo "Provisioning pipelines for ${ENVIRONMENT:-staging}"
 
+# Compute the platform image reference from the Dockerfile to ensure consistency.
+# The Build-Platform-Image stage builds and pushes the image tagged with this hash,
+# so we must use the same computation here rather than relying on the PLATFORM_IMAGE
+# env var (which is only updated when central-account-bootstrap is re-applied).
+DOCKERFILE="terraform/modules/platform-image/Dockerfile"
+if [ -f "$DOCKERFILE" ]; then
+  _computed_tag=$(sha256sum "$DOCKERFILE" | cut -c1-12)
+  _base_repo="${PLATFORM_IMAGE%:*}"
+  PLATFORM_IMAGE="${_base_repo}:${_computed_tag}"
+  echo "Platform image (computed from Dockerfile): ${PLATFORM_IMAGE}"
+fi
+
 # Get central account ID for state bucket
 CENTRAL_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 TF_STATE_BUCKET="terraform-state-${CENTRAL_ACCOUNT_ID}"

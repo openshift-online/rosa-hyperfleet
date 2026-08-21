@@ -74,7 +74,11 @@ resource "aws_iam_role_policy" "codebuild_policy" {
           "cloudwatch:*",
           "route53:*",
           "acm:*",
-          "tag:*"
+          "tag:*",
+          "lambda:*",
+          "sqs:*",
+          "scheduler:*",
+          "dynamodb:*"
         ]
         Resource = "*"
       },
@@ -360,7 +364,13 @@ resource "aws_codepipeline" "central_pipeline" {
           includes = [var.github_branch]
         }
         file_paths {
-          includes = ["deploy/${var.target_environment}/${var.target_region}/pipeline-regional-cluster-inputs/terraform.json", "terraform/config/pipeline-regional-cluster/**"]
+          includes = [
+            "deploy/${var.target_environment}/${var.target_region}/pipeline-regional-cluster-inputs/terraform.json",
+            "terraform/config/pipeline-regional-cluster/**",
+            "terraform/config/regional-cluster/**",
+            "terraform/modules/zoa/**",
+            "scripts/buildspec/build-zoa-lambda.sh",
+          ]
         }
       }
     }
