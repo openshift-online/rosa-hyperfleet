@@ -17,7 +17,7 @@ This document proposes replacing the current SSM + kubectl port-forward access t
   - Solution must be compatible with Zero Operator Access model
 - **Assumptions**:
   - RH SSO (EmployeeIDP) supports OIDC with ALB integration
-  - TargetGroupBinding CRDs are available in all clusters (EKS Auto Mode)
+  - TargetGroupBinding CRDs are available in all clusters (AWS Load Balancer Controller)
   - The existing `api-gateway` and `rhobs-api-gateway` Terraform patterns can be reused
   - All SRE services expose HTTP health check endpoints
 
