@@ -28,7 +28,6 @@ Detailed architecture and rationale for key technical decisions:
 | [ECS Fargate Bootstrap](design/fully-private-eks-bootstrap.md)                       | How fully private EKS clusters are bootstrapped via ECS                   |
 | [FIPS-Only EKS Compute](design/fips-eks-compute.md)                                  | FIPS NodeClass/NodePool strategy for FedRAMP workload nodes               |
 | [GitOps Cluster Configuration](design/gitops-cluster-configuration.md)               | ApplicationSet pattern, progressive deployment, config modes              |
-| [HyperFleet Architecture](design/hyperfleet-architecture.md)                         | Operator + kube-applier architecture, component replacement map           |
 | [Infrastructure Logging](design/infrastructure-logging.md)                           | AWS CloudWatch log groups, KMS encryption, Grafana access                 |
 | [Karpenter Node Provisioning](design/karpenter-node-provisioning.md)                 | Self-managed Karpenter IAM roles, Pod Identity, SQS interruption handling |
 | [Logging Platform](design/logging-platform.md)                                       | Application-level log collection (Vector + Loki)                          |
