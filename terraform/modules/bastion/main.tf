@@ -86,6 +86,29 @@ resource "aws_cloudwatch_log_group" "bastion" {
   tags = local.common_tags
 }
 
+# =============================================================================
+# Security Group
+# =============================================================================
+
+resource "aws_security_group" "bastion" {
+  name        = "${var.cluster_id}-bastion"
+  description = "Security group for bastion ECS tasks"
+  vpc_id      = var.vpc_id
+
+  # Allow all outbound traffic (needed for tool downloads, EKS API, SSM endpoints)
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Allow all outbound traffic"
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${var.cluster_id}-bastion"
+  })
+}
+
 # Allow bastion to access EKS control plane
 resource "aws_security_group_rule" "eks_ingress_from_bastion" {
   type                     = "ingress"
