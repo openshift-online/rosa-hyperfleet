@@ -64,7 +64,6 @@ resource "aws_kms_key" "sns_alerts" {
 
   tags = merge(local.common_tags, {
     Name      = "${var.regional_id}-sns-alerts"
-    Module    = "sns-alerting"
     ManagedBy = "terraform"
   })
 }
@@ -84,7 +83,6 @@ resource "aws_sns_topic" "alerts" {
 
   tags = merge(local.common_tags, {
     Name      = "${var.regional_id}-alerts"
-    Module    = "sns-alerting"
     ManagedBy = "terraform"
   })
 }
@@ -101,7 +99,6 @@ resource "aws_ssm_parameter" "sns_topic_arn" {
 
   tags = merge(local.common_tags, {
     Name      = "${var.regional_id}-alerting-sns-topic-arn"
-    Module    = "sns-alerting"
     ManagedBy = "terraform"
   })
 }
@@ -133,7 +130,6 @@ resource "aws_iam_role" "alertmanager" {
 
   tags = merge(local.common_tags, {
     Name      = "${var.regional_id}-alertmanager-sns-role"
-    Module    = "sns-alerting"
     ManagedBy = "terraform"
   })
 }
@@ -177,7 +173,6 @@ resource "aws_eks_pod_identity_association" "alertmanager" {
 
   tags = merge(local.common_tags, {
     Name      = "${var.regional_id}-alertmanager-sns-pod-identity"
-    Module    = "sns-alerting"
     ManagedBy = "terraform"
   })
 }
