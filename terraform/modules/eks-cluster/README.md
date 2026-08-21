@@ -86,19 +86,19 @@ module "regional_cluster" {
 
 ## Variables
 
-| Name                            | Description                                                                     | Type           | Default                                                 | Required |
-| ------------------------------- | ------------------------------------------------------------------------------- | -------------- | ------------------------------------------------------- | -------- |
-| `cluster_id`                    | Deterministic cluster identifier for resource naming (e.g., `regional`, `mc01`) | `string`       | n/a                                                     | yes      |
-| `cluster_version`               | Kubernetes version                                                              | `string`       | `"1.34"`                                                | no       |
-| `availability_zones`            | List of availability zones (auto-detected if empty)                             | `list(string)` | `[]`                                                    | no       |
-| `private_subnet_cidrs`          | CIDR blocks for private subnets                                                 | `list(string)` | `["10.0.0.0/18", "10.0.64.0/18", "10.0.128.0/18"]`      | no       |
-| `public_subnet_cidrs`           | CIDR blocks for public subnets                                                  | `list(string)` | `["10.0.192.0/22", "10.0.196.0/22", "10.0.200.0/22"]`   | no       |
-| `ami_kms_key_arn`               | KMS key ARN for FIPS AMI EBS snapshots (grants Karpenter controller access)     | `string`       | `""`                                                    | no       |
-| `bootstrap_enabled`             | Enable ArgoCD bootstrap for GitOps management                                   | `bool`         | `true`                                                  | no       |
-| `argocd_namespace`              | Kubernetes namespace for ArgoCD installation                                    | `string`       | `"argocd"`                                              | no       |
-| `argocd_chart_version`          | ArgoCD Helm chart version                                                       | `string`       | `"9.3.0"`                                               | no       |
-| `bootstrap_repository_url`      | Git repository URL for ArgoCD configuration                                     | `string`       | `"https://github.com/openshift-online/rosa-hyperfleet"` | no       |
-| `bootstrap_repository_branch`   | Git branch to track                                                             | `string`       | `"main"`                                                | no       |
+| Name                          | Description                                                                     | Type           | Default                                                 | Required |
+| ----------------------------- | ------------------------------------------------------------------------------- | -------------- | ------------------------------------------------------- | -------- |
+| `cluster_id`                  | Deterministic cluster identifier for resource naming (e.g., `regional`, `mc01`) | `string`       | n/a                                                     | yes      |
+| `cluster_version`             | Kubernetes version                                                              | `string`       | `"1.34"`                                                | no       |
+| `availability_zones`          | List of availability zones (auto-detected if empty)                             | `list(string)` | `[]`                                                    | no       |
+| `private_subnet_cidrs`        | CIDR blocks for private subnets                                                 | `list(string)` | `["10.0.0.0/18", "10.0.64.0/18", "10.0.128.0/18"]`      | no       |
+| `public_subnet_cidrs`         | CIDR blocks for public subnets                                                  | `list(string)` | `["10.0.192.0/22", "10.0.196.0/22", "10.0.200.0/22"]`   | no       |
+| `ami_kms_key_arn`             | KMS key ARN for FIPS AMI EBS snapshots (grants Karpenter controller access)     | `string`       | `""`                                                    | no       |
+| `bootstrap_enabled`           | Enable ArgoCD bootstrap for GitOps management                                   | `bool`         | `true`                                                  | no       |
+| `argocd_namespace`            | Kubernetes namespace for ArgoCD installation                                    | `string`       | `"argocd"`                                              | no       |
+| `argocd_chart_version`        | ArgoCD Helm chart version                                                       | `string`       | `"9.3.0"`                                               | no       |
+| `bootstrap_repository_url`    | Git repository URL for ArgoCD configuration                                     | `string`       | `"https://github.com/openshift-online/rosa-hyperfleet"` | no       |
+| `bootstrap_repository_branch` | Git branch to track                                                             | `string`       | `"main"`                                                | no       |
 
 ## Outputs
 
