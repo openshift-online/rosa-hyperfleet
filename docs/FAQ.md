@@ -73,7 +73,7 @@ This list is not complete, but some key ones are:
 
 ### How does kube-applier distribute resources to Management Clusters?
 
-A kube-applier controller runs on each Management Cluster, reading desire documents from DynamoDB tables (written by the hyperfleet-operator in the RC account) via DynamoDB Streams and applying them to the local Kubernetes API. If the MC API is non-responsive, observability alerts notify SREs.
+A kube-applier controller runs on each Management Cluster, reading desire documents from DynamoDB tables (written by the hyperfleet-operator in the RC account) via hyperfleet-dynamo GSI polling and applying them to the local Kubernetes API. If the MC API is non-responsive, observability alerts notify SREs.
 
 For the current architecture, see [HyperFleet Architecture](design/hyperfleet-architecture.md).
 

@@ -7,7 +7,7 @@ kubeApplier:
   image:
     registry: "quay.io"
     repository: "psav/kube-applier-aws"
-    tag: "remove-delete-desire-18d87ca"
+    tag: "bf33241"
     pullPolicy: IfNotPresent
 
   # Deployment configuration
@@ -32,6 +32,11 @@ kubeApplier:
     leaderElectionId: "kube-applier"
     logVerbosity: 4
     exitOnPanic: true
+    # hyperfleet-dynamo watcher timings. Empty strings omit flags (module defaults).
+    dynamoPollInterval: ""
+    dynamoRelistInterval: ""
+    dynamoLookbackMax: ""
+    informerResyncPeriod: ""
 
   serviceAccount:
     name: kube-applier
