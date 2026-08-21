@@ -2,6 +2,12 @@
 # Required Variables
 # =============================================================================
 
+variable "tags" {
+  description = "Base tags to merge with module-specific tags (function, module)"
+  type        = map(string)
+  default     = {}
+}
+
 variable "cluster_id" {
   description = "Regional cluster identifier for resource naming (e.g., rc01)"
   type        = string
