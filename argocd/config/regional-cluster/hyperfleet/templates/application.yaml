@@ -19,6 +19,8 @@ spec:
         {{- end }}
         awsRegion: {{ .Values.global.aws_region }}
         baseDomain: {{ .Values.baseDomain }}
+        oidcS3Bucket: {{ index .Values "hyperfleet" "oidcS3Bucket" }}
+        oidcIssuerBaseUrl: {{ index .Values "hyperfleet" "oidcIssuerBaseUrl" }}
         postgres:
           secretName: {{ .Values.global.postgres_secret_name | default "hyperfleet-db-dsn" }}
           secretKey: {{ .Values.global.postgres_secret_key | default "dsn" }}

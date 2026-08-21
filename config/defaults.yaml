@@ -176,6 +176,13 @@ applications:
     # @doc applications.regional-cluster.baseDomain DNS base domain for HostedClusters (deployment_name.dns.domain).
     # @used-by applications.regional-cluster.baseDomain _context
     baseDomain: "{% if dns.domain %}{{ deployment_name }}.{{ dns.domain }}{% endif %}"
+    hyperfleet:
+      # @doc applications.regional-cluster.hyperfleet.oidcS3Bucket S3 bucket name the HyperFleet Operator writes OIDC discovery documents to.
+      # @used-by applications.regional-cluster.hyperfleet.oidcS3Bucket _context
+      oidcS3Bucket: "hyperfleet-oidc-{{ aws_region }}"
+      # @doc applications.regional-cluster.hyperfleet.oidcIssuerBaseUrl OIDC issuer base URL the HyperFleet Operator advertises for discovery documents.
+      # @used-by applications.regional-cluster.hyperfleet.oidcIssuerBaseUrl _context
+      oidcIssuerBaseUrl: "https://hyperfleet-oidc-{{ aws_region }}.s3.{{ aws_region }}.amazonaws.com"
     pagerduty:
       # @doc applications.regional-cluster.pagerduty.enabled Enable PagerDuty alerting in the monitoring stack.
       # @used-by applications.regional-cluster.pagerduty.enabled _context
