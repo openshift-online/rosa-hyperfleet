@@ -26,7 +26,7 @@ resource "aws_dynamodb_table_item" "bootstrap_accounts" {
   for_each = local.bootstrap_account_items
 
   table_name = aws_dynamodb_table.accounts.name
-  hash_key   = aws_dynamodb_table.accounts.hash_key
+  hash_key   = "accountId"
 
   item = jsonencode(each.value)
 
