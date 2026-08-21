@@ -10,9 +10,6 @@
 # The bucket ARN, name, region, and CloudFront domain are passed in as variables.
 # =============================================================================
 
-data "aws_caller_identity" "current" {}
-data "aws_region" "current" {}
-
 locals {
   common_tags = merge(
     var.tags,

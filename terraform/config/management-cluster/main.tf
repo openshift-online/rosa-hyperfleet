@@ -45,10 +45,8 @@ module "management_cluster" {
   source = "../../modules/eks-cluster"
 
   # Required variables
-  cluster_type                    = "management-cluster"
   cluster_id                      = var.management_id
   vpc_id                          = module.vpc.vpc_id
-  vpc_cidr                        = module.vpc.vpc_cidr
   private_subnet_ids              = module.vpc.private_subnet_ids
   cluster_security_group_id       = module.vpc.cluster_security_group_id
   vpc_endpoints_security_group_id = module.vpc.vpc_endpoints_security_group_id
@@ -98,7 +96,6 @@ module "bastion" {
 
   cluster_id                = var.management_id
   cluster_name              = module.management_cluster.cluster_name
-  cluster_endpoint          = module.management_cluster.cluster_endpoint
   cluster_security_group_id = module.vpc.cluster_security_group_id
   vpc_id                    = module.vpc.vpc_id
   private_subnet_ids        = module.vpc.private_subnet_ids
