@@ -49,11 +49,7 @@ resource "aws_dynamodb_table" "specs" {
 
   name         = each.key
   billing_mode = "PAY_PER_REQUEST"
-
-  key_schema {
-    attribute_name = "documentID"
-    key_type       = "HASH"
-  }
+  hash_key     = "documentID"
 
   attribute {
     name = "documentID"
@@ -90,11 +86,7 @@ resource "aws_dynamodb_table" "status" {
 
   name         = each.key
   billing_mode = "PAY_PER_REQUEST"
-
-  key_schema {
-    attribute_name = "documentID"
-    key_type       = "HASH"
-  }
+  hash_key     = "documentID"
 
   attribute {
     name = "documentID"
