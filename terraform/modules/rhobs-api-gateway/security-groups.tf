@@ -30,6 +30,7 @@ resource "aws_vpc_security_group_egress_rule" "vpc_link_to_alb" {
   from_port                    = 80
   to_port                      = 80
   referenced_security_group_id = aws_security_group.alb.id
+  tags                         = local.common_tags
 }
 
 # -----------------------------------------------------------------------------
@@ -55,6 +56,7 @@ resource "aws_vpc_security_group_ingress_rule" "alb_from_vpc_link" {
   from_port                    = 80
   to_port                      = 80
   referenced_security_group_id = aws_security_group.vpc_link.id
+  tags                         = local.common_tags
 }
 
 resource "aws_vpc_security_group_egress_rule" "alb_to_thanos_receive" {
@@ -64,6 +66,7 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_thanos_receive" {
   from_port                    = var.thanos_receive_port
   to_port                      = var.thanos_receive_port
   referenced_security_group_id = var.node_security_group_id
+  tags                         = local.common_tags
 }
 
 resource "aws_vpc_security_group_egress_rule" "alb_to_thanos_health" {
@@ -73,6 +76,7 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_thanos_health" {
   from_port                    = var.thanos_receive_health_port
   to_port                      = var.thanos_receive_health_port
   referenced_security_group_id = var.node_security_group_id
+  tags                         = local.common_tags
 }
 
 resource "aws_vpc_security_group_egress_rule" "alb_to_thanos_query" {
@@ -82,6 +86,7 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_thanos_query" {
   from_port                    = var.thanos_query_port
   to_port                      = var.thanos_query_port
   referenced_security_group_id = var.node_security_group_id
+  tags                         = local.common_tags
 }
 
 # -----------------------------------------------------------------------------
@@ -98,6 +103,7 @@ resource "aws_vpc_security_group_ingress_rule" "nodes_from_alb_thanos" {
   from_port                    = var.thanos_receive_port
   to_port                      = var.thanos_receive_port
   referenced_security_group_id = aws_security_group.alb.id
+  tags                         = local.common_tags
 }
 
 resource "aws_vpc_security_group_ingress_rule" "nodes_from_alb_thanos_health" {
@@ -107,6 +113,7 @@ resource "aws_vpc_security_group_ingress_rule" "nodes_from_alb_thanos_health" {
   from_port                    = var.thanos_receive_health_port
   to_port                      = var.thanos_receive_health_port
   referenced_security_group_id = aws_security_group.alb.id
+  tags                         = local.common_tags
 }
 
 resource "aws_vpc_security_group_ingress_rule" "nodes_from_alb_thanos_query" {
@@ -116,6 +123,7 @@ resource "aws_vpc_security_group_ingress_rule" "nodes_from_alb_thanos_query" {
   from_port                    = var.thanos_query_port
   to_port                      = var.thanos_query_port
   referenced_security_group_id = aws_security_group.alb.id
+  tags                         = local.common_tags
 }
 
 # -----------------------------------------------------------------------------
@@ -129,6 +137,7 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_loki_distributor" {
   from_port                    = var.loki_distributor_port
   to_port                      = var.loki_distributor_port
   referenced_security_group_id = var.node_security_group_id
+  tags                         = local.common_tags
 }
 
 resource "aws_vpc_security_group_egress_rule" "alb_to_loki_query_frontend" {
@@ -140,6 +149,7 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_loki_query_frontend" {
   from_port                    = var.loki_query_frontend_port
   to_port                      = var.loki_query_frontend_port
   referenced_security_group_id = var.node_security_group_id
+  tags                         = local.common_tags
 }
 
 resource "aws_vpc_security_group_ingress_rule" "nodes_from_alb_loki_distributor" {
@@ -149,6 +159,7 @@ resource "aws_vpc_security_group_ingress_rule" "nodes_from_alb_loki_distributor"
   from_port                    = var.loki_distributor_port
   to_port                      = var.loki_distributor_port
   referenced_security_group_id = aws_security_group.alb.id
+  tags                         = local.common_tags
 }
 
 resource "aws_vpc_security_group_ingress_rule" "nodes_from_alb_loki_query_frontend" {
@@ -160,4 +171,5 @@ resource "aws_vpc_security_group_ingress_rule" "nodes_from_alb_loki_query_fronte
   from_port                    = var.loki_query_frontend_port
   to_port                      = var.loki_query_frontend_port
   referenced_security_group_id = aws_security_group.alb.id
+  tags                         = local.common_tags
 }

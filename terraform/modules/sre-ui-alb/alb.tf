@@ -151,6 +151,7 @@ resource "aws_lb_listener" "https" {
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
   certificate_arn   = aws_acm_certificate_validation.sre[0].certificate_arn
+  tags              = local.common_tags
 
   default_action {
     type = "fixed-response"
@@ -168,6 +169,7 @@ resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.sre.arn
   port              = 80
   protocol          = "HTTP"
+  tags              = local.common_tags
 
   default_action {
     type = "fixed-response"
@@ -195,6 +197,7 @@ resource "aws_lb_listener_rule" "services" {
 
   listener_arn = local.listener_arn
   priority     = each.value.priority
+  tags         = local.common_tags
 
   dynamic "action" {
     for_each = var.oidc_enabled ? [1] : []

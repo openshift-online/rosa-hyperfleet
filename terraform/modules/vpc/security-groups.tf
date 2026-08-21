@@ -27,6 +27,7 @@ resource "aws_vpc_security_group_ingress_rule" "vpc_endpoints_https" {
   to_port           = 443
   ip_protocol       = "tcp"
   cidr_ipv4         = var.vpc_cidr
+  tags              = local.common_tags
 }
 
 resource "aws_vpc_security_group_ingress_rule" "cluster_https" {
@@ -36,6 +37,7 @@ resource "aws_vpc_security_group_ingress_rule" "cluster_https" {
   to_port           = 443
   ip_protocol       = "tcp"
   cidr_ipv4         = var.vpc_cidr
+  tags              = local.common_tags
 }
 
 # Broad HTTPS egress is intentional: nodes must reach external registries (Quay.io, Red Hat)
@@ -47,6 +49,7 @@ resource "aws_vpc_security_group_egress_rule" "cluster_https_registries" {
   to_port           = 443
   ip_protocol       = "tcp"
   cidr_ipv4         = "0.0.0.0/0"
+  tags              = local.common_tags
 }
 
 resource "aws_vpc_security_group_egress_rule" "cluster_vpc_internal" {
@@ -54,4 +57,5 @@ resource "aws_vpc_security_group_egress_rule" "cluster_vpc_internal" {
   description       = "Allow all internal VPC communication"
   ip_protocol       = "-1"
   cidr_ipv4         = var.vpc_cidr
+  tags              = local.common_tags
 }
