@@ -49,6 +49,7 @@ resource "aws_vpc_security_group_ingress_rule" "hyperfleet_db_postgres" {
   to_port           = 5432
   ip_protocol       = "tcp"
   cidr_ipv4         = var.vpc_cidr
+  tags              = local.common_tags
 }
 
 # =============================================================================

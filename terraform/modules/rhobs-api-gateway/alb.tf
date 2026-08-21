@@ -70,6 +70,7 @@ resource "aws_lb_listener" "rhobs" {
   load_balancer_arn = aws_lb.rhobs.arn
   port              = 80
   protocol          = "HTTP"
+  tags              = local.common_tags
 
   default_action {
     type = "fixed-response"
@@ -91,6 +92,7 @@ resource "aws_lb_listener" "rhobs" {
 resource "aws_lb_listener_rule" "thanos_receive" {
   listener_arn = aws_lb_listener.rhobs.arn
   priority     = 100
+  tags         = local.common_tags
 
   action {
     type             = "forward"
@@ -139,6 +141,7 @@ resource "aws_lb_target_group" "thanos_query" {
 resource "aws_lb_listener_rule" "thanos_query" {
   listener_arn = aws_lb_listener.rhobs.arn
   priority     = 200
+  tags         = local.common_tags
 
   action {
     type             = "forward"
@@ -155,6 +158,7 @@ resource "aws_lb_listener_rule" "thanos_query" {
 resource "aws_lb_listener_rule" "thanos_rules" {
   listener_arn = aws_lb_listener.rhobs.arn
   priority     = 250
+  tags         = local.common_tags
 
   action {
     type             = "forward"
@@ -203,6 +207,7 @@ resource "aws_lb_target_group" "loki_distributor" {
 resource "aws_lb_listener_rule" "loki_push" {
   listener_arn = aws_lb_listener.rhobs.arn
   priority     = 300
+  tags         = local.common_tags
 
   action {
     type             = "forward"
@@ -251,6 +256,7 @@ resource "aws_lb_target_group" "loki_query_frontend" {
 resource "aws_lb_listener_rule" "loki_query" {
   listener_arn = aws_lb_listener.rhobs.arn
   priority     = 400
+  tags         = local.common_tags
 
   action {
     type             = "forward"

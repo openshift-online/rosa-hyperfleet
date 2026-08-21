@@ -62,6 +62,7 @@ resource "aws_lb_listener" "platform" {
   load_balancer_arn = aws_lb.platform.arn
   port              = 80
   protocol          = "HTTP"
+  tags              = local.common_tags
 
   default_action {
     type             = "forward"

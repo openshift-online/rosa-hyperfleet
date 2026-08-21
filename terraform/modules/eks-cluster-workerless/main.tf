@@ -39,7 +39,7 @@ resource "aws_kms_key" "eks_secrets" {
     ]
   })
 
-  tags = { Name = "${var.cluster_id}-eks-secrets" }
+  tags = merge(local.common_tags, { Name = "${var.cluster_id}-eks-secrets" })
 }
 
 resource "aws_kms_alias" "eks_secrets" {
@@ -81,7 +81,7 @@ resource "aws_kms_key" "cloudwatch_logs" {
     ]
   })
 
-  tags = { Name = "${var.cluster_id}-cloudwatch-logs" }
+  tags = merge(local.common_tags, { Name = "${var.cluster_id}-cloudwatch-logs" })
 }
 
 resource "aws_kms_alias" "cloudwatch_logs" {
