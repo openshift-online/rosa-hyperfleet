@@ -1,0 +1,81 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  kube-applier Pod Identity — DynamoDB cross-account access to RC.
+  Equivalent to terraform/modules/kube-applier.
+
+Parameters:
+  ManagementId:
+    Type: String
+
+  EksClusterName:
+    Type: String
+
+  RcAwsAccountId:
+    Type: String
+    AllowedPattern: "^[0-9]{12}$"
+
+  AwsRegion:
+    Type: String
+    Default: !Ref "AWS::Region"
+
+Resources:
+  KubeApplierRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ManagementId}-kube-applier"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: pods.eks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+              - sts:TagSession
+      Policies:
+        - PolicyName: dynamodb-specs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:BatchGetItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:DescribeTable
+                  - dynamodb:GetRecords
+                  - dynamodb:GetShardIterator
+                  - dynamodb:DescribeStream
+                  - dynamodb:ListStreams
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${RcAwsAccountId}:table/${ManagementId}-specs-*"
+                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${RcAwsAccountId}:table/${ManagementId}-specs-*/stream/*"
+        - PolicyName: dynamodb-status
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:BatchWriteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:DescribeTable
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${RcAwsAccountId}:table/${ManagementId}-status-*"
+
+  KubeApplierAssociation:
+    Type: AWS::EKS::PodIdentityAssociation
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: kube-applier
+      ServiceAccount: kube-applier
+      RoleArn: !GetAtt KubeApplierRole.Arn
+
+Outputs:
+  KubeApplierRoleArn:
+    Value: !GetAtt KubeApplierRole.Arn

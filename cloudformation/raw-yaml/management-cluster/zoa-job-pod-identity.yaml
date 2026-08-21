@@ -1,0 +1,105 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  ZOA Job Pod Identity — cross-account S3 access for TA artifact uploads.
+  Equivalent to terraform/modules/zoa-job-pod-identity.
+  This entire stack is conditionally created (only when ZoaOutputsBucketArn is set).
+
+Parameters:
+  ManagementId:
+    Type: String
+
+  EksClusterName:
+    Type: String
+
+  ZoaOutputsBucketArn:
+    Type: String
+
+  ZoaKmsKeyArn:
+    Type: String
+
+Resources:
+  ZoaJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ManagementId}-zoa-job"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: pods.eks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+              - sts:TagSession
+      Policies:
+        - PolicyName: s3-upload
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                Resource: !Sub "${ZoaOutputsBucketArn}/*"
+              - Effect: Allow
+                Action:
+                  - kms:GenerateDataKey
+                  - kms:Decrypt
+                Resource: !Ref ZoaKmsKeyArn
+        - PolicyName: aws-api-read
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - eks:DescribeCluster
+                  - eks:ListClusters
+                  - ec2:DescribeInstances
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeVpcs
+                  - ec2:DescribeSecurityGroups
+                Resource: "*"
+
+  ZoaUploaderAssociation:
+    Type: AWS::EKS::PodIdentityAssociation
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: zoa-jobs
+      ServiceAccount: zoa-uploader
+      RoleArn: !GetAtt ZoaJobRole.Arn
+
+  ZoaAwsReadAssociation:
+    Type: AWS::EKS::PodIdentityAssociation
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: zoa-jobs
+      ServiceAccount: zoa-aws-read
+      RoleArn: !GetAtt ZoaJobRole.Arn
+
+  ZoaAwsWriteAssociation:
+    Type: AWS::EKS::PodIdentityAssociation
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: zoa-jobs
+      ServiceAccount: zoa-aws-write
+      RoleArn: !GetAtt ZoaJobRole.Arn
+
+  ZoaBreakglassReadAssociation:
+    Type: AWS::EKS::PodIdentityAssociation
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: zoa-jobs
+      ServiceAccount: zoa-breakglass-read
+      RoleArn: !GetAtt ZoaJobRole.Arn
+
+  ZoaBreakglassWriteAssociation:
+    Type: AWS::EKS::PodIdentityAssociation
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: zoa-jobs
+      ServiceAccount: zoa-breakglass-write
+      RoleArn: !GetAtt ZoaJobRole.Arn
+
+Outputs:
+  ZoaJobRoleArn:
+    Value: !GetAtt ZoaJobRole.Arn
