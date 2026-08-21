@@ -22,4 +22,4 @@ hypershift:
     # - managed ingress DNS zone creation (RFE-9235)
     # Branch: https://github.com/typeid/hypershift/tree/managed_ingress
     # Requires --tech-preview-no-upgrade in 05-job.yaml for AWSManagedDNS feature gate
-    image: quay.io/cbusse_openshift/hypershift-operator:managed-ingress-dns-81078e27b1
+    image: quay.io/cbusse_openshift/hypershift-operator:managed-ingress-dns-b8958a694a
