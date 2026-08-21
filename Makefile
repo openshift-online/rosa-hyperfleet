@@ -172,7 +172,7 @@ check-default-tags: ## Check all AWS resources have required tags (function, mod
 	@tflint --init --config .tflint.hcl
 	@echo "$(TERRAFORM_DIRS)" | tr ' ' '\n' | xargs -P 4 -I{} sh -c ' \
 		echo "   Checking $$1"; \
-		tflint --config "$(CURDIR)/.tflint.hcl" --chdir "$$1" \
+		tflint --chdir "$$1" \
 	' _ {} || { echo "❌ Tag coverage check failed — add missing tags or update .tflint.hcl"; exit 1; }
 	@echo "✅ Tag coverage check complete"
 
