@@ -8,12 +8,12 @@ account**, invoked from `regional-cluster/main.tf`.
 
 For each MC, four tables are created:
 
-| Table | Type | GSI | Streams |
-| --- | --- | --- | --- |
-| `{mc}-specs-applydesires` | specs | `updateTime-index` | no |
-| `{mc}-specs-readdesires` | specs | `updateTime-index` | no |
-| `{mc}-status-applydesires` | status | `updateTime-index` | no |
-| `{mc}-status-readdesires` | status | `updateTime-index` | no |
+| Table                      | Type   | GSI                | Streams |
+| -------------------------- | ------ | ------------------ | ------- |
+| `{mc}-specs-applydesires`  | specs  | `updateTime-index` | no      |
+| `{mc}-specs-readdesires`   | specs  | `updateTime-index` | no      |
+| `{mc}-status-applydesires` | status | `updateTime-index` | no      |
+| `{mc}-status-readdesires`  | status | `updateTime-index` | no      |
 
 All tables use `PAY_PER_REQUEST` billing with `documentID` (string) as the
 partition key. Deletion is expressed as an `ApplyDesire` with `spec.type=Delete`
