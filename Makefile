@@ -167,12 +167,23 @@ check-docs: ## Check documentation formatting
 	@npx --no-install prettier --check '**/*.md'
 	@echo "✅ Documentation formatting check complete"
 
+# Pipeline config roots and modules are excluded from tag enforcement (pipelines are being removed).
+TFLINT_EXCLUDE_DIRS := \
+	./terraform/config/pipeline-management-cluster \
+	./terraform/config/pipeline-regional-cluster \
+	./terraform/config/central-account-bootstrap \
+	./terraform/modules/pipeline-notifications \
+	./terraform/modules/pipeline-provisioner \
+	./terraform/modules/platform-image
+
+TFLINT_DIRS := $(filter-out $(TFLINT_EXCLUDE_DIRS),$(TERRAFORM_DIRS))
+
 check-default-tags: ## Check all AWS resources have required tags (function, module)
 	@echo "🔍 Checking AWS resource tag coverage..."
 	@tflint --init --config .tflint.hcl
-	@echo "$(TERRAFORM_DIRS)" | tr ' ' '\n' | xargs -P 4 -I{} sh -c ' \
+	@echo "$(TFLINT_DIRS)" | tr ' ' '\n' | xargs -P 4 -I{} sh -c ' \
 		echo "   Checking $$1"; \
-		tflint --chdir "$$1" \
+		tflint --config "$(CURDIR)/.tflint.hcl" --chdir "$$1" \
 	' _ {} || { echo "❌ Tag coverage check failed — add missing tags or update .tflint.hcl"; exit 1; }
 	@echo "✅ Tag coverage check complete"
 
