@@ -110,7 +110,7 @@ resource "aws_ecs_task_definition" "log_collector" {
         },
         {
           name  = "AWS_REGION"
-          value = data.aws_region.current.name
+          value = data.aws_region.current.region
         },
         {
           name  = "INSPECT_NAMESPACES"
@@ -126,7 +126,7 @@ resource "aws_ecs_task_definition" "log_collector" {
         logDriver = "awslogs"
         options = {
           awslogs-group         = aws_cloudwatch_log_group.bastion.name
-          awslogs-region        = data.aws_region.current.name
+          awslogs-region        = data.aws_region.current.region
           awslogs-stream-prefix = "log-collector"
         }
       }
@@ -181,7 +181,7 @@ resource "aws_iam_role_policy" "log_collector_eks" {
           "eks:DescribeCluster",
           "eks:AccessKubernetesApi"
         ]
-        Resource = "arn:aws:eks:${data.aws_region.current.name}:${local.account_id}:cluster/${var.cluster_name}"
+        Resource = "arn:aws:eks:${data.aws_region.current.region}:${local.account_id}:cluster/${var.cluster_name}"
       }
     ]
   })

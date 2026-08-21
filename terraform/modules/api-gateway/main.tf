@@ -177,7 +177,7 @@ resource "aws_kms_key" "api_gateway_logs" {
         Sid    = "AllowCloudWatchLogs"
         Effect = "Allow"
         Principal = {
-          Service = "logs.${data.aws_region.current.name}.amazonaws.com"
+          Service = "logs.${data.aws_region.current.region}.amazonaws.com"
         }
         Action = [
           "kms:Encrypt",
@@ -190,8 +190,8 @@ resource "aws_kms_key" "api_gateway_logs" {
         Condition = {
           ArnLike = {
             "kms:EncryptionContext:aws:logs:arn" = [
-              "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/api-gateway/${var.regional_id}/*",
-              "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:API-Gateway-Execution-Logs_*"
+              "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/api-gateway/${var.regional_id}/*",
+              "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:API-Gateway-Execution-Logs_*"
             ]
           }
         }

@@ -51,7 +51,7 @@ resource "aws_kms_key" "bootstrap_logs" {
         Sid    = "AllowCloudWatchLogs"
         Effect = "Allow"
         Principal = {
-          Service = "logs.${data.aws_region.current.name}.amazonaws.com"
+          Service = "logs.${data.aws_region.current.region}.amazonaws.com"
         }
         Action = [
           "kms:Encrypt",
@@ -260,7 +260,7 @@ resource "aws_ecs_task_definition" "bootstrap" {
       environment = [
         {
           name  = "AWS_DEFAULT_REGION"
-          value = data.aws_region.current.name
+          value = data.aws_region.current.region
         },
         {
           name  = "THANOS_KMS_KEY_ARN"
@@ -296,7 +296,7 @@ resource "aws_ecs_task_definition" "bootstrap" {
         logDriver = "awslogs"
         options = {
           awslogs-group         = aws_cloudwatch_log_group.bootstrap.name
-          awslogs-region        = data.aws_region.current.name
+          awslogs-region        = data.aws_region.current.region
           awslogs-stream-prefix = "ecs"
         }
       }
