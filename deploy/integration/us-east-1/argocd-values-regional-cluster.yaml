@@ -10,6 +10,9 @@ eksNodePool:
   - m8i
   - m7i
 baseDomain: us-east-1.int0.rosa.devshift.net
+hyperfleet:
+  oidcS3Bucket: hyperfleet-oidc-us-east-1
+  oidcIssuerBaseUrl: https://hyperfleet-oidc-us-east-1.s3.us-east-1.amazonaws.com
 pagerduty:
   enabled: true
 grafana:
