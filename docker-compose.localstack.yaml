@@ -1,0 +1,64 @@
+# LocalStack development environment for ROSA HyperFleet.
+#
+# Emulates the multi-account AWS infrastructure locally so developers can test
+# the deployment pipeline without real AWS accounts or clusters.
+#
+# Requires LocalStack Pro for full EKS emulation, Lambda container image
+# support, and IAM policy enforcement. Set LOCALSTACK_AUTH_TOKEN in your
+# environment before starting (see docs/localstack-testing.md).
+#
+# Podman users: activate the podman socket first:
+#   systemctl --user enable --now podman.socket
+# then set DOCKER_SOCK to point to your Podman socket, e.g.:
+#   export DOCKER_SOCK="${XDG_RUNTIME_DIR}/podman/podman.sock"
+# or for rootful Podman:
+#   export DOCKER_SOCK=/run/podman/podman.sock
+#
+# Usage:
+#   export LOCALSTACK_AUTH_TOKEN=<your-token>
+#   docker compose -f docker-compose.localstack.yaml up -d
+#   # or via Makefile:
+#   make localstack-up
+
+services:
+  localstack:
+    image: localstack/localstack-pro:latest
+    container_name: rosa-hyperfleet-localstack
+    user: "0"
+    privileged: true
+    ports:
+      - "4566:4566" # LocalStack Gateway
+      - "4510-4559:4510-4559" # External service ports
+    environment:
+      # All AWS services used by the project (alphabetical). Only cloudtrail
+      # and codestar-connections are excluded (not emulated by LocalStack).
+      - SERVICES=acm,apigateway,apigatewayv2,cloudfront,cloudwatch,codebuild,codepipeline,dynamodb,ec2,ecr,ecr-public,ecs,eks,elasticache,elbv2,events,iam,kms,lambda,logs,organizations,rds,route53,s3,secretsmanager,sns,sqs,ssm,sts
+      - DEBUG=0
+      - PERSISTENCE=1
+      # LocalStack Pro auth token (required — see docs/localstack-testing.md)
+      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN:?Set LOCALSTACK_AUTH_TOKEN to your LocalStack Pro API key}
+      # IAM policy enforcement — Pro feature, disabled by default because
+      # LocalStack does not evaluate policies on the root user during init.
+      # Enable after bootstrap: LOCALSTACK_ENFORCE_IAM=1 make localstack-up
+      - ENFORCE_IAM=${LOCALSTACK_ENFORCE_IAM:-0}
+      # Docker socket for ECS/EKS/Lambda container support.
+      # Podman provides a compatible socket; see DOCKER_SOCK below.
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - "${LOCALSTACK_VOLUME_DIR:-./.localstack}:/var/lib/localstack:Z"
+      # Override DOCKER_SOCK for Podman (see top-of-file comments).
+      # Default is /var/run/docker.sock which works for Docker and rootful Podman.
+      - "${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:Z"
+      - "./scripts/localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh:ro,Z"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - localstack-net
+
+networks:
+  localstack-net:
+    driver: bridge

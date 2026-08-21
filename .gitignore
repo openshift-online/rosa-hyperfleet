@@ -45,3 +45,7 @@ ephemeral-logs*
 
 # Dashboard (generated locally by ./dashboard/fetch-data.sh)
 dashboard/data.json
+
+# LocalStack state (persisted volumes)
+.localstack/
+volume/

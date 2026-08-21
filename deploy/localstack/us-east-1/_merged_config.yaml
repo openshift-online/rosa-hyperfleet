@@ -1,0 +1,233 @@
+# Merged config: defaults.yaml → localstack/defaults.yaml → localstack/us-east-1.yaml
+# This file is the output of stage 1 (merge). Stage 2 feeds it to config/templates/.
+
+# =============================================================================
+# Global defaults — inherited by all environments and regions.
+#
+# Inheritance chain:
+#   defaults.yaml → <env>/defaults.yaml → <env>/<region>.yaml
+#
+# All string values support Jinja2 templating. The following variables are
+# injected automatically by render.py:
+#   {{ environment }}      — environment directory name (e.g. "integration")
+#   {{ deployment_name }}  — logical deployment identifier (see deployment_name below)
+#   {{ aws_region }}       — AWS region, always the config file stem (e.g. "us-east-1")
+#   {{ cluster_prefix }}   — management_cluster key (e.g. "mc01")
+#
+# Documentation: @doc and @used-by annotations (validated by: render.py --check-docs)
+# =============================================================================
+
+git:
+  # @doc git.revision ArgoCD ApplicationSet chart + generator revision. Commit hash to pin, "main" for HEAD.
+  # @used-by git.revision _context
+  revision: main
+  # @doc git.bootstrap_revision Pipeline provisioner bootstrap revision.
+  # @used-by git.bootstrap_revision _context
+  bootstrap_revision: main
+
+# @doc deployment_name Logical deployment identifier. Equals aws_region for normal deployments; override in ephemeral/CI to disambiguate multiple deployments in the same region (e.g. "us-east-1-xg4y"). Used for DNS zone naming and resource identification.
+# @used-by deployment_name _context
+# @used-by deployment_name pipeline-regional-cluster-inputs/terraform.json.j2
+deployment_name: "{{ aws_region }}"
+
+aws:
+  # @doc aws.account_id Regional AWS account ID.
+  # @used-by aws.account_id _context
+  account_id: "000000000002"
+  # @doc aws.management_cluster_account_id Default account for MCs when entry has no account_id.
+  # @used-by aws.management_cluster_account_id _context
+  management_cluster_account_id: "000000000003"
+
+dns:
+  # @doc dns.domain Base domain for the environment. Must be set per environment. See config/ephemeral/defaults.yaml for how the ephemeral template selects between CI and dev account pools.
+  # @used-by dns.domain pipeline-provisioner-inputs/terraform.json.j2
+  # @used-by dns.domain pipeline-regional-cluster-inputs/terraform.json.j2
+  domain: "localstack.rosa.local"
+  # @doc dns.create_environment_zone Create the environment hosted zone in the central account. Set false to reuse an existing zone with pre-configured delegation.
+  # @used-by dns.create_environment_zone pipeline-provisioner-inputs/terraform.json.j2
+  create_environment_zone: false
+
+terraform_tags:
+  # @doc terraform_tags.app_code Application code for cost tagging.
+  # @used-by terraform_tags.app_code pipeline-management-cluster-inputs/terraform.json.j2
+  # @used-by terraform_tags.app_code pipeline-regional-cluster-inputs/terraform.json.j2
+  app_code: "infra"
+  # @doc terraform_tags.service_phase Service deployment phase.
+  # @used-by terraform_tags.service_phase pipeline-management-cluster-inputs/terraform.json.j2
+  # @used-by terraform_tags.service_phase pipeline-regional-cluster-inputs/terraform.json.j2
+  service_phase: "dev"
+  # @doc terraform_tags.cost_center Cost center code for billing.
+  # @used-by terraform_tags.cost_center pipeline-management-cluster-inputs/terraform.json.j2
+  # @used-by terraform_tags.cost_center pipeline-regional-cluster-inputs/terraform.json.j2
+  cost_center: "000"
+
+regional_cluster:
+  # @doc regional_cluster.enable_bastion Enable bastion host for regional cluster access.
+  # @used-by regional_cluster.enable_bastion pipeline-regional-cluster-inputs/terraform.json.j2
+  enable_bastion: false
+  # @doc regional_cluster.enable_cloudtrail Enable CloudTrail audit logging (FedRAMP AU-12). Off by default; enable for environments requiring compliance.
+  # @used-by regional_cluster.enable_cloudtrail pipeline-regional-cluster-inputs/terraform.json.j2
+  enable_cloudtrail: false
+  # @doc regional_cluster.enable_api_custom_domain Enable API Gateway custom domain and ACM certificate. Off by default; adds ~20 minutes for certificate validation.
+  # @used-by regional_cluster.enable_api_custom_domain pipeline-regional-cluster-inputs/terraform.json.j2
+  enable_api_custom_domain: false
+  # @doc regional_cluster.enable_rate_limit_redis Enable ElastiCache Redis for Platform API rate limiting.
+  # @used-by regional_cluster.enable_rate_limit_redis pipeline-regional-cluster-inputs/terraform.json.j2
+  enable_rate_limit_redis: false
+  # @doc regional_cluster.enable_write_sre_tools Enable write/admin access to SRE tools (Grafana, ArgoCD). Off by default. Can only be set to true for ephemeral environments — render.py enforces this.
+  # @used-by regional_cluster.enable_write_sre_tools _context
+  enable_write_sre_tools: false
+  # @doc regional_cluster.zone_shard_count Number of DNS zone shards under the regional zone. Each shard supports ~10k records.
+  # @used-by regional_cluster.zone_shard_count pipeline-regional-cluster-inputs/terraform.json.j2
+  zone_shard_count: 1
+  # @doc regional_cluster.node_instance_families EC2 instance families for regional cluster Karpenter NodePool (e.g. m8i, m7i). Sizes are generated by the eks-nodepool Helm chart.
+  # @used-by regional_cluster.node_instance_families _context
+  node_instance_families: ["m7i-flex"]
+  # @doc regional_cluster.hyperfleet_db_instance_class Aurora instance class for HyperFleet DB.
+  # @used-by regional_cluster.hyperfleet_db_instance_class pipeline-regional-cluster-inputs/terraform.json.j2
+  hyperfleet_db_instance_class: "db.t4g.medium"
+  # @doc regional_cluster.hyperfleet_db_deletion_protection Enable deletion protection for HyperFleet DB Aurora cluster.
+  # @used-by regional_cluster.hyperfleet_db_deletion_protection pipeline-regional-cluster-inputs/terraform.json.j2
+  hyperfleet_db_deletion_protection: false
+  # @doc regional_cluster.hyperfleet_db_skip_final_snapshot Skip final snapshot when destroying HyperFleet DB (ephemeral only).
+  # @used-by regional_cluster.hyperfleet_db_skip_final_snapshot pipeline-regional-cluster-inputs/terraform.json.j2
+  hyperfleet_db_skip_final_snapshot: true
+  # @doc regional_cluster.hyperfleet_db_performance_insights_enabled Enable Performance Insights for HyperFleet DB Aurora.
+  # @used-by regional_cluster.hyperfleet_db_performance_insights_enabled pipeline-regional-cluster-inputs/terraform.json.j2
+  hyperfleet_db_performance_insights_enabled: false
+  # @doc regional_cluster.hyperfleet_db_monitoring_interval Enhanced Monitoring interval in seconds for HyperFleet DB Aurora (0 to disable).
+  # @used-by regional_cluster.hyperfleet_db_monitoring_interval pipeline-regional-cluster-inputs/terraform.json.j2
+  hyperfleet_db_monitoring_interval: 0
+  # @doc regional_cluster.enable_sre_tools_gateway Enable internal ALB for SRE UI tools (Grafana, ArgoCD, Prometheus, Thanos, Loki). Requires dns.domain to be set for DNS/TLS.
+  # @used-by regional_cluster.enable_sre_tools_gateway _context
+  # @used-by regional_cluster.enable_sre_tools_gateway pipeline-regional-cluster-inputs/terraform.json.j2
+  enable_sre_tools_gateway: false
+  # @doc regional_cluster.enable_sre_public_access When true, the SRE UI ALB is internet-facing. Combine with sre_allowed_source_cidrs to restrict access to known CIDRs.
+  # @used-by regional_cluster.enable_sre_public_access pipeline-regional-cluster-inputs/terraform.json.j2
+  enable_sre_public_access: false
+  # @doc regional_cluster.sre_allowed_source_cidrs Source IP CIDRs allowed to reach the SRE UI ALB when enable_sre_public_access is true. Leave empty in config — the buildspec fetches the actual list from SSM (/infra/sre-ui-alb/allowed-source-cidrs in the RC account) at pipeline time.
+  # @used-by regional_cluster.sre_allowed_source_cidrs pipeline-regional-cluster-inputs/terraform.json.j2
+  sre_allowed_source_cidrs: []
+  # @doc regional_cluster.enable_sre_oidc_auth When true, ALB listener rules require OIDC authentication via Red Hat SSO. Requires per-service client IDs in config and client secrets in Secrets Manager (sre-ui-alb/{service}/oidc-client-secret).
+  # @used-by regional_cluster.enable_sre_oidc_auth pipeline-regional-cluster-inputs/terraform.json.j2
+  enable_sre_oidc_auth: false
+  # @doc regional_cluster.sre_oidc_issuer_url OIDC issuer base URL for the SRE UI ALB. Authorization, token, and userinfo endpoints are derived from this. Defaults to Red Hat SSO EmployeeIDP.
+  # @used-by regional_cluster.sre_oidc_issuer_url pipeline-regional-cluster-inputs/terraform.json.j2
+  sre_oidc_issuer_url: "https://auth.redhat.com/auth/realms/EmployeeIDP"
+  # @doc regional_cluster.sre_grafana_oidc_client_id OIDC client ID for Grafana. Required when enable_sre_oidc_auth is true.
+  # @used-by regional_cluster.sre_grafana_oidc_client_id pipeline-regional-cluster-inputs/terraform.json.j2
+  sre_grafana_oidc_client_id: ""
+  # @doc regional_cluster.sre_argocd_oidc_client_id OIDC client ID for ArgoCD. Required when enable_sre_oidc_auth is true.
+  # @used-by regional_cluster.sre_argocd_oidc_client_id pipeline-regional-cluster-inputs/terraform.json.j2
+  sre_argocd_oidc_client_id: ""
+  # @doc regional_cluster.sre_prometheus_oidc_client_id OIDC client ID for Prometheus. Required when enable_sre_oidc_auth is true.
+  # @used-by regional_cluster.sre_prometheus_oidc_client_id pipeline-regional-cluster-inputs/terraform.json.j2
+  sre_prometheus_oidc_client_id: ""
+  # @doc regional_cluster.sre_thanos_oidc_client_id OIDC client ID for Thanos. Required when enable_sre_oidc_auth is true.
+  # @used-by regional_cluster.sre_thanos_oidc_client_id pipeline-regional-cluster-inputs/terraform.json.j2
+  sre_thanos_oidc_client_id: ""
+
+management_cluster_defaults:
+  # @doc management_cluster_defaults.enable_bastion Default enable bastion for management clusters.
+  # @used-by management_cluster_defaults.enable_bastion _context
+  # @used-by management_cluster_defaults.enable_bastion pipeline-management-cluster-inputs/terraform.json.j2
+  enable_bastion: false
+  # @doc management_cluster_defaults.node_instance_families Default EC2 instance families for MC Karpenter NodePool (e.g. m8i, m7i). Sizes are generated by the eks-nodepool Helm chart.
+  # @used-by management_cluster_defaults.node_instance_families _context
+  node_instance_families: ["m7i-flex"]
+
+observability:
+  pagerduty:
+    # @doc observability.pagerduty.enabled Enable PagerDuty service provisioning for the region.
+    # @used-by observability.pagerduty.enabled _context
+    # @used-by observability.pagerduty.enabled pipeline-regional-cluster-inputs/terraform.json.j2
+    enabled: false
+    # @doc observability.pagerduty.escalation_policy_id PagerDuty escalation policy ID for regional services.
+    # @used-by observability.pagerduty.escalation_policy_id _context
+    # @used-by observability.pagerduty.escalation_policy_id pipeline-regional-cluster-inputs/terraform.json.j2
+    escalation_policy_id: "P5KE444"
+
+  sns_alerting:
+    # @doc observability.sns_alerting.enabled Enable SNS alerting for regional cluster alert consumption by automated/external services.
+    # @used-by observability.sns_alerting.enabled _context
+    # @used-by observability.sns_alerting.enabled pipeline-regional-cluster-inputs/terraform.json.j2
+    enabled: false
+
+applications:
+  management-cluster:
+    eksNodePool:
+      # @doc applications.management-cluster.eksNodePool.instanceFamilies Instance families for the MC Karpenter NodePool.
+      # @used-by applications.management-cluster.eksNodePool.instanceFamilies _context
+      instanceFamilies: "{{ management_cluster_defaults.node_instance_families }}"
+    hypershift:
+      oidcStorageS3Bucket:
+        # @doc applications.management-cluster.hypershift.oidcStorageS3Bucket.name OIDC S3 bucket name for HyperShift.
+        # @used-by applications.management-cluster.hypershift.oidcStorageS3Bucket.name _context
+        name: "hypershift-mc-{{ aws_region }}"
+        # @doc applications.management-cluster.hypershift.oidcStorageS3Bucket.region OIDC S3 bucket region.
+        # @used-by applications.management-cluster.hypershift.oidcStorageS3Bucket.region _context
+        region: "{{ aws_region }}"
+      externalDns:
+        # @doc applications.management-cluster.hypershift.externalDns.domain External DNS domain filter for HyperShift. Should match the regional zone so external-dns discovers zone shards.
+        # @used-by applications.management-cluster.hypershift.externalDns.domain _context
+        domain: "{% if dns.domain %}{{ deployment_name }}.{{ dns.domain }}{% endif %}"
+  regional-cluster:
+    eksNodePool:
+      # @doc applications.regional-cluster.eksNodePool.instanceFamilies Instance families for the regional Karpenter NodePool.
+      # @used-by applications.regional-cluster.eksNodePool.instanceFamilies _context
+      instanceFamilies: "{{ regional_cluster.node_instance_families }}"
+    # @doc applications.regional-cluster.baseDomain DNS base domain for HostedClusters (deployment_name.dns.domain).
+    # @used-by applications.regional-cluster.baseDomain _context
+    baseDomain: "{% if dns.domain %}{{ deployment_name }}.{{ dns.domain }}{% endif %}"
+    pagerduty:
+      # @doc applications.regional-cluster.pagerduty.enabled Enable PagerDuty alerting in the monitoring stack.
+      # @used-by applications.regional-cluster.pagerduty.enabled _context
+      enabled: "{{ observability.pagerduty.enabled | default(false) }}"
+    grafana:
+      # @doc applications.regional-cluster.grafana Grafana auth mode driven by enable_write_sre_tools. Viewer when false (default), Admin when true (ephemeral only).
+      # @used-by applications.regional-cluster.grafana _context
+      "grafana.ini":
+        "auth.anonymous":
+          org_role: "{% if regional_cluster.enable_write_sre_tools %}Admin{% else %}Viewer{% endif %}"
+        users:
+          auto_assign_org_role: "{% if regional_cluster.enable_write_sre_tools %}Admin{% else %}Viewer{% endif %}"
+    argo-cd:
+      # @doc applications.regional-cluster.argo-cd ArgoCD RBAC mode driven by enable_write_sre_tools. Anonymous read-only when false (default); admin enabled with no restrictions when true (ephemeral only).
+      # @used-by applications.regional-cluster.argo-cd _context
+      configs:
+        cm:
+          admin.enabled: "{% if regional_cluster.enable_write_sre_tools %}true{% else %}false{% endif %}"
+          users.anonymous.enabled: "{% if regional_cluster.enable_write_sre_tools %}false{% else %}true{% endif %}"
+        rbac:
+          policy.default: "{% if regional_cluster.enable_write_sre_tools %}{% else %}role:readonly{% endif %}"
+
+# provision_mcs: MC topology, defined per-region. Keys are MC IDs.
+# Fields below are injected into templates as mc.* by render.py.
+#   mc01:
+#     # @doc mc.account_id Per-MC AWS account ID. Defaults to aws.management_cluster_account_id.
+#     # @used-by mc.account_id pipeline-management-cluster-inputs/terraform.json.j2
+#     # @used-by mc.account_id pipeline-provisioner-inputs/management-cluster.json.j2
+#     account_id: "123456789012"
+#     # @doc mc.enable_bastion Per-MC bastion override. Defaults to management_cluster_defaults.enable_bastion.
+#     # @used-by mc.enable_bastion pipeline-management-cluster-inputs/terraform.json.j2
+#     enable_bastion: true
+#     # @doc mc.node_instance_families Per-MC instance families. Defaults to management_cluster_defaults.node_instance_families.
+#     # @used-by mc.node_instance_families _context
+#     node_instance_families: ["m7i"]
+#     # @doc mc.delete Triggers infrastructure destruction for this MC.
+#     # @used-by mc.delete pipeline-management-cluster-inputs/terraform.json.j2
+#     delete: true
+#     # @doc mc.delete_pipeline Triggers pipeline removal for this MC.
+#     # @used-by mc.delete_pipeline pipeline-provisioner-inputs/management-cluster.json.j2
+#     delete_pipeline: true
+
+# Computed fields — generated by render.py, not from config values.
+#
+# @doc mc.management_id MC identifier, computed from cluster key + CI prefix.
+# @used-by mc.management_id pipeline-management-cluster-inputs/terraform.json.j2
+# @used-by mc.management_id pipeline-provisioner-inputs/management-cluster.json.j2
+
+# Per-region fields: Can be overridden at region level in <env>/<region>.yaml
+# These are now part of the regional_cluster stanza above.
+provision_mcs:
+  mc01: {}
