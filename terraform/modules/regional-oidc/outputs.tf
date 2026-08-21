@@ -19,7 +19,7 @@ output "bucket_arn" {
 
 output "bucket_region" {
   description = "AWS region where the OIDC S3 bucket is deployed"
-  value       = data.aws_region.current.name
+  value       = data.aws_region.current.region
 }
 
 output "oidc_writer_role_arn" {
