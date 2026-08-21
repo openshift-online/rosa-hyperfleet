@@ -19,12 +19,8 @@
 resource "aws_dynamodb_table" "accounts" {
   name                        = local.table_names.accounts
   billing_mode                = var.billing_mode
+  hash_key                    = "accountId"
   deletion_protection_enabled = var.enable_deletion_protection
-
-  key_schema {
-    attribute_name = "accountId"
-    key_type       = "HASH"
-  }
 
   attribute {
     name = "accountId"
@@ -53,17 +49,9 @@ resource "aws_dynamodb_table" "accounts" {
 resource "aws_dynamodb_table" "admins" {
   name                        = local.table_names.admins
   billing_mode                = var.billing_mode
+  hash_key                    = "accountId"
+  range_key                   = "principalArn"
   deletion_protection_enabled = var.enable_deletion_protection
-
-  key_schema {
-    attribute_name = "accountId"
-    key_type       = "HASH"
-  }
-
-  key_schema {
-    attribute_name = "principalArn"
-    key_type       = "RANGE"
-  }
 
   attribute {
     name = "accountId"
@@ -97,17 +85,9 @@ resource "aws_dynamodb_table" "admins" {
 resource "aws_dynamodb_table" "groups" {
   name                        = local.table_names.groups
   billing_mode                = var.billing_mode
+  hash_key                    = "accountId"
+  range_key                   = "groupId"
   deletion_protection_enabled = var.enable_deletion_protection
-
-  key_schema {
-    attribute_name = "accountId"
-    key_type       = "HASH"
-  }
-
-  key_schema {
-    attribute_name = "groupId"
-    key_type       = "RANGE"
-  }
 
   attribute {
     name = "accountId"
@@ -142,17 +122,9 @@ resource "aws_dynamodb_table" "groups" {
 resource "aws_dynamodb_table" "members" {
   name                        = local.table_names.members
   billing_mode                = var.billing_mode
+  hash_key                    = "accountId"
+  range_key                   = "groupId#memberArn"
   deletion_protection_enabled = var.enable_deletion_protection
-
-  key_schema {
-    attribute_name = "accountId"
-    key_type       = "HASH"
-  }
-
-  key_schema {
-    attribute_name = "groupId#memberArn"
-    key_type       = "RANGE"
-  }
 
   attribute {
     name = "accountId"
@@ -204,17 +176,9 @@ resource "aws_dynamodb_table" "members" {
 resource "aws_dynamodb_table" "policies" {
   name                        = local.table_names.policies
   billing_mode                = var.billing_mode
+  hash_key                    = "accountId"
+  range_key                   = "policyId"
   deletion_protection_enabled = var.enable_deletion_protection
-
-  key_schema {
-    attribute_name = "accountId"
-    key_type       = "HASH"
-  }
-
-  key_schema {
-    attribute_name = "policyId"
-    key_type       = "RANGE"
-  }
 
   attribute {
     name = "accountId"
@@ -250,17 +214,9 @@ resource "aws_dynamodb_table" "policies" {
 resource "aws_dynamodb_table" "attachments" {
   name                        = local.table_names.attachments
   billing_mode                = var.billing_mode
+  hash_key                    = "accountId"
+  range_key                   = "attachmentId"
   deletion_protection_enabled = var.enable_deletion_protection
-
-  key_schema {
-    attribute_name = "accountId"
-    key_type       = "HASH"
-  }
-
-  key_schema {
-    attribute_name = "attachmentId"
-    key_type       = "RANGE"
-  }
 
   attribute {
     name = "accountId"
