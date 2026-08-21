@@ -66,6 +66,7 @@ spec:
             --namespace hypershift \
             --enable-conversion-webhook=false \
             --hypershift-image {{ .Values.hypershift.hypershift.image }} \
+            --tech-preview-no-upgrade \
             --limit-crd-install AWS \
             --private-platform AWS \
             --aws-private-creds /tmp/aws/private-creds \
