@@ -78,7 +78,7 @@ spec:
             --external-dns-domain-filter {{ .Values.hypershift.externalDns.domain }} \
             --external-dns-secret external-dns \
             --external-dns-image {{ .Values.hypershift.externalDns.image }} \
-            --external-dns-txt-owner-id {{ .Values.hypershift.externalDns.domain }} \ # region-scoped so TXT records survive reinstalls and HCP migration between MCs
+            --external-dns-txt-owner-id {{ .Values.global.cluster_name }} \ # stable per-MC so TXT records survive reinstalls
 
           # TODO(hypershift): Upstream --aws-assume-role + Pod Identity support
           # to hypershift install CLI, then replace this post-install patch
