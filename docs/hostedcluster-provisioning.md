@@ -70,11 +70,11 @@ rosactl cluster-vpc create $CLUSTER_NAME --region $REGION --availability-zones $
 # 3. Submit the cluster creation request
 rosactl cluster create $CLUSTER_NAME --region $REGION
 
-# 4. Get the cluster ID and cloud URL
-CLOUDURL=$(rosactl cluster list --region $REGION -o json | jq -r --arg name "$CLUSTER_NAME" '.items[] | select(.name == $name) | "\(.spec.cloudUrl)/\(.id)"')
+# 4. Get the OIDC issuer URL
+OIDC_URL=$(rosactl cluster list -o json | jq -r --arg name "$CLUSTER_NAME" '.items[] | select(.name == $name) | .spec.hostedCluster.issuerURL')
 
 # 5. Create the OIDC provider (CloudFormation stack)
-rosactl cluster-oidc create $CLUSTER_NAME --region $REGION --oidc-issuer-url $CLOUDURL
+rosactl cluster-oidc create $CLUSTER_NAME --oidc-issuer-url $OIDC_URL
 ```
 
 You can then view the status of your cluster as follows:
