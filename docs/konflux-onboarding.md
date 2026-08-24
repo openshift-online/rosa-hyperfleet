@@ -3,8 +3,6 @@
 Team reference for onboarding HyperFleet container images to Konflux and keeping new builds on the Konflux path.
 
 > **Audience:** This file is in a **public** GitHub repo. It contains no secrets or customer data. Some linked resources require Red Hat access: `gitlab.cee.redhat.com`, the Konflux UI, and the internal Google design doc below.
->
-> Component onboarding **status** is tracked in Jira — see [ROSAENG-59370](https://issues.redhat.com/browse/ROSAENG-59370). Do not duplicate a status table in this doc.
 
 ## Konflux environment (HyperFleet)
 
@@ -127,9 +125,3 @@ Post-merge pins use the plain `<sha>` tag — see [quay-image-tags.md](https://g
 - [MintMaker user guide](https://konflux-ci.dev/docs/mintmaker/user/)
 - [Create tenant namespace](https://konflux.pages.redhat.com/docs/users/getting-started/create-tenant-namespace.html) (HyperFleet reuses `rosa-tenant` — new tenants rarely needed)
 - [HyperFleet Konflux design doc](https://docs.google.com/document/d/1KVGj_3lyGghVzm94G5iskIIkHkZyabvHTRue1DCwF-c/edit?tab=t.0#heading=h.o40dh15jzkv7)
-
-## Related Jira
-
-- [ROSAENG-59370](https://issues.redhat.com/browse/ROSAENG-59370) — Konflux onboarding epic (status tracker)
-- [ROSAENG-59371](https://issues.redhat.com/browse/ROSAENG-59371) — `platform-api` Konflux pipeline (done)
-- [ROSAENG-60377](https://issues.redhat.com/browse/ROSAENG-60377) — Prow / Konflux interaction (done)
