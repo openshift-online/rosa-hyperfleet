@@ -18,7 +18,7 @@ data "aws_caller_identity" "current" {}
 # =============================================================================
 # kube-applier DynamoDB Tables
 #
-# Creates the six DynamoDB tables used by kube-applier-aws for this Management
+# Creates the four DynamoDB tables used by kube-applier-aws for this Management
 # Cluster. Tables live in the RC account; the MC pipeline provisions them here
 # so each MC's lifecycle is self-contained.
 # =============================================================================
@@ -79,21 +79,6 @@ resource "aws_iam_role_policy" "hyperfleet_operator_dynamodb" {
           "arn:aws:dynamodb:${var.region}:${data.aws_caller_identity.current.account_id}:table/${var.mc_name}-status-*",
           "arn:aws:dynamodb:${var.region}:${data.aws_caller_identity.current.account_id}:table/${var.mc_name}-status-*/index/*",
         ]
-      },
-      {
-        Sid    = "DynamoDBStatusStreams"
-        Effect = "Allow"
-        Action = [
-          "dynamodb:DescribeStream",
-          "dynamodb:GetRecords",
-          "dynamodb:GetShardIterator",
-          "dynamodb:ListStreams",
-          "dynamodbstreams:DescribeStream",
-          "dynamodbstreams:GetRecords",
-          "dynamodbstreams:GetShardIterator",
-          "dynamodbstreams:ListStreams"
-        ]
-        Resource = "arn:aws:dynamodb:${var.region}:${data.aws_caller_identity.current.account_id}:table/${var.mc_name}-status-*/stream/*"
       }
     ]
   })
