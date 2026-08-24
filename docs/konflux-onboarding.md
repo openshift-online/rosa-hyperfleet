@@ -8,11 +8,11 @@ Team reference for onboarding HyperFleet container images to Konflux and keeping
 
 ## Konflux environment (HyperFleet)
 
-| Setting | Value |
-|---------|--------|
-| Konflux cluster | `kflux-prd-rh02` |
-| Tenant namespace | `rosa-tenant` |
-| Quay path prefix | `quay.io/redhat-user-workloads/rosa-tenant/` |
+| Setting                     | Value                                                          |
+| --------------------------- | -------------------------------------------------------------- |
+| Konflux cluster             | `kflux-prd-rh02`                                               |
+| Tenant namespace            | `rosa-tenant`                                                  |
+| Quay path prefix            | `quay.io/redhat-user-workloads/rosa-tenant/`                   |
 | Required PR check (example) | `Konflux kflux-prd-rh02 / rosa-hyperfleet-api-on-pull-request` |
 
 **Links**
@@ -34,15 +34,17 @@ Repo-specific Quay tag conventions for `platform-api` and `hyperfleet-operator`:
 
 Copy this checklist for each new image. **Onboarded** means steps 1–5 are complete: green PR build before merge, green `main` push build after merge, and GitOps pointed at the Konflux image.
 
-| # | Step | Where | Done when |
-|---|------|--------|-----------|
-| 1 | Register Application + Component + ImageRepository | [`konflux-release-data` for `rosa-tenant`](https://gitlab.cee.redhat.com/releng/konflux-release-data/-/tree/main/tenants-config/cluster/kflux-prd-rh02/tenants/rosa-tenant/overlay?ref_type=heads) overlay under `…/overlay/<app>/main/` | MR merged; Component visible in Konflux UI |
-| 2 | Add build pipelines | App repo `.tekton/*-on-pull-request.yaml` + `*-on-push.yaml` | PR merged (Konflux bootstrap PR or hand-copied from a reference repo) |
-| 3 | Wire CI gates | [`openshift/release`](https://github.com/openshift/release) branch protection + ci-operator if needed | Konflux on-PR check required on `main`; use `skip-unknown-contexts: true` during rollout |
-| 4 | Validate builds | Konflux UI / GitHub checks | Green `*-on-pull-request` on a test PR and green `*-on-push` on `main` |
-| 5 | Point consumers at Konflux image | `rosa-hyperfleet` ArgoCD values (or other deploy repo) | `repository` + `tag: "<full-sha>"` under `redhat-user-workloads/rosa-tenant/…` |
+| #   | Step                                               | Where                                                                                                                                                                                                                                    | Done when                                                                                   |
+| --- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| 1   | Register Application + Component + ImageRepository | [`konflux-release-data` for `rosa-tenant`](https://gitlab.cee.redhat.com/releng/konflux-release-data/-/tree/main/tenants-config/cluster/kflux-prd-rh02/tenants/rosa-tenant/overlay?ref_type=heads) overlay under `…/overlay/<app>/main/` | MR merged; Component visible in Konflux UI                                                  |
+| 2   | Add build pipelines                                | App repo `.tekton/*-on-pull-request.yaml` + `*-on-push.yaml`                                                                                                                                                                             | PR merged (Konflux bootstrap PR or hand-copied from a reference repo)                       |
+| 3   | Wire CI gates                                      | [`openshift/release`](https://github.com/openshift/release) branch protection + ci-operator if needed                                                                                                                                    | Required Konflux on-PR context(s) added for the component; see branch-protection note below |
+| 4   | Validate builds                                    | Konflux UI / GitHub checks                                                                                                                                                                                                               | Green `*-on-pull-request` on a test PR and green `*-on-push` on `main`                      |
+| 5   | Point consumers at Konflux image                   | `rosa-hyperfleet` ArgoCD values (or other deploy repo)                                                                                                                                                                                   | `repository` + `tag: "<full-sha>"` under `redhat-user-workloads/rosa-tenant/…`              |
 
 **Rule for new work:** any new container image that ships to staging or production must complete steps 1–3 before merge and steps 4–5 before release. Do not use ad-hoc personal Quay repos for runtime images.
+
+**Branch protection (step 3):** Tekton on-PR pipelines often use CEL `pathChanged()` filters — a check only runs when relevant paths change. Require the Konflux context for a component only when that pipeline applies to the PR; do not mark path-filtered checks as unconditionally required on GitHub or unrelated PRs stay blocked. During rollout, Prow/Tide `skip-unknown-contexts: true` can ignore optional contexts not yet reported — that is a Tide setting, not a GitHub branch-protection substitute.
 
 ### Reference implementation
 
@@ -61,19 +63,19 @@ Run `build-manifests.sh` in `konflux-release-data/tenants-config` before opening
 
 ### New repository vs new component
 
-| Case | Application | Component | Repo change |
-|------|-------------|-----------|-------------|
-| New image in an existing repo (like operator in `rosa-hyperfleet-api`) | Reuse `rosa-hyperfleet` | New component name | Add `.tekton/<component>-*.yaml` |
-| New standalone repo (like `rosa-hyperfleet-zoa`) | New or existing application | New component | Full `.tekton/` + release config |
+| Case                                                                   | Application                 | Component          | Repo change                      |
+| ---------------------------------------------------------------------- | --------------------------- | ------------------ | -------------------------------- |
+| New image in an existing repo (like operator in `rosa-hyperfleet-api`) | Reuse `rosa-hyperfleet`     | New component name | Add `.tekton/<component>-*.yaml` |
+| New standalone repo (like `rosa-hyperfleet-zoa`)                       | New or existing application | New component      | Full `.tekton/` + release config |
 
 ## Prow and Konflux responsibilities
 
-| Concern | Owner |
-|---------|--------|
-| Image build + attestation | Konflux |
-| `gomod` / Dockerfile / Tekton dep bumps | MintMaker (`renovate.json` in each onboarded repo) |
-| Lint, verify, unit, integration, e2e | Prow |
-| Required checks before merge | Both (Konflux on-PR + Prow jobs) |
+| Concern                                 | Owner                                                |
+| --------------------------------------- | ---------------------------------------------------- |
+| Image build + attestation               | Konflux                                              |
+| `gomod` / Dockerfile / Tekton dep bumps | MintMaker (`renovate.json` in each onboarded repo)   |
+| Lint, verify, unit, integration, e2e    | Prow                                                 |
+| Required checks before merge            | Konflux on-PR (when path triggers apply) + Prow jobs |
 
 Konflux can only attest images **it** built. Released images must come from Konflux push pipelines, not from ci-operator `images:` alone.
 
@@ -85,7 +87,7 @@ Each onboarded app repo uses a root `renovate.json` for MintMaker (see [`rosa-hy
 - Patch/minor/digest updates: automerge when Prow + Konflux pass
 - Major updates: manual review (`major-update`, `manual-review-required`)
 
-MintMaker runs on a **~4 hour base schedule**. The `tekton` manager runs on Saturdays after 05:00 UTC. To rerun CI on an open dep PR without waiting:
+MintMaker runs on a **~4-hour base schedule**. The `tekton` manager runs on Saturdays after 05:00 UTC. To rerun CI on an open dep PR without waiting:
 
 - Comment **`/retest`** on the PR (Konflux + Prow)
 - Add the **`rebase`** label (or use the rebase checkbox in the Renovate PR body) to refresh the branch against `main`
@@ -110,13 +112,13 @@ Post-merge pins use the plain `<sha>` tag — see [quay-image-tags.md](https://g
 
 ## Troubleshooting
 
-| Symptom | Likely cause | Action |
-|---------|--------------|--------|
-| No Konflux check on PR | PAC not configured or GitHub App not on repo | Set `build.appstudio.openshift.io/request: configure-pac` on the Component; confirm app install |
-| `on-pr-*` build fails, `main` is fine | Stale Tekton task refs | Merge Konflux/MintMaker Tekton bump PRs; `/retest` open dep PRs |
-| EC (Enterprise Contract) failures | Dockerfile or base image policy | Check Konflux UI pipeline log; align with EC policy |
-| Image not pullable from RC/EKS | ImageRepository visibility / pull secret | Konflux admin or registry credentials |
-| MintMaker PR stuck | Real dep breakage vs infra | Read `renovate/artifacts` and Prow logs; close bad PRs |
+| Symptom                               | Likely cause                                 | Action                                                                                          |
+| ------------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| No Konflux check on PR                | PAC not configured or GitHub App not on repo | Set `build.appstudio.openshift.io/request: configure-pac` on the Component; confirm app install |
+| `on-pr-*` build fails, `main` is fine | Stale Tekton task refs                       | Merge Konflux/MintMaker Tekton bump PRs; `/retest` open dep PRs                                 |
+| EC (Enterprise Contract) failures     | Dockerfile or base image policy              | Check Konflux UI pipeline log; align with EC policy                                             |
+| Image not pullable from RC/EKS        | ImageRepository visibility / pull secret     | Konflux admin or registry credentials                                                           |
+| MintMaker PR stuck                    | Real dep breakage vs infra                   | Read `renovate/artifacts` and Prow logs; close bad PRs                                          |
 
 ## External references
 
