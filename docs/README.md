@@ -57,6 +57,7 @@ Detailed architecture and rationale for key technical decisions:
 | [Provision a Hosted Cluster](hostedcluster-provisioning.md)          | Create and access a ROSA HCP cluster         |
 | [Hosted Cluster Teardown](hostedcluster-teardown.md)                 | Admin-only manual teardown and force cleanup |
 | [Adding Alerting Rules](adding-alerting-rules.md)                    | Platform alerting and recording rules        |
+| [Konflux onboarding](konflux-onboarding.md)                          | Onboard HyperFleet images to Konflux CI/CD   |
 
 ### Reference
 
