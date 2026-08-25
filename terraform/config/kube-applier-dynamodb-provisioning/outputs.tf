@@ -8,7 +8,3 @@ output "status_table_arns" {
   value       = module.kube_applier_dynamodb.status_table_arns
 }
 
-output "status_readdesires_stream_arn" {
-  description = "Stream ARN for the status-readdesires table"
-  value       = module.kube_applier_dynamodb.status_readdesires_stream_arn
-}
