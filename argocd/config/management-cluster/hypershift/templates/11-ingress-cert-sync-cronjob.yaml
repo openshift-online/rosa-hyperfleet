@@ -1,0 +1,117 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ingress-cert-sync
+  namespace: hypershift
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ingress-cert-sync
+rules:
+- apiGroups: ["hypershift.openshift.io"]
+  resources: ["hostedcontrolplanes"]
+  verbs: ["list"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ingress-cert-sync
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ingress-cert-sync
+subjects:
+- kind: ServiceAccount
+  name: ingress-cert-sync
+  namespace: hypershift
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ingress-cert-sync
+  namespace: hypershift
+spec:
+  schedule: "* * * * *"
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 240
+      backoffLimit: 0
+      template:
+        spec:
+          serviceAccountName: ingress-cert-sync
+          restartPolicy: Never
+          containers:
+          - name: sync
+            image: quay.io/openshift/origin-cli:latest
+            command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              # Find all HCPs with managed-ingress-dns annotation
+              HCP_LIST=$(oc get hostedcontrolplanes -A \
+                -o go-template='{{range .items}}{{if eq (index .metadata.annotations "hypershift.openshift.io/managed-ingress-dns") "true"}}{{.metadata.namespace}} {{.metadata.name}}{{"\n"}}{{end}}{{end}}' 2>/dev/null || true)
+
+              if [[ -z "$HCP_LIST" ]]; then
+                echo "No HCPs with managed-ingress-dns annotation found"
+                exit 0
+              fi
+
+              while IFS=' ' read -r NS NAME; do
+                echo "Processing HCP $NAME in $NS"
+
+                # Check if ingress-serving-cert secret exists and has tls.crt
+                TLS_CRT=$(oc get secret ingress-serving-cert -n "$NS" -o jsonpath='{.data.tls\.crt}' 2>/dev/null) || {
+                  echo "  ingress-serving-cert not found in $NS, skipping"
+                  continue
+                }
+                if [[ -z "$TLS_CRT" ]]; then
+                  echo "  ingress-serving-cert in $NS not yet populated, skipping"
+                  continue
+                fi
+                TLS_KEY=$(oc get secret ingress-serving-cert -n "$NS" -o jsonpath='{.data.tls\.key}' 2>/dev/null)
+
+                # Get admin kubeconfig for guest cluster
+                KUBECONFIG_SECRET="${NAME}-admin-kubeconfig"
+                KUBECONFIG_DATA=$(oc get secret "$KUBECONFIG_SECRET" -n "$NS" -o jsonpath='{.data.kubeconfig}' 2>/dev/null | base64 -d) || {
+                  echo "  admin kubeconfig not found for $NAME in $NS, skipping"
+                  continue
+                }
+
+                # Override server URL to use in-cluster KAS service
+                KUBECONFIG_DATA=$(echo "$KUBECONFIG_DATA" | sed "s|server:.*|server: https://kube-apiserver.${NS}.svc:6443|")
+
+                TMPKC=$(mktemp)
+                echo "$KUBECONFIG_DATA" > "$TMPKC"
+
+                # Create/update secret in guest cluster
+                oc --kubeconfig="$TMPKC" apply -f - <<EOF 2>/dev/null && echo "  Synced ingress cert to guest cluster $NAME" || echo "  Failed to sync cert to $NAME"
+              apiVersion: v1
+              kind: Secret
+              metadata:
+                name: custom-default-cert
+                namespace: openshift-ingress
+              type: kubernetes.io/tls
+              data:
+                tls.crt: ${TLS_CRT}
+                tls.key: ${TLS_KEY}
+              EOF
+
+                # Patch IngressController to use the custom cert
+                oc --kubeconfig="$TMPKC" patch ingresscontroller default -n openshift-ingress-operator \
+                  --type=merge -p '{"spec":{"defaultCertificate":{"name":"custom-default-cert"}}}' 2>/dev/null \
+                  && echo "  Patched IngressController default cert" \
+                  || echo "  Failed to patch IngressController (may not exist yet)"
+
+                rm -f "$TMPKC"
+              done <<< "$HCP_LIST"
+
+              echo "Done"
