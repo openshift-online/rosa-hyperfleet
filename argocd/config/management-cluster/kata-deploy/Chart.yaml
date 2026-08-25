@@ -1,9 +1,5 @@
 apiVersion: v2
 name: kata-deploy
-description: Kata Containers runtime installation via upstream Helm chart
+description: Kata Containers runtime installation via OSC DaemonSet (QEMU backend)
 type: application
-version: 0.2.0
-dependencies:
-  - name: kata-deploy
-    version: "3.27.0"
-    repository: "oci://ghcr.io/kata-containers/kata-deploy-charts"
+version: 0.3.0

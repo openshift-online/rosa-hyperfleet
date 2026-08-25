@@ -1,0 +1,152 @@
+# Barebones DaemonSet modeled after the OpenShift Sandboxed Containers operator's
+# daemonSetForKataInstall() in controllers/daemonset_reconcile.go.
+#
+# Differences from the upstream OCP DaemonSet:
+# - Custom entrypoint wrapper instead of calling osc-kata-install.sh directly
+# - Single container (no set-log-level sidecar)
+# - Configures containerd instead of CRI-O (EKS uses containerd)
+# - Loads kvm_intel module (EC2 nested virt doesn't auto-load it)
+# - Only mounts host-root + pull-secret (no OCP registry mirror volumes)
+# - Uses Kubernetes RBAC (no OCP SecurityContextConstraints)
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: osc-kata-install
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: osc-kata-install
+spec:
+  selector:
+    matchLabels:
+      name: osc-kata-install
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        name: osc-kata-install
+    spec:
+      serviceAccountName: osc-kata-install
+      hostPID: true
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: kata-install
+          image: {{ .Values.oscDaemonSet.image.repository }}:{{ .Values.oscDaemonSet.image.tag }}
+          imagePullPolicy: {{ .Values.oscDaemonSet.image.pullPolicy }}
+          securityContext:
+            privileged: true
+            runAsUser: 0
+          # WORKAROUND: We wrap osc-kata-install.sh instead of calling it
+          # directly because the script is built for OCP (CRI-O) and we're
+          # on EKS (containerd). The wrapper handles three things:
+          # 1. Loads kvm_intel before install (EC2 nested virt needs this)
+          # 2. Catches the expected CRI-O restart failure at the end
+          # 3. Configures containerd with the kata runtime and restarts it
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+
+              # --- PRE-INSTALL: Load KVM module ---
+              # EC2 nested virtualization is enabled at the instance level
+              # (cpuOptions.nestedVirtualization in the EC2NodeClass), but the
+              # kvm_intel module isn't auto-loaded on boot. QEMU needs it.
+              chroot /host modprobe kvm_intel 2>/dev/null || true
+              chroot /host bash -c 'echo kvm_intel > /etc/modules-load.d/kvm.conf'
+
+              # --- INSTALL: Run the OSC install script ---
+              # This script (baked into the osc-daemonset image) does:
+              #   1. Downloads kubectl/oc from CLI_IMAGE via skopeo+umoci
+              #   2. Downloads kata+QEMU RPMs from EXTENSION_IMAGE via skopeo+umoci
+              #   3. Installs RPMs on the host via rpm-ostree install + apply-live
+              #   4. Runs RPM scriptlets (SELinux modules, kata VM kernel build)
+              #   5. Labels the node as "installed"
+              #   6. Restarts CRI-O  <-- THIS FAILS ON EKS (no CRI-O)
+              #   7. sleep infinity   <-- never reached due to step 6 failing
+              #
+              # WORKAROUND: We disable pipefail around the call and check the
+              # outcome. The only acceptable failure is "kata is installed but
+              # CRI-O doesn't exist" — anything else is a real error.
+              set +e
+              /scripts/osc-kata-install.sh install
+              RC=$?
+              set -e
+
+              if [ $RC -ne 0 ]; then
+                if chroot /host rpm -q kata-containers >/dev/null 2>&1 && \
+                   ! chroot /host systemctl is-active crio >/dev/null 2>&1; then
+                  echo "OSC install exited $RC (expected: no CRI-O on EKS, kata packages installed OK)"
+                else
+                  echo "ERROR: OSC install failed (exit $RC) and kata-containers is not installed"
+                  exit 1
+                fi
+              fi
+
+              # --- POST-INSTALL: Configure containerd (EKS workaround) ---
+              # On OCP the OSC script configures CRI-O via drop-in files installed
+              # by the kata-containers RPM (/etc/crio/crio.conf.d/). On EKS the
+              # container runtime is containerd, so those CRI-O configs are ignored.
+              #
+              # We register the "kata-fc" runtime handler in containerd, pointing it
+              # at "io.containerd.kata.v2" — the DEFAULT kata shim which uses QEMU.
+              # This is NOT "io.containerd.kata-fc.v2" (which would use Firecracker).
+              #
+              # WHY "kata-fc" AND NOT "kata-qemu": Our HyperShift build hardcodes
+              # runtimeClassName=kata-fc on request-serving pods. The name is just a
+              # label — containerd resolves it to whatever runtime_type we configure.
+              # Renaming to kata-qemu would require a HyperShift code change.
+              #
+              # We append directly to config.toml because EKS containerd doesn't
+              # have config.d imports wired up.
+              printf '\n[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.%s]\n  runtime_type = "io.containerd.kata.v2"\n' "{{ .Values.runtimeClass.handler }}" >> /host/etc/containerd/config.toml
+
+              chroot /host systemctl restart containerd
+
+              echo "Kata (QEMU) installation complete on ${NODE_NAME}"
+              sleep infinity
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            # EXTENSION_IMAGE and CLI_IMAGE are consumed by the OSC install script.
+            # On OCP the operator resolves these from the release payload at runtime
+            # (via ClusterVersion API + oc adm release info). On EKS we hardcode the
+            # digests from a specific OCP release — see values.yaml for details.
+            - name: EXTENSION_IMAGE
+              value: {{ .Values.oscDaemonSet.extensionImage | quote }}
+            - name: CLI_IMAGE
+              value: {{ .Values.oscDaemonSet.cliImage | quote }}
+            # NODE_LABEL is used by the install script's label_node() to track
+            # install state on the node (waiting_to_install → installing → installed).
+            - name: NODE_LABEL
+              value: "kataconfiguration.openshift.io/kata-ds-rpm-install"
+            - name: CLOUD_PROVIDER
+              value: "aws"
+          volumeMounts:
+            - name: host-root
+              mountPath: /host
+            # WORKAROUND: On OCP the operator creates an auth-json-secret from
+            # the cluster pull secret + mounts 5 additional registry volumes
+            # (registries.conf, registries.conf.d, containers auth, policy.json).
+            # On EKS there are no host registry mirrors — we only need the pull
+            # secret for skopeo to authenticate to quay.io/openshift-release-dev.
+            - name: pull-secret
+              mountPath: /tmp/regauth
+              readOnly: true
+      volumes:
+        - name: host-root
+          hostPath:
+            path: /
+        - name: pull-secret
+          secret:
+            secretName: osc-pull-secret

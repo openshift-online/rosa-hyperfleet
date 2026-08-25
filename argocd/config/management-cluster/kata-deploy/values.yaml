@@ -1,17 +1,76 @@
-kata-deploy:
-  nodeSelector:
-    katacontainers.io/kata-runtime: "true"
-  tolerations:
-    - key: hypershift.openshift.io/request-serving-component
-      operator: Exists
-      effect: NoSchedule
-  shims:
-    disableAll: true
-    fc:
-      enabled: true
-  runtimeClasses:
-    enabled: true
-    createDefault: false
-  defaultShim:
-    amd64: fc
-  k8sDistribution: "k8s"
+# =============================================================================
+# OSC (OpenShift Sandboxed Containers) DaemonSet for EKS
+#
+# WHAT THIS IS:
+# A barebones DaemonSet extracted from the OpenShift Sandboxed Containers
+# operator (github.com/openshift/sandboxed-containers-operator). The operator
+# itself can't run on EKS (hard dependencies on OCP APIs: MachineConfig, MCO,
+# SecurityContextConstraints, ClusterVersion), but its DaemonSet image and
+# install script work standalone on any OSTree/bootc-based host.
+#
+# WHAT IT DOES:
+# The DaemonSet runs the OSC install script which uses skopeo+umoci to pull
+# the RHCOS extensions image, extract kata + QEMU RPMs, and install them on
+# the host via rpm-ostree. The host MUST be OSTree/bootc-based (standard
+# RHEL with dnf will NOT work — rpm-ostree requires an OSTree deployment).
+#
+# WHY NOT THE UPSTREAM KATA-DEPLOY CHART:
+# The upstream kata-deploy chart (ghcr.io/kata-containers/kata-deploy-charts)
+# copies community-built kata binaries to /opt/kata/. For FIPS compliance we
+# need Red Hat's FIPS-validated QEMU, guest kernel, and kata builds — these
+# come from the RHCOS extensions image in the OCP release payload.
+#
+# WORKAROUNDS FOR EKS (vs OCP):
+# 1. CRI-O → containerd: The OSC script ends by restarting CRI-O (the OCP
+#    container runtime). On EKS there is no CRI-O — the script fails at that
+#    step. Our wrapper catches the failure, verifies kata was installed, then
+#    configures containerd and restarts it instead.
+# 2. Pull secret: On OCP the operator gets auth from the cluster pull secret.
+#    On EKS we use an ExternalSecret from AWS Parameter Store (same source as
+#    the HyperShift pull secret).
+# 3. Image resolution: On OCP the operator resolves extension/CLI images from
+#    the release payload at runtime via ClusterVersion API. On EKS we hardcode
+#    the image digests from a specific OCP release (4.22).
+# 4. No SCCs: OCP requires SecurityContextConstraints for privileged pods.
+#    On EKS we use standard Kubernetes RBAC only.
+# 5. No registry mirror volumes: On OCP the DaemonSet mounts host registry
+#    configs (/etc/containers/registries.conf, policy.json) so skopeo uses
+#    cluster mirrors. On EKS there are no host mirrors — skopeo pulls direct
+#    from quay.io using just the pull secret.
+# =============================================================================
+
+oscDaemonSet:
+  image:
+    repository: quay.io/openshift_sandboxed_containers/osc-daemonset
+    tag: "1.13"
+    pullPolicy: Always
+
+  # RHCOS extensions image containing kata + QEMU RPMs (from OCP 4.22 release payload).
+  # Resolved via: oc adm release info --image-for rhel-coreos-extensions quay.io/openshift-release-dev/ocp-release:4.22.0-x86_64
+  # Requires auth (Red Hat pull secret) — the osc-pull-secret ExternalSecret provides this.
+  extensionImage: "quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:d1ffa6cc20e3d64dbf036c93efa5d0334c9392d5d8dc5ea7fa871f8d5b2c1cc7"
+
+  # CLI image containing kubectl/oc binaries (from OCP 4.22 release payload).
+  # Resolved via: oc adm release info --image-for cli quay.io/openshift-release-dev/ocp-release:4.22.0-x86_64
+  cliImage: "quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:1c59b20f197f3c61b0d4c92b7aabdc73f4da325ff8ee2e0dac8cc472b9dc9d19"
+
+nodeSelector:
+  katacontainers.io/kata-runtime: "true"
+
+tolerations:
+  - key: hypershift.openshift.io/request-serving-component
+    operator: Exists
+    effect: NoSchedule
+
+runtimeClass:
+  # WHY "kata-fc": Our HyperShift build hardcodes runtimeClassName=kata-fc on
+  # request-serving pods. Changing it requires a HyperShift code change. So we
+  # keep the name "kata-fc" but map it to QEMU under the hood — the RuntimeClass
+  # handler "kata-fc" points to containerd runtime "kata-fc", which we configure
+  # with runtime_type "io.containerd.kata.v2" (the default kata shim that uses
+  # QEMU, NOT "io.containerd.kata-fc.v2" which would use Firecracker).
+  name: kata-fc
+  handler: kata-fc
+  overhead:
+    cpu: "250m"
+    memory: "350Mi"

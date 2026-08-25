@@ -1,0 +1,20 @@
+# RuntimeClass for kata-powered request-serving pods.
+#
+# WHY "kata-fc": Our HyperShift build sets runtimeClassName=kata-fc on
+# request-serving component pods (KAS, oauth, router, etc.). Changing that
+# requires a HyperShift code change, so we keep the name.
+#
+# HOW IT ACTUALLY USES QEMU: The handler "kata-fc" maps to a containerd
+# runtime entry configured with runtime_type "io.containerd.kata.v2" — the
+# default kata shim, which uses QEMU (not Firecracker). The containerd
+# runtime is set up by the osc-kata-install DaemonSet. The name is just a
+# label; the VMM backend is determined by the runtime_type, not the name.
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: {{ .Values.runtimeClass.name }}
+handler: {{ .Values.runtimeClass.handler }}
+overhead:
+  podFixed:
+    cpu: {{ .Values.runtimeClass.overhead.cpu | quote }}
+    memory: {{ .Values.runtimeClass.overhead.memory | quote }}
