@@ -40,8 +40,10 @@ management_cluster_defaults:
   enable_bastion: true
   node_instance_families: ["m8i-flex", "m7i-flex"]
   # Pin a specific AMI. Null uses the default bottlerocket FIPS name selector.
-  # Example: karpenter_ami: {family: Bottlerocket, id: ami-0abc123}
-  karpenter_ami: null
+  karpenter_ami:
+    #we need to use the shell script bootstrap on the RHEL image, not the Bottlerocket TOML based bootstrap
+    family: AL2023
+    id: ami-038c06f05c6b06834
 
 observability:
   pagerduty:

@@ -142,6 +142,9 @@ management_cluster_defaults:
   # @used-by management_cluster_defaults.karpenter_ami _context
   karpenter_ami:
 
+    family: AL2023
+    id: ami-038c06f05c6b06834
+
 observability:
   pagerduty:
     # @doc observability.pagerduty.enabled Enable PagerDuty service provisioning for the region.
