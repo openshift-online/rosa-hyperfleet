@@ -1,0 +1,10 @@
+{
+  "us-east-1": {
+    "aws_region": "us-east-1",
+    "environment": "localstack",
+    "management_clusters": [
+      "mc01"
+    ],
+    "name": "localstack"
+  }
+}
