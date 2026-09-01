@@ -40,18 +40,24 @@ variable "output_retention_days" {
 variable "zoa_lambda_source_image" {
   description = "Source registry image for ZOA Lambda (mirrored to ECR at deploy time)"
   type        = string
-  default     = "quay.io/slopezz/zoa-lambda"
+  default     = "quay.io/rrp-dev-ci/zoa-lambda"
 }
 
 variable "zoa_runner_source_image" {
   description = "Source registry image for ZOA Runner (K8s pulls directly, no ECR mirror)"
   type        = string
-  default     = "quay.io/slopezz/zoa-runner"
+  default     = "quay.io/rrp-dev-ci/zoa-runner"
 }
 
-variable "zoa_image_tag" {
-  description = "Immutable image tag (git SHA). Used for source→ECR mirroring and runner image ref."
+variable "zoa_lambda_image_tag" {
+  description = "Immutable image tag for the ZOA Lambda. Used for source→ECR mirroring."
   type        = string
-  default     = "latest"
+  default     = "67ef089"
+}
+
+variable "zoa_runner_image_tag" {
+  description = "Immutable image tag for the ZOA Runner (K8s Job)."
+  type        = string
+  default     = "67ef089"
 }
 

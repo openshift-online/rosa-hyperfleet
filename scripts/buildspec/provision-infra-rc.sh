@@ -167,6 +167,12 @@ fi
 
 export TF_VAR_regional_id=$(jq -r '.regional_id' "$DEPLOY_CONFIG_FILE")
 export TF_VAR_environment=$(jq -r '.environment' "$DEPLOY_CONFIG_FILE")
+
+# ZOA images — read from deploy config (config/defaults.yaml → terraform.json)
+export TF_VAR_zoa_lambda_image_tag=$(jq -r '.zoa_lambda_image_tag // ""' "$DEPLOY_CONFIG_FILE")
+export TF_VAR_zoa_runner_image_tag=$(jq -r '.zoa_runner_image_tag // ""' "$DEPLOY_CONFIG_FILE")
+export TF_VAR_zoa_lambda_source_image=$(jq -r '.zoa_lambda_source_image // ""' "$DEPLOY_CONFIG_FILE")
+export TF_VAR_zoa_runner_source_image=$(jq -r '.zoa_runner_source_image // ""' "$DEPLOY_CONFIG_FILE")
 export TF_VAR_eph_prefix=$(jq -r '.eph_prefix // ""' "$DEPLOY_CONFIG_FILE")
 export ENVIRONMENT="${ENVIRONMENT:-staging}"
 
