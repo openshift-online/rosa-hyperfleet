@@ -1,29 +1,26 @@
-# =============================================================================
-# Upstream Kata Containers deployment for EKS (spike)
-#
-# Uses the upstream kata-deploy image which copies pre-built kata + QEMU
-# binaries to /opt/kata/ and configures CRI-O with a drop-in config.
-# This is NOT FIPS-compliant — for production we need Red Hat's builds.
-# =============================================================================
+# Upstream kata-deploy subchart configuration.
+# Not FIPS-compliant — for spike only.
+kata-deploy:
+  k8sDistribution: "k8s"
+  deploymentMode: daemonset
+  shims:
+    disableAll: true
+    qemu:
+      enabled: true
+  runtimeClasses:
+    enabled: false
+  node-feature-discovery:
+    enabled: false
+  nodeSelector:
+    karpenter.sh/nodepool: kata-request-serving
+  tolerations:
+    - key: hypershift.openshift.io/request-serving-component
+      operator: Exists
+      effect: NoSchedule
 
-kataDeploy:
-  image:
-    repository: quay.io/kata-containers/kata-deploy
-    tag: "3.14.0"
-    pullPolicy: IfNotPresent
-
-nodeSelector:
-  karpenter.sh/nodepool: kata-request-serving
-
-tolerations:
-  - key: hypershift.openshift.io/request-serving-component
-    operator: Exists
-    effect: NoSchedule
-
+# Our RuntimeClass (managed separately from the subchart).
+# HyperShift hardcodes runtimeClassName=kata-fc on request-serving pods.
 runtimeClass:
-  # The RuntimeClass NAME is "kata-fc" because HyperShift hardcodes
-  # runtimeClassName=kata-fc on request-serving pods. The HANDLER is
-  # "kata-qemu" because that's what upstream kata-deploy registers.
   name: kata-fc
   handler: kata-qemu
   overhead:
