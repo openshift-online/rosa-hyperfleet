@@ -20,4 +20,4 @@ hypershift:
     # - aws-iam-auth-config ConfigMap sync from HC to HCP namespace (HC controller)
     # - hypershift.openshift.io/aws-iam-authenticator annotation propagation
     # Branch: https://github.com/typeid/hypershift/tree/aws-iam-authenticator-poc
-    image: quay.io/cbusse_openshift/hypershift-operator:aws-iam-auth
+    image: quay.io/cbusse_openshift/hypershift-operator:kata-poc

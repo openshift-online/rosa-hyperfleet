@@ -1,0 +1,33 @@
+{{- $clusterName := required "global.cluster_name must be set via ApplicationSet valuesObject" .Values.global.cluster_name -}}
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: kata
+spec:
+  amiFamily: AL2023
+  amiSelectorTerms:
+    - alias: al2023@latest
+  instanceProfile: {{ $clusterName }}-karpenter-node-role
+  subnetSelectorTerms:
+    - tags:
+        kubernetes.io/cluster/{{ $clusterName }}: owned
+  securityGroupSelectorTerms:
+    - tags:
+        aws:eks:cluster-name: {{ $clusterName }}
+  metadataOptions:
+    httpTokens: required
+    httpPutResponseHopLimit: 2
+  cpuOptions:
+    nestedVirtualization: "enabled"
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        volumeSize: {{ .Values.kataNodePool.rootVolumeSize | default "100Gi" }}
+        volumeType: gp3
+        encrypted: true
+        deleteOnTermination: true
+  userData: |
+    #!/bin/bash
+    set -euo pipefail
+    modprobe kvm_intel 2>/dev/null || true
+    echo "kvm_intel" > /etc/modules-load.d/kvm.conf

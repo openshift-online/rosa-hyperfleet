@@ -1,0 +1,16 @@
+# RuntimeClass for kata-powered request-serving pods.
+#
+# NAME "kata-fc": HyperShift hardcodes runtimeClassName=kata-fc on
+# request-serving pods. The name is just a label.
+#
+# HANDLER "kata-qemu": Upstream kata-deploy registers this handler in
+# CRI-O, pointing to the kata shim which uses QEMU.
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: {{ .Values.runtimeClass.name }}
+handler: {{ .Values.runtimeClass.handler }}
+overhead:
+  podFixed:
+    cpu: {{ .Values.runtimeClass.overhead.cpu | quote }}
+    memory: {{ .Values.runtimeClass.overhead.memory | quote }}

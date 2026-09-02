@@ -45,3 +45,4 @@ ephemeral-logs*
 
 # Dashboard (generated locally by ./dashboard/fetch-data.sh)
 dashboard/data.json
+.claude/worktrees/

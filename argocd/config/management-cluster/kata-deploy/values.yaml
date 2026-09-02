@@ -1,0 +1,30 @@
+# Upstream kata-deploy subchart configuration.
+# Not FIPS-compliant — for spike only.
+kata-deploy:
+  k8sDistribution: "k8s"
+  deploymentMode: daemonset
+  defaultShim:
+    amd64: qemu
+  shims:
+    disableAll: true
+    qemu:
+      enabled: true
+  runtimeClasses:
+    enabled: false
+  node-feature-discovery:
+    enabled: false
+  nodeSelector:
+    karpenter.sh/nodepool: kata-request-serving
+  tolerations:
+    - key: hypershift.openshift.io/request-serving-component
+      operator: Exists
+      effect: NoSchedule
+
+# Our RuntimeClass (managed separately from the subchart).
+# HyperShift hardcodes runtimeClassName=kata-fc on request-serving pods.
+runtimeClass:
+  name: kata-fc
+  handler: kata-qemu
+  overhead:
+    cpu: "250m"
+    memory: "350Mi"
