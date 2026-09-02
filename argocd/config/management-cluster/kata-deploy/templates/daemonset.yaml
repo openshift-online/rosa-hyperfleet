@@ -62,6 +62,8 @@ spec:
                   fieldPath: spec.nodeName
             - name: DEBUG
               value: "false"
+            - name: INSTALLATION_PREFIX
+              value: "/var"
           volumeMounts:
             - name: host-root
               mountPath: /host
@@ -84,7 +86,7 @@ spec:
             path: /
         - name: kata-artifacts
           hostPath:
-            path: /opt/kata/
+            path: /var/opt/kata/
             type: DirectoryOrCreate
         - name: dbus
           hostPath:
