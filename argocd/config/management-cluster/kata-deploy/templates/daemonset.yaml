@@ -4,7 +4,6 @@
 # Differences from the upstream OCP DaemonSet:
 # - Custom entrypoint wrapper instead of calling osc-kata-install.sh directly
 # - Single container (no set-log-level sidecar)
-# - Configures containerd instead of CRI-O (EKS uses containerd)
 # - Loads kvm_intel module (EC2 nested virt doesn't auto-load it)
 # - Only mounts host-root + pull-secret (no OCP registry mirror volumes)
 # - Uses Kubernetes RBAC (no OCP SecurityContextConstraints)
@@ -45,16 +44,29 @@ spec:
           securityContext:
             privileged: true
             runAsUser: 0
-          # WORKAROUND: We wrap osc-kata-install.sh instead of calling it
-          # directly because the script is built for OCP (CRI-O) and we're
-          # on EKS (containerd). The wrapper handles three things:
-          # 1. Loads kvm_intel before install (EC2 nested virt needs this)
-          # 2. Catches the expected CRI-O restart failure at the end
-          # 3. Configures containerd with the kata runtime and restarts it
+          # Wrapper around osc-kata-install.sh:
+          # 1. Expands root partition (AMI bakes small partition table)
+          # 2. Installs QEMU deps from CentOS repos (not on AMI)
+          # 3. Loads kvm_intel (EC2 nested virt needs this)
+          # 4. Runs the OSC install script (pulls kata+QEMU RPMs)
           command: ["/bin/bash", "-c"]
           args:
             - |
               set -euo pipefail
+
+              # --- PRE-INSTALL: Expand root partition ---
+              # The AMI bakes a small partition table. The EBS volume is
+              # larger, but the partition doesn't fill it automatically.
+              chroot /host growpart /dev/nvme0n1 4 2>/dev/null || true
+              chroot /host xfs_growfs / 2>/dev/null || true
+
+              # --- PRE-INSTALL: Install QEMU dependencies ---
+              # The QEMU/kata RPMs from the OCP extensions image are built
+              # for RHEL 9 and need base libs not present on this AMI.
+              # Enable CentOS Stream 9 repos to resolve them.
+              chroot /host bash -c 'printf "[centos-stream-10-baseos]\nname=CentOS Stream 10 - BaseOS\nbaseurl=https://mirror.stream.centos.org/10-stream/BaseOS/x86_64/os/\ngpgcheck=0\nenabled=1\n\n[centos-stream-10-appstream]\nname=CentOS Stream 10 - AppStream\nbaseurl=https://mirror.stream.centos.org/10-stream/AppStream/x86_64/os/\ngpgcheck=0\nenabled=1\n\n[centos-stream-9-baseos]\nname=CentOS Stream 9 - BaseOS\nbaseurl=https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/\ngpgcheck=0\nenabled=1\npriority=99\n" > /etc/yum.repos.d/centos-stream.repo'
+              chroot /host rpm-ostree install -y --apply-live --idempotent \
+                liburing libslirp binutils rsync perl-interpreter
 
               # --- PRE-INSTALL: Load KVM module ---
               # EC2 nested virtualization is enabled at the instance level
@@ -70,49 +82,13 @@ spec:
               #   3. Installs RPMs on the host via rpm-ostree install + apply-live
               #   4. Runs RPM scriptlets (SELinux modules, kata VM kernel build)
               #   5. Labels the node as "installed"
-              #   6. Restarts CRI-O  <-- THIS FAILS ON EKS (no CRI-O)
-              #   7. sleep infinity   <-- never reached due to step 6 failing
-              #
-              # WORKAROUND: We disable pipefail around the call and check the
-              # outcome. The only acceptable failure is "kata is installed but
-              # CRI-O doesn't exist" — anything else is a real error.
-              set +e
+              #   6. Restarts CRI-O + sleep infinity
               /scripts/osc-kata-install.sh install
-              RC=$?
-              set -e
-
-              if [ $RC -ne 0 ]; then
-                if chroot /host rpm -q kata-containers >/dev/null 2>&1 && \
-                   ! chroot /host systemctl is-active crio >/dev/null 2>&1; then
-                  echo "OSC install exited $RC (expected: no CRI-O on EKS, kata packages installed OK)"
-                else
-                  echo "ERROR: OSC install failed (exit $RC) and kata-containers is not installed"
-                  exit 1
-                fi
-              fi
-
-              # --- POST-INSTALL: Configure containerd (EKS workaround) ---
-              # On OCP the OSC script configures CRI-O via drop-in files installed
-              # by the kata-containers RPM (/etc/crio/crio.conf.d/). On EKS the
-              # container runtime is containerd, so those CRI-O configs are ignored.
-              #
-              # We register the "kata-fc" runtime handler in containerd, pointing it
-              # at "io.containerd.kata.v2" — the DEFAULT kata shim which uses QEMU.
-              # This is NOT "io.containerd.kata-fc.v2" (which would use Firecracker).
-              #
-              # WHY "kata-fc" AND NOT "kata-qemu": Our HyperShift build hardcodes
-              # runtimeClassName=kata-fc on request-serving pods. The name is just a
-              # label — containerd resolves it to whatever runtime_type we configure.
-              # Renaming to kata-qemu would require a HyperShift code change.
-              #
-              # We append directly to config.toml because EKS containerd doesn't
-              # have config.d imports wired up.
-              printf '\n[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.%s]\n  runtime_type = "io.containerd.kata.v2"\n' "{{ .Values.runtimeClass.handler }}" >> /host/etc/containerd/config.toml
-
-              chroot /host systemctl restart containerd
-
-              echo "Kata (QEMU) installation complete on ${NODE_NAME}"
-              sleep infinity
+              # The script ends with `systemctl restart crio && sleep infinity`,
+              # so we only reach here if it fails.
+              chroot /host rm -f /etc/yum.repos.d/centos-stream.repo
+              echo "ERROR: OSC install failed on ${NODE_NAME}"
+              exit 1
           env:
             - name: NODE_NAME
               valueFrom:
@@ -140,6 +116,8 @@ spec:
             # (registries.conf, registries.conf.d, containers auth, policy.json).
             # On EKS there are no host registry mirrors — we only need the pull
             # secret for skopeo to authenticate to quay.io/openshift-release-dev.
+            - name: tmp-dir
+              mountPath: /tmp
             - name: pull-secret
               mountPath: /tmp/regauth
               readOnly: true
@@ -147,6 +125,13 @@ spec:
         - name: host-root
           hostPath:
             path: /
+        - name: tmp-dir
+          hostPath:
+            path: /var/tmp/osc-install
+            type: DirectoryOrCreate
         - name: pull-secret
           secret:
             secretName: osc-pull-secret
+            items:
+              - key: .dockerconfigjson
+                path: auth.json

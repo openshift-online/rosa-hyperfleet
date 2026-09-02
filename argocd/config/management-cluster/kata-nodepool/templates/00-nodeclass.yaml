@@ -4,13 +4,9 @@ kind: EC2NodeClass
 metadata:
   name: kata
 spec:
-  # Custom RHEL-for-EKS AMI with rpm-ostree (bootc/OSTree-based).
-  # Required because the OSC DaemonSet installs kata + QEMU via rpm-ostree.
-  # Standard RHEL (dnf-based) will NOT work.
-  # This AMI must be shared to the target account with both launch permission
-  # AND KMS key access (if EBS snapshots are encrypted).
+  amiFamily: AL2023
   amiSelectorTerms:
-    - id: ami-098418f46830dcb37
+    - id: ami-01e8dae6601ab0069
   instanceProfile: {{ $clusterName }}-karpenter-node-role
   subnetSelectorTerms:
     - tags:
@@ -24,15 +20,15 @@ spec:
   cpuOptions:
     nestedVirtualization: "enabled"
   blockDeviceMappings:
-    - deviceName: /dev/xvda
+    - deviceName: /dev/sda1
       ebs:
         volumeSize: {{ .Values.kataNodePool.rootVolumeSize | default "100Gi" }}
         volumeType: gp3
         encrypted: true
         deleteOnTermination: true
   # Minimal userData — just kvm_intel module loading. The heavy lifting
-  # (kata install, containerd config) is handled by the osc-kata-install
-  # DaemonSet after the node joins the cluster.
+  # (kata + QEMU RPM install) is handled by the osc-kata-install DaemonSet
+  # after the node joins the cluster.
   #
   # NOTE: With a custom AMI (amiSelectorTerms by ID), Karpenter does NOT
   # inject any managed bootstrap. The AMI itself must handle EKS node
