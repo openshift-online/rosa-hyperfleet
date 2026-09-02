@@ -3,7 +3,8 @@
 kata-deploy:
   k8sDistribution: "k8s"
   deploymentMode: daemonset
-  defaultShim: qemu
+  defaultShim:
+    amd64: qemu
   shims:
     disableAll: true
     qemu:
