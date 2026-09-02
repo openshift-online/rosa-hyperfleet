@@ -41,10 +41,6 @@ spec:
             privileged: true
             runAsUser: 0
           command: ["bash", "-c", "/opt/kata-artifacts/scripts/kata-deploy.sh install"]
-          lifecycle:
-            preStop:
-              exec:
-                command: ["bash", "-c", "/opt/kata-artifacts/scripts/kata-deploy.sh cleanup"]
           env:
             - name: NODE_NAME
               valueFrom:

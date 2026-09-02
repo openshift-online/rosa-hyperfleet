@@ -13,7 +13,7 @@ kataDeploy:
     pullPolicy: IfNotPresent
 
 nodeSelector:
-  katacontainers.io/kata-runtime: "true"
+  karpenter.sh/nodepool: kata-request-serving
 
 tolerations:
   - key: hypershift.openshift.io/request-serving-component
