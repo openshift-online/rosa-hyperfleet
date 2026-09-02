@@ -5,8 +5,6 @@ metadata:
   name: kata
 spec:
   amiFamily: AL2023
-  amiSelectorTerms:
-    - id: ami-01e8dae6601ab0069
   instanceProfile: {{ $clusterName }}-karpenter-node-role
   subnetSelectorTerms:
     - tags:
@@ -20,26 +18,14 @@ spec:
   cpuOptions:
     nestedVirtualization: "enabled"
   blockDeviceMappings:
-    - deviceName: /dev/sda1
+    - deviceName: /dev/xvda
       ebs:
         volumeSize: {{ .Values.kataNodePool.rootVolumeSize | default "100Gi" }}
         volumeType: gp3
         encrypted: true
         deleteOnTermination: true
-  # Minimal userData — just kvm_intel module loading. The heavy lifting
-  # (kata + QEMU RPM install) is handled by the osc-kata-install DaemonSet
-  # after the node joins the cluster.
-  #
-  # NOTE: With a custom AMI (amiSelectorTerms by ID), Karpenter does NOT
-  # inject any managed bootstrap. The AMI itself must handle EKS node
-  # bootstrap (joining the cluster, kubelet config, etc.) — either baked
-  # into the image or via additional userData added here.
   userData: |
     #!/bin/bash
     set -euo pipefail
-
-    # EC2 nested virtualization is enabled at the instance level via
-    # cpuOptions.nestedVirtualization, but the kernel module isn't auto-loaded.
-    # QEMU requires KVM for hardware-accelerated virtualization.
     modprobe kvm_intel 2>/dev/null || true
     echo "kvm_intel" > /etc/modules-load.d/kvm.conf

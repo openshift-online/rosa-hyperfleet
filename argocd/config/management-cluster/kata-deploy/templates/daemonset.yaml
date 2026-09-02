@@ -1,8 +1,8 @@
 # Upstream kata-deploy DaemonSet for EKS.
 #
 # The kata-deploy image copies pre-built kata + QEMU binaries to /opt/kata/
-# and creates a CRI-O drop-in config to register the kata-qemu runtime handler.
-# On cleanup (pod termination), it removes the binaries and config.
+# and configures the container runtime (containerd or CRI-O) with the
+# kata-qemu runtime handler.
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -56,8 +56,6 @@ spec:
               value: "false"
             - name: CREATE_DEFAULT_RUNTIMECLASS
               value: "false"
-            - name: INSTALLATION_PREFIX
-              value: "/var"
           volumeMounts:
             - name: host-root
               mountPath: /host
@@ -80,7 +78,7 @@ spec:
             path: /
         - name: kata-artifacts
           hostPath:
-            path: /var/opt/kata/
+            path: /opt/kata/
             type: DirectoryOrCreate
         - name: dbus
           hostPath:
