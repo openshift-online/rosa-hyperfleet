@@ -33,16 +33,6 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      initContainers:
-        - name: kvm-init
-          image: public.ecr.aws/amazonlinux/amazonlinux:2023-minimal
-          securityContext:
-            privileged: true
-          command: ["/bin/bash", "-c"]
-          args:
-            - |
-              nsenter -t 1 -m -u -i -n -- modprobe kvm_intel 2>/dev/null || true
-              nsenter -t 1 -m -u -i -n -- bash -c 'echo kvm_intel > /etc/modules-load.d/kvm.conf'
       containers:
         - name: kata-deploy
           image: {{ .Values.kataDeploy.image.repository }}:{{ .Values.kataDeploy.image.tag }}
