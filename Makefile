@@ -233,6 +233,12 @@ ephemeral-sre-ui: ## Tunnel SRE UI tools (Grafana, ArgoCD, Prometheus, Thanos, L
 ephemeral-e2e: ## Run e2e tests against an ephemeral env
 	@ID="$(ID)" E2E_REF="$(or $(E2E_REF),main)" E2E_REPO="$(E2E_REPO)" ./scripts/dev/ephemeral-env.sh e2e
 
+ephemeral-zoa-e2e: ## Run zoa's deep e2e suite against an ephemeral env (ZOA_REF/ZOA_REPO to target a branch/fork)
+	@ID="$(ID)" ZOA_REF="$(or $(ZOA_REF),main)" ZOA_REPO="$(ZOA_REPO)" GINKGO_FLAGS="$(GINKGO_FLAGS)" ZOA_MAKE_TARGET=test-e2e ./scripts/dev/ephemeral-env.sh zoa-e2e
+
+ephemeral-zoa-e2e-smoke: ## Run zoa's smoke e2e suite (fast ~2min) against an ephemeral env
+	@ID="$(ID)" ZOA_REF="$(or $(ZOA_REF),main)" ZOA_REPO="$(ZOA_REPO)" GINKGO_FLAGS="$(GINKGO_FLAGS)" ZOA_MAKE_TARGET=test-e2e-smoke ./scripts/dev/ephemeral-env.sh zoa-e2e
+
 ephemeral-dump-env: ## Dump EKS must-gather and DB state from an ephemeral env (CLUSTER=rc|mc)
 	@ID="$(ID)" ./scripts/dev/ephemeral-env.sh dump-env $(CLUSTER)
 
