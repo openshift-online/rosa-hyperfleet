@@ -1,23 +1,19 @@
-# Barebones DaemonSet modeled after the OpenShift Sandboxed Containers operator's
-# daemonSetForKataInstall() in controllers/daemonset_reconcile.go.
+# Upstream kata-deploy DaemonSet for EKS.
 #
-# Differences from the upstream OCP DaemonSet:
-# - Custom entrypoint wrapper instead of calling osc-kata-install.sh directly
-# - Single container (no set-log-level sidecar)
-# - Loads kvm_intel module (EC2 nested virt doesn't auto-load it)
-# - Only mounts host-root + pull-secret (no OCP registry mirror volumes)
-# - Uses Kubernetes RBAC (no OCP SecurityContextConstraints)
+# The kata-deploy image copies pre-built kata + QEMU binaries to /opt/kata/
+# and creates a CRI-O drop-in config to register the kata-qemu runtime handler.
+# On cleanup (pod termination), it removes the binaries and config.
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: osc-kata-install
+  name: kata-deploy
   namespace: {{ .Release.Namespace }}
   labels:
-    app.kubernetes.io/name: osc-kata-install
+    app.kubernetes.io/name: kata-deploy
 spec:
   selector:
     matchLabels:
-      name: osc-kata-install
+      name: kata-deploy
   updateStrategy:
     type: RollingUpdate
     rollingUpdate:
@@ -25,7 +21,7 @@ spec:
   template:
     metadata:
       labels:
-        name: osc-kata-install
+        name: kata-deploy
     spec:
       serviceAccountName: osc-kata-install
       hostPID: true
@@ -37,101 +33,62 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      containers:
-        - name: kata-install
-          image: {{ .Values.oscDaemonSet.image.repository }}:{{ .Values.oscDaemonSet.image.tag }}
-          imagePullPolicy: {{ .Values.oscDaemonSet.image.pullPolicy }}
+      initContainers:
+        - name: kvm-init
+          image: public.ecr.aws/amazonlinux/amazonlinux:2023-minimal
           securityContext:
             privileged: true
-            runAsUser: 0
-          # Wrapper around osc-kata-install.sh:
-          # 1. Expands root partition (AMI bakes small partition table)
-          # 2. Installs QEMU deps from CentOS repos (not on AMI)
-          # 3. Loads kvm_intel (EC2 nested virt needs this)
-          # 4. Runs the OSC install script (pulls kata+QEMU RPMs)
           command: ["/bin/bash", "-c"]
           args:
             - |
-              set -euo pipefail
-
-              # --- PRE-INSTALL: Expand root partition ---
-              # The AMI bakes a small partition table. The EBS volume is
-              # larger, but the partition doesn't fill it automatically.
-              chroot /host growpart /dev/nvme0n1 4 2>/dev/null || true
-              chroot /host xfs_growfs / 2>/dev/null || true
-
-              # --- PRE-INSTALL: Install QEMU dependencies ---
-              # The QEMU/kata RPMs from the OCP extensions image are built
-              # for RHEL 9 and need base libs not present on this AMI.
-              # Enable CentOS Stream 9 repos to resolve them.
-              chroot /host bash -c 'printf "[centos-stream-10-baseos]\nname=CentOS Stream 10 - BaseOS\nbaseurl=https://mirror.stream.centos.org/10-stream/BaseOS/x86_64/os/\ngpgcheck=0\nenabled=1\n\n[centos-stream-10-appstream]\nname=CentOS Stream 10 - AppStream\nbaseurl=https://mirror.stream.centos.org/10-stream/AppStream/x86_64/os/\ngpgcheck=0\nenabled=1\n\n[centos-stream-9-baseos]\nname=CentOS Stream 9 - BaseOS\nbaseurl=https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/\ngpgcheck=0\nenabled=1\npriority=99\n" > /etc/yum.repos.d/centos-stream.repo'
-              chroot /host rpm-ostree install -y --apply-live --idempotent \
-                liburing libslirp binutils rsync perl-interpreter
-
-              # --- PRE-INSTALL: Load KVM module ---
-              # EC2 nested virtualization is enabled at the instance level
-              # (cpuOptions.nestedVirtualization in the EC2NodeClass), but the
-              # kvm_intel module isn't auto-loaded on boot. QEMU needs it.
-              chroot /host modprobe kvm_intel 2>/dev/null || true
-              chroot /host bash -c 'echo kvm_intel > /etc/modules-load.d/kvm.conf'
-
-              # --- INSTALL: Run the OSC install script ---
-              # This script (baked into the osc-daemonset image) does:
-              #   1. Downloads kubectl/oc from CLI_IMAGE via skopeo+umoci
-              #   2. Downloads kata+QEMU RPMs from EXTENSION_IMAGE via skopeo+umoci
-              #   3. Installs RPMs on the host via rpm-ostree install + apply-live
-              #   4. Runs RPM scriptlets (SELinux modules, kata VM kernel build)
-              #   5. Labels the node as "installed"
-              #   6. Restarts CRI-O + sleep infinity
-              /scripts/osc-kata-install.sh install
-              # The script ends with `systemctl restart crio && sleep infinity`,
-              # so we only reach here if it fails.
-              chroot /host rm -f /etc/yum.repos.d/centos-stream.repo
-              echo "ERROR: OSC install failed on ${NODE_NAME}"
-              exit 1
+              nsenter -t 1 -m -u -i -n -- modprobe kvm_intel 2>/dev/null || true
+              nsenter -t 1 -m -u -i -n -- bash -c 'echo kvm_intel > /etc/modules-load.d/kvm.conf'
+      containers:
+        - name: kata-deploy
+          image: {{ .Values.kataDeploy.image.repository }}:{{ .Values.kataDeploy.image.tag }}
+          imagePullPolicy: {{ .Values.kataDeploy.image.pullPolicy }}
+          securityContext:
+            privileged: true
+            runAsUser: 0
+          command: ["bash", "-c", "/opt/kata-artifacts/scripts/kata-deploy.sh install"]
+          lifecycle:
+            preStop:
+              exec:
+                command: ["bash", "-c", "/opt/kata-artifacts/scripts/kata-deploy.sh cleanup"]
           env:
             - name: NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            # EXTENSION_IMAGE and CLI_IMAGE are consumed by the OSC install script.
-            # On OCP the operator resolves these from the release payload at runtime
-            # (via ClusterVersion API + oc adm release info). On EKS we hardcode the
-            # digests from a specific OCP release — see values.yaml for details.
-            - name: EXTENSION_IMAGE
-              value: {{ .Values.oscDaemonSet.extensionImage | quote }}
-            - name: CLI_IMAGE
-              value: {{ .Values.oscDaemonSet.cliImage | quote }}
-            # NODE_LABEL is used by the install script's label_node() to track
-            # install state on the node (waiting_to_install → installing → installed).
-            - name: NODE_LABEL
-              value: "kataconfiguration.openshift.io/kata-ds-rpm-install"
-            - name: CLOUD_PROVIDER
-              value: "aws"
+            - name: DEBUG
+              value: "false"
           volumeMounts:
             - name: host-root
               mountPath: /host
-            # WORKAROUND: On OCP the operator creates an auth-json-secret from
-            # the cluster pull secret + mounts 5 additional registry volumes
-            # (registries.conf, registries.conf.d, containers auth, policy.json).
-            # On EKS there are no host registry mirrors — we only need the pull
-            # secret for skopeo to authenticate to quay.io/openshift-release-dev.
-            - name: tmp-dir
-              mountPath: /tmp
-            - name: pull-secret
-              mountPath: /tmp/regauth
-              readOnly: true
+            - name: kata-artifacts
+              mountPath: /opt/kata/
+            - name: dbus
+              mountPath: /var/run/dbus
+            - name: systemd
+              mountPath: /run/systemd
+          readinessProbe:
+            exec:
+              command:
+                - stat
+                - /opt/kata/bin/kata-runtime
+            initialDelaySeconds: 10
+            periodSeconds: 10
       volumes:
         - name: host-root
           hostPath:
             path: /
-        - name: tmp-dir
+        - name: kata-artifacts
           hostPath:
-            path: /var/tmp/osc-install
+            path: /opt/kata/
             type: DirectoryOrCreate
-        - name: pull-secret
-          secret:
-            secretName: osc-pull-secret
-            items:
-              - key: .dockerconfigjson
-                path: auth.json
+        - name: dbus
+          hostPath:
+            path: /var/run/dbus
+        - name: systemd
+          hostPath:
+            path: /run/systemd

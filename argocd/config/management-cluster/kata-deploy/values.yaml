@@ -1,56 +1,16 @@
 # =============================================================================
-# OSC (OpenShift Sandboxed Containers) DaemonSet for EKS
+# Upstream Kata Containers deployment for EKS (spike)
 #
-# WHAT THIS IS:
-# A barebones DaemonSet extracted from the OpenShift Sandboxed Containers
-# operator (github.com/openshift/sandboxed-containers-operator). The operator
-# itself can't run on EKS (hard dependencies on OCP APIs: MachineConfig, MCO,
-# SecurityContextConstraints, ClusterVersion), but its DaemonSet image and
-# install script work standalone on any OSTree/bootc-based host.
-#
-# WHAT IT DOES:
-# The DaemonSet runs the OSC install script which uses skopeo+umoci to pull
-# the RHCOS extensions image, extract kata + QEMU RPMs, and install them on
-# the host via rpm-ostree. The host MUST be OSTree/bootc-based (standard
-# RHEL with dnf will NOT work — rpm-ostree requires an OSTree deployment).
-#
-# WHY NOT THE UPSTREAM KATA-DEPLOY CHART:
-# The upstream kata-deploy chart (ghcr.io/kata-containers/kata-deploy-charts)
-# copies community-built kata binaries to /opt/kata/. For FIPS compliance we
-# need Red Hat's FIPS-validated QEMU, guest kernel, and kata builds — these
-# come from the RHCOS extensions image in the OCP release payload.
-#
-# WORKAROUNDS FOR EKS (vs OCP):
-# 1. Pull secret: On OCP the operator gets auth from the cluster pull secret.
-#    On EKS we use an ExternalSecret from AWS Parameter Store (same source as
-#    the HyperShift pull secret).
-# 2. Image resolution: On OCP the operator resolves extension/CLI images from
-#    the release payload at runtime via ClusterVersion API. On EKS we hardcode
-#    the image digests from a specific OCP release (4.22).
-# 3. No SCCs: OCP requires SecurityContextConstraints for privileged pods.
-#    On EKS we use standard Kubernetes RBAC only.
-# 4. No registry mirror volumes: On OCP the DaemonSet mounts host registry
-#    configs (/etc/containers/registries.conf, policy.json) so skopeo uses
-#    cluster mirrors. On EKS there are no host mirrors — skopeo pulls direct
-#    from quay.io using just the pull secret.
-# 5. Missing deps: The AMI is missing base libs (liburing, libslirp, etc.)
-#    needed by the QEMU RPMs. The DaemonSet pre-installs them from CentOS repos.
+# Uses the upstream kata-deploy image which copies pre-built kata + QEMU
+# binaries to /opt/kata/ and configures CRI-O with a drop-in config.
+# This is NOT FIPS-compliant — for production we need Red Hat's builds.
 # =============================================================================
 
-oscDaemonSet:
+kataDeploy:
   image:
-    repository: quay.io/openshift_sandboxed_containers/osc-daemonset
-    tag: "1.13"
-    pullPolicy: Always
-
-  # RHCOS extensions image containing kata + QEMU RPMs (from OCP 5.0 release payload).
-  # Resolved via: oc adm release info --image-for rhel-coreos-extensions quay.io/openshift-release-dev/ocp-release:5.0.0-rc.0-x86_64
-  # Requires auth (Red Hat pull secret) — the osc-pull-secret ExternalSecret provides this.
-  extensionImage: "quay.io/openshift-release-dev/ocp-v4.0-art-dev@sha256:43d85fd7035142e221277bbf6f127c16df088bfe7edffd6d11c9aea0f9a93ab6"
-
-  # CLI image containing kubectl/oc binaries (from OCP 5.0 release payload).
-  # Resolved via: oc adm release info --image-for cli quay.io/openshift-release-dev/ocp-release:5.0.0-rc.0-x86_64
-  cliImage: "quay.io/openshift-release-dev/ocp-v5.0-art-dev@sha256:02f9cc229ebf74946da9c7d576b46cb9f20dd350eb6f882bec98734e4137bda7"
+    repository: quay.io/kata-containers/kata-deploy
+    tag: "3.14.0"
+    pullPolicy: IfNotPresent
 
 nodeSelector:
   katacontainers.io/kata-runtime: "true"
@@ -63,10 +23,9 @@ tolerations:
 runtimeClass:
   # The RuntimeClass NAME is "kata-fc" because HyperShift hardcodes
   # runtimeClassName=kata-fc on request-serving pods. The HANDLER is
-  # "kata" because that's what CRI-O registers from the kata-containers
-  # RPM drop-in config. CRI-O's "kata" handler uses QEMU by default.
+  # "kata-qemu" because that's what upstream kata-deploy registers.
   name: kata-fc
-  handler: kata
+  handler: kata-qemu
   overhead:
     cpu: "250m"
     memory: "350Mi"
