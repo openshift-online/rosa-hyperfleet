@@ -34,6 +34,7 @@ else
   fi
 fi
 export BASE_URL
+export HYPERFLEET_URL="${BASE_URL}"
 echo "Running API e2e tests against ${BASE_URL}"
 
 # RHOBS API URL for observability E2E tests (Thanos Query read path).
@@ -79,6 +80,7 @@ E2E_REF="${E2E_REF:-main}"
 E2E_REPO="${E2E_REPO:-https://github.com/openshift-online/rosa-hyperfleet-api.git}"
 CLI_REF="${CLI_REF:-main}"
 CLI_REPO="${CLI_REPO:-https://github.com/openshift-online/rosa-hyperfleet-cli.git}"
+E2E_SKIP_ROSA_CLI="${E2E_SKIP_ROSA_CLI:-true}"  # Default to skip (set to "false" to run)
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "${WORK_DIR}"' EXIT
 echo ""
@@ -99,6 +101,7 @@ export PATH="$(go env GOPATH)/bin:${PATH}"
 platform_rc=0
 hcp_rc=0
 monitoring_rc=0
+rosa_cli_rc=0
 make test-e2e-api || platform_rc=$?
 
 # Get regional account ID for CLI tests
@@ -166,8 +169,18 @@ if [[ "$_have_customer_creds" == "true" ]]; then
 
     echo "HCP creation test completed for: ${HCP_CLUSTER_NAME}"
   }
-
   test_hcp_creation || hcp_rc=$?
+
+  if [[ "${E2E_SKIP_ROSA_CLI}" == "false" ]] || [[ -z "${E2E_SKIP_ROSA_CLI:-}" ]]; then
+    echo ""
+    echo "=== ROSA CLI Tests ==="
+    echo ""
+    make test-e2e-rosa-cli || rosa_cli_rc=$?
+  else
+    echo ""
+    echo "=== ROSA CLI Tests ==="
+    echo "Skipped (E2E_SKIP_ROSA_CLI=${E2E_SKIP_ROSA_CLI})"
+  fi
 
   echo ""
   echo "=== Platform Monitoring Tests ==="
@@ -177,7 +190,7 @@ fi
 
 # HCP test failures collect logs via PRE_CLEANUP_HOOK in the test's DeferCleanup
 # (before HCP deletion). Only collect here for non-HCP failures.
-if [[ $platform_rc -ne 0 ]] || [[ $monitoring_rc -ne 0 ]]; then
+if [[ $platform_rc -ne 0 ]] || [[ $monitoring_rc -ne 0 ]] || [[ $rosa_cli_rc -ne 0 ]]; then
     # Logs are left in S3 rather than added to public CI artifacts because
     # they may contain sensitive data that cannot be reliably redacted.
     # The S3 URIs are printed below for manual retrieval.
@@ -188,7 +201,7 @@ if [[ $platform_rc -ne 0 ]] || [[ $monitoring_rc -ne 0 ]]; then
 fi
 
 echo ""
-echo "E2E results: platform=$platform_rc hcp=$hcp_rc monitoring=$monitoring_rc"
-if [[ $platform_rc -ne 0 ]] || [[ $hcp_rc -ne 0 ]] || [[ $monitoring_rc -ne 0 ]]; then
+echo "E2E results: platform=$platform_rc hcp=$hcp_rc monitoring=$monitoring_rc rosa-cli=$rosa_cli_rc"
+if [[ $platform_rc -ne 0 ]] || [[ $hcp_rc -ne 0 ]] || [[ $monitoring_rc -ne 0 ]] || [[ $rosa_cli_rc -ne 0 ]]; then
     exit 1
 fi
