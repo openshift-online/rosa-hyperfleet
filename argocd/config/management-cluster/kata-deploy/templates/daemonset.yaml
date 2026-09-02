@@ -51,7 +51,7 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: DEBUG
-              value: "false"
+              value: "true"
             - name: SHIMS
               value: "qemu"
             - name: DEFAULT_SHIM
