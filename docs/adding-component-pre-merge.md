@@ -148,3 +148,48 @@ On any PR in the component repo:
 ```
 /test rosa-hyperfleet-compatibility-e2e
 ```
+
+## Multi-Image / Terraform-Deployed Components (ZOA)
+
+Components that deploy through **Terraform** (not ArgoCD Helm) and/or have **multiple images** require a modified approach. ZOA is the canonical example:
+
+### Key Differences
+
+| Aspect          | Standard (API)                         | Terraform (ZOA)                                   |
+| --------------- | -------------------------------------- | ------------------------------------------------- |
+| Image count     | 1 (or 2 for API)                       | 2 (Lambda + Runner)                               |
+| Override target | `argocd/config/.../values.yaml` (Helm) | `config/defaults.yaml` (Terraform via render.py)  |
+| Image push step | `rosa-hyperfleet-image-push` (shared)  | Same step — uses `ROSA_REGIONAL_EXTRA_COMPONENTS` |
+| Placeholders    | `IMAGE_REPO`, `IMAGE_TAG`              | `IMAGE_REPO`, `IMAGE_TAG` (per-image, same tag)   |
+
+### `ROSA_REGIONAL_EXTRA_COMPONENTS` for ZOA
+
+ZOA uses the same `ROSA_REGIONAL_EXTRA_COMPONENTS` mechanism as the API repo but targets
+`config/defaults.yaml` (Terraform) instead of ArgoCD Helm values files:
+
+```yaml
+ROSA_REGIONAL_EXTRA_COMPONENTS: |
+  - image: CI_ZOA_LAMBDA_IMAGE
+    repo: quay.io/rrp-dev-ci/zoa-lambda
+    target: config/defaults.yaml
+    override:
+      regional_cluster:
+        zoa_lambda_image_tag: IMAGE_TAG
+        zoa_lambda_source_image: IMAGE_REPO
+  - image: CI_ZOA_RUNNER_IMAGE
+    repo: quay.io/rrp-dev-ci/zoa-runner
+    target: config/defaults.yaml
+    override:
+      regional_cluster:
+        zoa_runner_image_tag: IMAGE_TAG
+        zoa_runner_source_image: IMAGE_REPO
+```
+
+Both entries target the same file (`config/defaults.yaml`) — the provision step applies them
+sequentially via deep-merge. The ephemeral provider then runs `render.py`, which regenerates
+`deploy/.../terraform.json` with the CI-built image tags. Terraform picks them up during
+provisioning.
+
+### Reference
+
+- **CI config**: [`openshift/release` — `ci-operator/config/openshift-online/rosa-hyperfleet-zoa/`](https://github.com/openshift/release/blob/master/ci-operator/config/openshift-online/rosa-hyperfleet-zoa/openshift-online-rosa-hyperfleet-zoa-main.yaml)
