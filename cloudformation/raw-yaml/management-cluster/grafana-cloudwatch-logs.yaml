@@ -1,0 +1,49 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Cross-account Grafana CloudWatch Logs reader role.
+  Equivalent to terraform/modules/grafana-cloudwatch-logs (mode=reader).
+
+Parameters:
+  ClusterName:
+    Type: String
+
+  RegionalId:
+    Type: String
+
+  GrafanaRoleAccountId:
+    Type: String
+    Description: RC account ID where the Grafana role lives
+
+Resources:
+  GrafanaReaderRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${RegionalId}-grafana-cw-logs-reader"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:${AWS::Partition}:iam::${GrafanaRoleAccountId}:role/${RegionalId}-grafana-cloudwatch"
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: cloudwatch-logs-read
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:GetLogEvents
+                  - logs:GetLogRecord
+                  - logs:GetQueryResults
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - logs:StartQuery
+                  - logs:StopQuery
+                  - logs:FilterLogEvents
+                  - cloudwatch:ListMetrics
+                Resource: "*"
+
+Outputs:
+  GrafanaReaderRoleArn:
+    Value: !GetAtt GrafanaReaderRole.Arn

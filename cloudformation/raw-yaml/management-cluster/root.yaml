@@ -1,0 +1,455 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Management Cluster — root stack.
+  Equivalent to terraform/config/management-cluster/main.tf.
+
+  Deploys VPC, EKS, ECS bootstrap, per-module pod identities, and optional
+  bastion as nested CloudFormation stacks — one nested stack per TF module
+  for a 1:1 comparison.
+
+  Cross-account note: The TF provider block uses assume_role to deploy into
+  the MC account from the RC. With CF you either deploy this stack directly
+  in the target MC account or use CloudFormation StackSets for cross-account
+  deployment.
+
+Parameters:
+  # -------------------------------------------------------------------------
+  # Core identity
+  # -------------------------------------------------------------------------
+  ManagementId:
+    Type: String
+    Description: Management cluster identifier (e.g., mc01)
+    AllowedPattern: "^[a-z0-9-]+$"
+
+  Environment:
+    Type: String
+    Description: Environment name (integration, staging, production)
+
+  # -------------------------------------------------------------------------
+  # Tagging
+  # -------------------------------------------------------------------------
+  AppCode:
+    Type: String
+
+  ServicePhase:
+    Type: String
+
+  CostCenter:
+    Type: String
+
+  # -------------------------------------------------------------------------
+  # EKS
+  # -------------------------------------------------------------------------
+  ClusterVersion:
+    Type: String
+    Default: "1.34"
+
+  # -------------------------------------------------------------------------
+  # Container / Git
+  # -------------------------------------------------------------------------
+  ContainerImage:
+    Type: String
+    Description: Public ECR image URI for platform container
+
+  RepositoryUrl:
+    Type: String
+    Description: Git repository URL for cluster configuration
+
+  RepositoryBranch:
+    Type: String
+    Default: main
+
+  # -------------------------------------------------------------------------
+  # Feature flags
+  # -------------------------------------------------------------------------
+  EnableBastion:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+
+  # -------------------------------------------------------------------------
+  # Cross-account references (RC account)
+  # -------------------------------------------------------------------------
+  RegionalAwsAccountId:
+    Type: String
+    AllowedPattern: "^[0-9]{12}$"
+
+  DnsZoneOperatorRoleArn:
+    Type: String
+    Default: ""
+
+  ZoaOutputsBucketArn:
+    Type: String
+    Default: ""
+
+  ZoaKmsKeyArn:
+    Type: String
+    Default: ""
+
+  # -------------------------------------------------------------------------
+  # OIDC (RC-generated values)
+  # -------------------------------------------------------------------------
+  OidcBucketName:
+    Type: String
+    Default: ""
+
+  OidcBucketArn:
+    Type: String
+    Default: ""
+
+  OidcBucketRegion:
+    Type: String
+    Default: ""
+
+  OidcWriterRoleArn:
+    Type: String
+    Default: ""
+
+  OidcCloudfrontDomain:
+    Type: String
+    Default: ""
+
+  # -------------------------------------------------------------------------
+  # Template hosting (required for nested stacks)
+  # -------------------------------------------------------------------------
+  TemplatesBucketUrl:
+    Type: String
+    Description: >-
+      S3 HTTPS URL prefix where nested templates are uploaded by deploy.sh
+      (e.g., https://s3.amazonaws.com/my-cf-templates/management-cluster/v1.2.3)
+
+Conditions:
+  BastionEnabled: !Equals [!Ref EnableBastion, "true"]
+  HasZoa: !Not [!Equals [!Ref ZoaOutputsBucketArn, ""]]
+
+Resources:
+  # ===========================================================================
+  # VPC (terraform/modules/vpc)
+  # ===========================================================================
+
+  VpcStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "${TemplatesBucketUrl}/vpc.yaml"
+      Parameters:
+        ResourceNameBase: !Ref ManagementId
+      Tags:
+        - Key: app-code
+          Value: !Ref AppCode
+        - Key: service-phase
+          Value: !Ref ServicePhase
+        - Key: cost-center
+          Value: !Ref CostCenter
+        - Key: environment
+          Value: !Ref Environment
+
+  # ===========================================================================
+  # EKS Cluster (terraform/modules/eks-cluster)
+  # ===========================================================================
+
+  EksClusterStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: VpcStack
+    Properties:
+      TemplateURL: !Sub "${TemplatesBucketUrl}/eks-cluster.yaml"
+      Parameters:
+        ClusterId: !Ref ManagementId
+        ClusterVersion: !Ref ClusterVersion
+        VpcId: !GetAtt VpcStack.Outputs.VpcId
+        VpcCidr: !GetAtt VpcStack.Outputs.VpcCidr
+        PrivateSubnetIds: !GetAtt VpcStack.Outputs.PrivateSubnetIds
+        ClusterSecurityGroupId: !GetAtt VpcStack.Outputs.EksClusterSecurityGroupId
+      Tags:
+        - Key: app-code
+          Value: !Ref AppCode
+        - Key: service-phase
+          Value: !Ref ServicePhase
+        - Key: cost-center
+          Value: !Ref CostCenter
+        - Key: environment
+          Value: !Ref Environment
+
+  # ===========================================================================
+  # ECS Bootstrap (terraform/modules/ecs-bootstrap)
+  # ===========================================================================
+
+  EcsBootstrapStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: EksClusterStack
+    Properties:
+      TemplateURL: !Sub "${TemplatesBucketUrl}/ecs-bootstrap.yaml"
+      Parameters:
+        ClusterId: !Ref ManagementId
+        VpcId: !GetAtt VpcStack.Outputs.VpcId
+        PrivateSubnetIds: !GetAtt VpcStack.Outputs.PrivateSubnetIds
+        EksClusterArn: !GetAtt EksClusterStack.Outputs.ClusterArn
+        EksClusterName: !GetAtt EksClusterStack.Outputs.ClusterName
+        EksClusterSecurityGroupId: !GetAtt VpcStack.Outputs.EksClusterSecurityGroupId
+        ContainerImage: !Ref ContainerImage
+        RcAwsAccountId: !Ref RegionalAwsAccountId
+        RepositoryUrl: !Ref RepositoryUrl
+        RepositoryBranch: !Ref RepositoryBranch
+      Tags:
+        - Key: app-code
+          Value: !Ref AppCode
+        - Key: service-phase
+          Value: !Ref ServicePhase
+        - Key: cost-center
+          Value: !Ref CostCenter
+        - Key: environment
+          Value: !Ref Environment
+
+  # ===========================================================================
+  # Bastion (terraform/modules/bastion) — conditional
+  # ===========================================================================
+
+  BastionStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: BastionEnabled
+    DependsOn: EksClusterStack
+    Properties:
+      TemplateURL: !Sub "${TemplatesBucketUrl}/bastion.yaml"
+      Parameters:
+        ClusterId: !Ref ManagementId
+        ClusterName: !GetAtt EksClusterStack.Outputs.ClusterName
+        ClusterEndpoint: !GetAtt EksClusterStack.Outputs.ClusterEndpoint
+        ClusterSecurityGroupId: !GetAtt VpcStack.Outputs.EksClusterSecurityGroupId
+        VpcId: !GetAtt VpcStack.Outputs.VpcId
+        PrivateSubnetIds: !GetAtt VpcStack.Outputs.PrivateSubnetIds
+        ContainerImage: !Ref ContainerImage
+      Tags:
+        - Key: app-code
+          Value: !Ref AppCode
+        - Key: service-phase
+          Value: !Ref ServicePhase
+        - Key: cost-center
+          Value: !Ref CostCenter
+        - Key: environment
+          Value: !Ref Environment
+
+  # ===========================================================================
+  # ZOA Job Pod Identity (terraform/modules/zoa-job-pod-identity) — conditional
+  # ===========================================================================
+
+  ZoaJobPodIdentityStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: HasZoa
+    DependsOn: EksClusterStack
+    Properties:
+      TemplateURL: !Sub "${TemplatesBucketUrl}/zoa-job-pod-identity.yaml"
+      Parameters:
+        ManagementId: !Ref ManagementId
+        EksClusterName: !GetAtt EksClusterStack.Outputs.ClusterName
+        ZoaOutputsBucketArn: !Ref ZoaOutputsBucketArn
+        ZoaKmsKeyArn: !Ref ZoaKmsKeyArn
+      Tags:
+        - Key: app-code
+          Value: !Ref AppCode
+        - Key: service-phase
+          Value: !Ref ServicePhase
+        - Key: cost-center
+          Value: !Ref CostCenter
+        - Key: environment
+          Value: !Ref Environment
+
+  # ===========================================================================
+  # DNS Pod Identity (terraform/modules/dns-pod-identity)
+  # ===========================================================================
+
+  DnsPodIdentityStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: EksClusterStack
+    Properties:
+      TemplateURL: !Sub "${TemplatesBucketUrl}/dns-pod-identity.yaml"
+      Parameters:
+        ManagementId: !Ref ManagementId
+        EksClusterName: !GetAtt EksClusterStack.Outputs.ClusterName
+        DnsZoneOperatorRoleArn: !Ref DnsZoneOperatorRoleArn
+      Tags:
+        - Key: app-code
+          Value: !Ref AppCode
+        - Key: service-phase
+          Value: !Ref ServicePhase
+        - Key: cost-center
+          Value: !Ref CostCenter
+        - Key: environment
+          Value: !Ref Environment
+
+  # ===========================================================================
+  # HyperShift OIDC (terraform/modules/hypershift-oidc)
+  # ===========================================================================
+
+  HypershiftOidcStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: EksClusterStack
+    Properties:
+      TemplateURL: !Sub "${TemplatesBucketUrl}/hypershift-oidc.yaml"
+      Parameters:
+        ManagementId: !Ref ManagementId
+        EksClusterName: !GetAtt EksClusterStack.Outputs.ClusterName
+        OidcBucketName: !Ref OidcBucketName
+        OidcBucketArn: !Ref OidcBucketArn
+        OidcBucketRegion: !Ref OidcBucketRegion
+        OidcWriterRoleArn: !Ref OidcWriterRoleArn
+        OidcCloudfrontDomain: !Ref OidcCloudfrontDomain
+      Tags:
+        - Key: app-code
+          Value: !Ref AppCode
+        - Key: service-phase
+          Value: !Ref ServicePhase
+        - Key: cost-center
+          Value: !Ref CostCenter
+        - Key: environment
+          Value: !Ref Environment
+
+  # ===========================================================================
+  # Prometheus Remote Write (terraform/modules/prometheus-remote-write)
+  # ===========================================================================
+
+  PrometheusRemoteWriteStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: EksClusterStack
+    Properties:
+      TemplateURL: !Sub "${TemplatesBucketUrl}/prometheus-remote-write.yaml"
+      Parameters:
+        ManagementId: !Ref ManagementId
+        EksClusterName: !GetAtt EksClusterStack.Outputs.ClusterName
+        RegionalAwsAccountId: !Ref RegionalAwsAccountId
+      Tags:
+        - Key: app-code
+          Value: !Ref AppCode
+        - Key: service-phase
+          Value: !Ref ServicePhase
+        - Key: cost-center
+          Value: !Ref CostCenter
+        - Key: environment
+          Value: !Ref Environment
+
+  # ===========================================================================
+  # Loki Log Forwarder (terraform/modules/loki-log-forwarder)
+  # ===========================================================================
+
+  LokiLogForwarderStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: EksClusterStack
+    Properties:
+      TemplateURL: !Sub "${TemplatesBucketUrl}/loki-log-forwarder.yaml"
+      Parameters:
+        ManagementId: !Ref ManagementId
+        EksClusterName: !GetAtt EksClusterStack.Outputs.ClusterName
+        RegionalAwsAccountId: !Ref RegionalAwsAccountId
+      Tags:
+        - Key: app-code
+          Value: !Ref AppCode
+        - Key: service-phase
+          Value: !Ref ServicePhase
+        - Key: cost-center
+          Value: !Ref CostCenter
+        - Key: environment
+          Value: !Ref Environment
+
+  # ===========================================================================
+  # CloudWatch Exporter (terraform/modules/cloudwatch-exporter)
+  # ===========================================================================
+
+  CloudWatchExporterStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: EksClusterStack
+    Properties:
+      TemplateURL: !Sub "${TemplatesBucketUrl}/cloudwatch-exporter.yaml"
+      Parameters:
+        ManagementId: !Ref ManagementId
+        EksClusterName: !GetAtt EksClusterStack.Outputs.ClusterName
+      Tags:
+        - Key: app-code
+          Value: !Ref AppCode
+        - Key: service-phase
+          Value: !Ref ServicePhase
+        - Key: cost-center
+          Value: !Ref CostCenter
+        - Key: environment
+          Value: !Ref Environment
+
+  # ===========================================================================
+  # Grafana CloudWatch Logs (terraform/modules/grafana-cloudwatch-logs)
+  # ===========================================================================
+
+  GrafanaCloudWatchLogsStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: EksClusterStack
+    Properties:
+      TemplateURL: !Sub "${TemplatesBucketUrl}/grafana-cloudwatch-logs.yaml"
+      Parameters:
+        ClusterName: !GetAtt EksClusterStack.Outputs.ClusterName
+        RegionalId: !Ref ManagementId
+        GrafanaRoleAccountId: !Ref RegionalAwsAccountId
+      Tags:
+        - Key: app-code
+          Value: !Ref AppCode
+        - Key: service-phase
+          Value: !Ref ServicePhase
+        - Key: cost-center
+          Value: !Ref CostCenter
+        - Key: environment
+          Value: !Ref Environment
+
+  # ===========================================================================
+  # kube-applier (terraform/modules/kube-applier)
+  # ===========================================================================
+
+  KubeApplierStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: EksClusterStack
+    Properties:
+      TemplateURL: !Sub "${TemplatesBucketUrl}/kube-applier.yaml"
+      Parameters:
+        ManagementId: !Ref ManagementId
+        EksClusterName: !GetAtt EksClusterStack.Outputs.ClusterName
+        RcAwsAccountId: !Ref RegionalAwsAccountId
+      Tags:
+        - Key: app-code
+          Value: !Ref AppCode
+        - Key: service-phase
+          Value: !Ref ServicePhase
+        - Key: cost-center
+          Value: !Ref CostCenter
+        - Key: environment
+          Value: !Ref Environment
+
+Outputs:
+  # Cluster
+  ClusterName:
+    Value: !GetAtt EksClusterStack.Outputs.ClusterName
+  ClusterArn:
+    Value: !GetAtt EksClusterStack.Outputs.ClusterArn
+  ClusterEndpoint:
+    Value: !GetAtt EksClusterStack.Outputs.ClusterEndpoint
+
+  # Networking
+  VpcId:
+    Value: !GetAtt VpcStack.Outputs.VpcId
+  PrivateSubnetIds:
+    Value: !GetAtt VpcStack.Outputs.PrivateSubnetIds
+
+  # ECS Bootstrap
+  EcsClusterArn:
+    Value: !GetAtt EcsBootstrapStack.Outputs.EcsClusterArn
+  TaskDefinitionArn:
+    Value: !GetAtt EcsBootstrapStack.Outputs.TaskDefinitionArn
+  BootstrapLogGroupName:
+    Value: !GetAtt EcsBootstrapStack.Outputs.LogGroupName
+
+  # Pod Identity Roles
+  HypershiftOperatorRoleArn:
+    Value: !GetAtt HypershiftOidcStack.Outputs.HypershiftOperatorRoleArn
+  PrometheusRoleArn:
+    Value: !GetAtt PrometheusRemoteWriteStack.Outputs.PrometheusRoleArn
+  CloudWatchExporterRoleArn:
+    Value: !GetAtt CloudWatchExporterStack.Outputs.CloudWatchExporterRoleArn
+  KubeApplierRoleArn:
+    Value: !GetAtt KubeApplierStack.Outputs.KubeApplierRoleArn
+
+  # Bastion (conditional)
+  BastionEcsClusterName:
+    Condition: BastionEnabled
+    Value: !GetAtt BastionStack.Outputs.BastionEcsClusterName
