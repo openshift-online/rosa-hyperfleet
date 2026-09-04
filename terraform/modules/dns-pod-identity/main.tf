@@ -6,6 +6,16 @@
 # role for Route53 access to zone shards.
 # =============================================================================
 
+locals {
+  common_tags = merge(
+    var.tags,
+    {
+      function = "dns"
+      module   = "dns-pod-identity"
+    }
+  )
+}
+
 resource "aws_iam_role" "dns_operator" {
   name        = "${var.management_id}-dns-operator"
   description = "Pod Identity role for external-dns and cert-manager to assume the RC dns-zone-operator role"
@@ -24,9 +34,9 @@ resource "aws_iam_role" "dns_operator" {
     }]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.management_id}-dns-operator"
-  }
+  })
 }
 
 resource "aws_iam_role_policy" "assume_dns_zone_operator" {
@@ -52,9 +62,9 @@ resource "aws_eks_pod_identity_association" "external_dns" {
   service_account = "external-dns"
   role_arn        = aws_iam_role.dns_operator.arn
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.management_id}-external-dns-pod-identity"
-  }
+  })
 }
 
 resource "aws_eks_pod_identity_association" "cert_manager" {
@@ -63,7 +73,7 @@ resource "aws_eks_pod_identity_association" "cert_manager" {
   service_account = "cert-manager"
   role_arn        = aws_iam_role.dns_operator.arn
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.management_id}-cert-manager-pod-identity"
-  }
+  })
 }

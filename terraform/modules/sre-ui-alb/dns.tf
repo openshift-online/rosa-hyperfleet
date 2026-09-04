@@ -25,9 +25,9 @@ resource "aws_acm_certificate" "sre" {
   domain_name       = "*.${local.sre_domain}"
   validation_method = "DNS"
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-sre-cert"
-  }
+  })
 
   lifecycle {
     create_before_destroy = true

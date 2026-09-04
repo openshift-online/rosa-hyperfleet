@@ -1,3 +1,9 @@
+variable "tags" {
+  description = "Base tags to merge with module-specific tags (function, module)"
+  type        = map(string)
+  default     = {}
+}
+
 variable "cluster_id" {
   description = "Unique cluster identifier used as a name prefix for all resources"
   type        = string

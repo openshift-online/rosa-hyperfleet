@@ -8,11 +8,6 @@ variable "cluster_name" {
   type        = string
 }
 
-variable "cluster_endpoint" {
-  description = "EKS cluster API endpoint URL"
-  type        = string
-}
-
 variable "cluster_security_group_id" {
   description = "Security group ID of the EKS cluster control plane"
   type        = string

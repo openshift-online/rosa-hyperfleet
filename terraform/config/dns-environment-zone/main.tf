@@ -13,5 +13,8 @@ resource "aws_route53_zone" "environment" {
   tags = {
     Name        = var.environment_domain
     Environment = var.environment
+    function    = "dns"
+    module      = "dns-environment-zone"
+    ManagedBy   = "terraform"
   }
 }

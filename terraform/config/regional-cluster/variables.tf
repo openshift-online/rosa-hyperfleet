@@ -279,12 +279,6 @@ variable "environment_domain" {
   default     = null
 }
 
-variable "environment_hosted_zone_id" {
-  description = "Route53 hosted zone ID for the environment domain (e.g. the zone for int0.rosa.devshift.net) in the central account. Used to create NS delegation records for the regional zone. When null, delegation must be done externally."
-  type        = string
-  default     = null
-}
-
 # =============================================================================
 # API Gateway Method Settings Variables
 # =============================================================================

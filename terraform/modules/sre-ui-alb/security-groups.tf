@@ -19,9 +19,9 @@ resource "aws_security_group" "alb" {
 
   revoke_rules_on_delete = false
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-sre-alb"
-  }
+  })
 }
 
 # Ingress: HTTPS from VPC CIDR (internal mode)
@@ -34,6 +34,7 @@ resource "aws_vpc_security_group_ingress_rule" "alb_https_from_vpc" {
   from_port         = 443
   to_port           = 443
   cidr_ipv4         = var.vpc_cidr
+  tags              = local.common_tags
 }
 
 # Ingress: HTTP from VPC CIDR (internal, no-domain fallback)
@@ -46,6 +47,7 @@ resource "aws_vpc_security_group_ingress_rule" "alb_http_from_vpc" {
   from_port         = 80
   to_port           = 80
   cidr_ipv4         = var.vpc_cidr
+  tags              = local.common_tags
 }
 
 # Ingress: HTTPS from allowed CIDRs (public mode)
@@ -94,6 +96,7 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_pods" {
   from_port                    = tonumber(each.value)
   to_port                      = tonumber(each.value)
   referenced_security_group_id = var.node_security_group_id
+  tags                         = local.common_tags
 }
 
 # -----------------------------------------------------------------------------
@@ -113,4 +116,5 @@ resource "aws_vpc_security_group_ingress_rule" "nodes_from_alb" {
   from_port                    = tonumber(each.value)
   to_port                      = tonumber(each.value)
   referenced_security_group_id = aws_security_group.alb.id
+  tags                         = local.common_tags
 }

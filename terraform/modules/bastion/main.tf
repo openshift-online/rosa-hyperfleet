@@ -5,6 +5,15 @@
 locals {
   container_name               = "bastion"
   effective_log_retention_days = max(365, var.log_retention_days)
+
+  common_tags = merge(
+    var.tags,
+    {
+      function  = "cluster-infra"
+      module    = "bastion"
+      ManagedBy = "terraform"
+    }
+  )
 }
 
 data "aws_region" "current" {}
@@ -34,7 +43,7 @@ resource "aws_kms_key" "bastion_logs" {
         Sid    = "AllowCloudWatchLogs"
         Effect = "Allow"
         Principal = {
-          Service = "logs.${data.aws_region.current.name}.amazonaws.com"
+          Service = "logs.${data.aws_region.current.region}.amazonaws.com"
         }
         Action = [
           "kms:Encrypt",
@@ -46,14 +55,14 @@ resource "aws_kms_key" "bastion_logs" {
         Resource = "*"
         Condition = {
           ArnLike = {
-            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${var.cluster_id}/bastion"
+            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${var.cluster_id}/bastion"
           }
         }
       }
     ]
   })
 
-  tags = merge(var.tags, {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_id}-bastion-logs"
   })
 }
@@ -74,7 +83,7 @@ resource "aws_cloudwatch_log_group" "bastion" {
 
   depends_on = [aws_kms_key.bastion_logs]
 
-  tags = var.tags
+  tags = local.common_tags
 }
 
 # =============================================================================
@@ -95,7 +104,7 @@ resource "aws_security_group" "bastion" {
     description = "Allow all outbound traffic"
   }
 
-  tags = merge(var.tags, {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_id}-bastion"
   })
 }
@@ -134,7 +143,7 @@ resource "aws_ecs_cluster" "bastion" {
     }
   }
 
-  tags = var.tags
+  tags = local.common_tags
 }
 
 # =============================================================================

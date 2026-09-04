@@ -50,9 +50,9 @@ resource "aws_kms_key" "eks_secrets" {
     ]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${local.cluster_id}-eks-secrets"
-  }
+  })
 }
 
 resource "aws_kms_alias" "eks_secrets" {

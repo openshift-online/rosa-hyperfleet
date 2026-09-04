@@ -2,6 +2,12 @@
 # DNS Zone Operator Module Variables
 # =============================================================================
 
+variable "tags" {
+  description = "Base tags to merge with module-specific tags (function, module)"
+  type        = map(string)
+  default     = {}
+}
+
 variable "regional_id" {
   description = "Regional cluster identifier for resource naming"
   type        = string

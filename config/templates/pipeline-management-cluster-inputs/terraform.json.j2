@@ -9,6 +9,9 @@
   "alias": "{{ mc.management_id }}",
   "management_id": "{{ mc.management_id }}",
   "regional_aws_account_id": "{{ account_id }}"
+{%- if eph_prefix | default('', true) %},
+  "eph_prefix": {{ eph_prefix | tojson }}
+{%- endif %}
 {%- if mc.enable_bastion is defined %},
   "enable_bastion": {{ mc.enable_bastion | tojson }}{% elif management_cluster_defaults.enable_bastion %},
   "enable_bastion": {{ management_cluster_defaults.enable_bastion | tojson }}{% endif %}{% if mc.delete %},

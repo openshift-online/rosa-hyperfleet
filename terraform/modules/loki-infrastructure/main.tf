@@ -17,6 +17,14 @@ locals {
   fips_regions = ["us-east-1", "us-east-2", "us-west-1", "us-west-2", "us-gov-east-1", "us-gov-west-1"]
   use_fips     = contains(local.fips_regions, data.aws_region.current.region)
   s3_endpoint  = local.use_fips ? "s3-fips.${data.aws_region.current.region}.amazonaws.com" : "s3.${data.aws_region.current.region}.amazonaws.com"
+
+  common_tags = merge(
+    var.tags,
+    {
+      function = "observability"
+      module   = "loki-infrastructure"
+    }
+  )
 }
 
 # =============================================================================
@@ -56,9 +64,9 @@ resource "aws_kms_key" "loki" {
     ]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_id}-loki"
-  }
+  })
 }
 
 resource "aws_kms_alias" "loki" {
@@ -74,9 +82,9 @@ resource "aws_s3_bucket" "loki" {
   bucket        = local.bucket_name
   force_destroy = true
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = local.bucket_name
-  }
+  })
 }
 
 resource "aws_s3_bucket_versioning" "loki" {
@@ -152,9 +160,9 @@ resource "aws_iam_role" "loki_writer" {
     ]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = local.writer_role
-  }
+  })
 }
 
 resource "aws_iam_role_policy" "loki_s3_write" {
@@ -212,7 +220,7 @@ resource "aws_eks_pod_identity_association" "loki" {
   service_account = var.loki_service_account
   role_arn        = aws_iam_role.loki_writer.arn
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_id}-loki"
-  }
+  })
 }

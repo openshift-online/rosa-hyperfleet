@@ -4,6 +4,12 @@
 locals {
   bootstrap_container_name = "bootstrap"
   log_retention_days       = 365
+
+  common_tags = {
+    function  = "cluster-infra"
+    module    = "ecs-bootstrap"
+    ManagedBy = "terraform"
+  }
 }
 
 # Current AWS region information
@@ -17,6 +23,10 @@ resource "aws_ecs_cluster" "bootstrap" {
     name  = "containerInsights"
     value = "enabled"
   }
+
+  tags = merge(local.common_tags, {
+    Name = "${var.cluster_id}-bootstrap"
+  })
 }
 
 # KMS key for CloudWatch log group encryption (FedRAMP AU-09)
@@ -41,7 +51,7 @@ resource "aws_kms_key" "bootstrap_logs" {
         Sid    = "AllowCloudWatchLogs"
         Effect = "Allow"
         Principal = {
-          Service = "logs.${data.aws_region.current.name}.amazonaws.com"
+          Service = "logs.${data.aws_region.current.region}.amazonaws.com"
         }
         Action = [
           "kms:Encrypt",
@@ -55,9 +65,9 @@ resource "aws_kms_key" "bootstrap_logs" {
     ]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.cluster_id}-bootstrap-logs"
-  }
+  })
 }
 
 # CloudWatch Log Group for bootstrap tasks
@@ -67,6 +77,10 @@ resource "aws_cloudwatch_log_group" "bootstrap" {
   kms_key_id        = aws_kms_key.bootstrap_logs.arn
 
   depends_on = [aws_kms_key.bootstrap_logs]
+
+  tags = merge(local.common_tags, {
+    Name = "${var.cluster_id}-bootstrap"
+  })
 }
 
 # Idempotent task: installs/updates ArgoCD, the cluster secret, and root Application.
@@ -246,7 +260,7 @@ resource "aws_ecs_task_definition" "bootstrap" {
       environment = [
         {
           name  = "AWS_DEFAULT_REGION"
-          value = data.aws_region.current.name
+          value = data.aws_region.current.region
         },
         {
           name  = "THANOS_KMS_KEY_ARN"
@@ -282,10 +296,14 @@ resource "aws_ecs_task_definition" "bootstrap" {
         logDriver = "awslogs"
         options = {
           awslogs-group         = aws_cloudwatch_log_group.bootstrap.name
-          awslogs-region        = data.aws_region.current.name
+          awslogs-region        = data.aws_region.current.region
           awslogs-stream-prefix = "ecs"
         }
       }
     }
   ])
+
+  tags = merge(local.common_tags, {
+    Name = "${var.cluster_id}-bootstrap"
+  })
 }

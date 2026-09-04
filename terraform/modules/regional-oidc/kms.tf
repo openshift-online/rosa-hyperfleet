@@ -35,9 +35,9 @@ resource "aws_kms_key" "oidc" {
     ]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-oidc"
-  }
+  })
 }
 
 resource "aws_kms_alias" "oidc" {

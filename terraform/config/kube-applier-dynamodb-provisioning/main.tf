@@ -4,12 +4,17 @@ provider "aws" {
   use_fips_endpoint = can(regex("^(us|us-gov)-", var.region)) ? true : false
 
   default_tags {
-    tags = {
-      app-code      = var.app_code
-      service-phase = var.service_phase
-      cost-center   = var.cost_center
-      environment   = var.environment
-    }
+    tags = merge(
+      {
+        app-code      = var.app_code
+        service-phase = var.service_phase
+        cost-center   = var.cost_center
+        environment   = var.environment
+        function      = "messaging"
+        module        = "kube-applier-dynamodb-provisioning"
+      },
+      var.eph_prefix != "" ? { ephemeral-prefix = var.eph_prefix } : {}
+    )
   }
 }
 
@@ -28,8 +33,6 @@ module "kube_applier_dynamodb" {
 
   mc_name           = var.mc_name
   mc_aws_account_id = var.mc_aws_account_id
-  rc_id             = var.rc_id
-  aws_region        = var.region
   enable_pitr       = var.enable_pitr
 }
 

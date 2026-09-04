@@ -6,6 +6,12 @@
 # Required
 # =============================================================================
 
+variable "tags" {
+  description = "Base tags to merge with module-specific tags (function, module)"
+  type        = map(string)
+  default     = {}
+}
+
 variable "vpc_id" {
   description = "VPC ID where the ALB will be created"
   type        = string

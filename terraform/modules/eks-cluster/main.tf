@@ -37,7 +37,7 @@ resource "aws_kms_key" "cloudwatch_logs" {
         Sid    = "AllowCloudWatchLogs"
         Effect = "Allow"
         Principal = {
-          Service = "logs.${data.aws_region.current.name}.amazonaws.com"
+          Service = "logs.${data.aws_region.current.region}.amazonaws.com"
         }
         Action = [
           "kms:Encrypt",
@@ -49,16 +49,16 @@ resource "aws_kms_key" "cloudwatch_logs" {
         Resource = "*"
         Condition = {
           ArnLike = {
-            "kms:EncryptionContext:aws:logs:arn" = "arn:${data.aws_partition.current.partition}:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/eks/${local.cluster_id}/cluster"
+            "kms:EncryptionContext:aws:logs:arn" = "arn:${data.aws_partition.current.partition}:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/eks/${local.cluster_id}/cluster"
           }
         }
       }
     ]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${local.cluster_id}-cloudwatch-logs"
-  }
+  })
 }
 
 resource "aws_kms_alias" "cloudwatch_logs" {
@@ -79,6 +79,7 @@ resource "aws_cloudwatch_log_group" "eks_cluster" {
   name              = "/aws/eks/${local.cluster_id}/cluster"
   retention_in_days = local.log_retention_days
   kms_key_id        = aws_kms_key.cloudwatch_logs.arn
+  tags              = local.common_tags
 
   depends_on = [aws_kms_key.cloudwatch_logs]
 }
@@ -90,6 +91,7 @@ resource "aws_eks_cluster" "main" {
   name     = local.cluster_id
   role_arn = aws_iam_role.eks_cluster.arn
   version  = var.cluster_version
+  tags     = local.common_tags
 
   bootstrap_self_managed_addons = false
 
@@ -226,18 +228,21 @@ resource "aws_eks_cluster" "main" {
 resource "aws_eks_addon" "coredns" {
   cluster_name = aws_eks_cluster.main.name
   addon_name   = "coredns"
+  tags         = local.common_tags
   depends_on   = [aws_eks_node_group.karpenter_bootstrap]
 }
 
 resource "aws_eks_addon" "metrics_server" {
   cluster_name = aws_eks_cluster.main.name
   addon_name   = "metrics-server"
+  tags         = local.common_tags
   depends_on   = [aws_eks_node_group.karpenter_bootstrap]
 }
 
 resource "aws_eks_addon" "pod_identity" {
   cluster_name = aws_eks_cluster.main.name
   addon_name   = "eks-pod-identity-agent"
+  tags         = local.common_tags
   depends_on   = [aws_eks_node_group.karpenter_bootstrap]
 }
 
@@ -247,6 +252,7 @@ resource "aws_eks_addon" "pod_identity" {
 
 resource "aws_launch_template" "karpenter_bootstrap" {
   name_prefix = "${local.cluster_id}-karpenter-bootstrap-"
+  tags        = local.common_tags
 
   metadata_options {
     http_tokens = "required"
@@ -281,9 +287,9 @@ resource "aws_eks_node_group" "karpenter_bootstrap" {
     max_size     = 2
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     "karpenter.sh/discovery" = aws_eks_cluster.main.name
-  }
+  })
 
   depends_on = [
     aws_iam_role_policy_attachment.karpenter_node_managed,
@@ -302,11 +308,13 @@ resource "aws_eks_node_group" "karpenter_bootstrap" {
 resource "aws_eks_addon" "vpc_cni" {
   cluster_name = aws_eks_cluster.main.name
   addon_name   = "vpc-cni"
+  tags         = local.common_tags
 }
 
 resource "aws_eks_addon" "kube_proxy" {
   cluster_name = aws_eks_cluster.main.name
   addon_name   = "kube-proxy"
+  tags         = local.common_tags
 
   depends_on = [aws_eks_node_group.karpenter_bootstrap]
 }
@@ -314,6 +322,7 @@ resource "aws_eks_addon" "kube_proxy" {
 resource "aws_eks_addon" "ebs_csi" {
   cluster_name = aws_eks_cluster.main.name
   addon_name   = "aws-ebs-csi-driver"
+  tags         = local.common_tags
 
   depends_on = [aws_eks_node_group.karpenter_bootstrap, aws_eks_addon.pod_identity, aws_eks_pod_identity_association.ebs_csi]
 }
@@ -322,6 +331,7 @@ resource "aws_eks_addon" "ebs_csi" {
 resource "aws_eks_addon" "aws_secrets_store_csi_driver_provider" {
   cluster_name = aws_eks_cluster.main.name
   addon_name   = "aws-secrets-store-csi-driver-provider"
+  tags         = local.common_tags
 
   configuration_values = jsonencode({
     secrets-store-csi-driver = {

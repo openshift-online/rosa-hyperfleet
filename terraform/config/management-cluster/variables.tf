@@ -204,3 +204,9 @@ variable "oidc_cloudfront_domain" {
   default     = ""
 }
 
+variable "eph_prefix" {
+  description = "Ephemeral environment prefix (e.g., eph-a1b2c3). When set, added as an ephemeral-prefix tag for cost analysis of ephemeral environments."
+  type        = string
+  default     = ""
+}
+

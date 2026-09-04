@@ -39,7 +39,7 @@ resource "aws_kms_key" "eks_secrets" {
     ]
   })
 
-  tags = { Name = "${var.cluster_id}-eks-secrets" }
+  tags = merge(local.common_tags, { Name = "${var.cluster_id}-eks-secrets" })
 }
 
 resource "aws_kms_alias" "eks_secrets" {
@@ -69,19 +69,19 @@ resource "aws_kms_key" "cloudwatch_logs" {
       {
         Sid       = "AllowCloudWatchLogs"
         Effect    = "Allow"
-        Principal = { Service = "logs.${data.aws_region.current.id}.amazonaws.com" }
+        Principal = { Service = "logs.${data.aws_region.current.region}.amazonaws.com" }
         Action    = ["kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:DescribeKey"]
         Resource  = "*"
         Condition = {
           ArnLike = {
-            "kms:EncryptionContext:aws:logs:arn" = "arn:${data.aws_partition.current.partition}:logs:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:log-group:/aws/eks/${var.cluster_id}/cluster"
+            "kms:EncryptionContext:aws:logs:arn" = "arn:${data.aws_partition.current.partition}:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/eks/${var.cluster_id}/cluster"
           }
         }
       }
     ]
   })
 
-  tags = { Name = "${var.cluster_id}-cloudwatch-logs" }
+  tags = merge(local.common_tags, { Name = "${var.cluster_id}-cloudwatch-logs" })
 }
 
 resource "aws_kms_alias" "cloudwatch_logs" {
@@ -97,6 +97,7 @@ resource "aws_cloudwatch_log_group" "eks_cluster" {
   name              = "/aws/eks/${var.cluster_id}/cluster"
   retention_in_days = 365
   kms_key_id        = aws_kms_key.cloudwatch_logs.arn
+  tags              = local.common_tags
 
   depends_on = [aws_kms_key.cloudwatch_logs]
 }
@@ -107,6 +108,7 @@ resource "aws_cloudwatch_log_group" "eks_cluster" {
 
 resource "aws_iam_role" "cluster" {
   name = "${var.cluster_id}-cluster-role"
+  tags = local.common_tags
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -131,6 +133,7 @@ resource "aws_eks_cluster" "main" {
   name     = var.cluster_id
   role_arn = aws_iam_role.cluster.arn
   version  = var.cluster_version
+  tags     = local.common_tags
 
   bootstrap_self_managed_addons = false
 

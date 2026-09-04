@@ -15,12 +15,12 @@ resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
   enable_dns_support   = true
-  tags                 = { Name = "${var.resource_name_base}-vpc" }
+  tags                 = merge(local.common_tags, { Name = "${var.resource_name_base}-vpc" })
 }
 
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
-  tags   = { Name = "${var.resource_name_base}-igw" }
+  tags   = merge(local.common_tags, { Name = "${var.resource_name_base}-igw" })
 }
 
 # -----------------------------------------------------------------------------
@@ -33,10 +33,10 @@ resource "aws_subnet" "public" {
   cidr_block        = var.public_subnet_cidrs[count.index]
   availability_zone = local.azs[count.index]
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name                     = "${var.resource_name_base}-public-${local.azs[count.index]}"
     "kubernetes.io/role/elb" = "1"
-  }
+  })
 }
 
 resource "aws_subnet" "private" {
@@ -45,11 +45,11 @@ resource "aws_subnet" "private" {
   cidr_block        = var.private_subnet_cidrs[count.index]
   availability_zone = local.azs[count.index]
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name                                              = "${var.resource_name_base}-private-${local.azs[count.index]}"
     "kubernetes.io/role/internal-elb"                 = "1"
     "kubernetes.io/cluster/${var.resource_name_base}" = "owned"
-  }
+  })
 }
 
 # -----------------------------------------------------------------------------
@@ -59,9 +59,9 @@ resource "aws_subnet" "private" {
 resource "aws_eip" "nat" {
   count  = length(var.public_subnet_cidrs)
   domain = "vpc"
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.resource_name_base}-nat-eip-${local.azs[count.index]}"
-  }
+  })
 }
 
 resource "aws_nat_gateway" "main" {
@@ -69,9 +69,9 @@ resource "aws_nat_gateway" "main" {
   allocation_id = aws_eip.nat[count.index].id
   subnet_id     = aws_subnet.public[count.index].id
   depends_on    = [aws_internet_gateway.main]
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.resource_name_base}-nat-gw-${local.azs[count.index]}"
-  }
+  })
 }
 
 # -----------------------------------------------------------------------------
@@ -80,10 +80,10 @@ resource "aws_nat_gateway" "main" {
 
 resource "aws_vpc_endpoint" "s3" {
   vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws.${data.aws_region.current.name}.s3"
+  service_name      = "com.amazonaws.${data.aws_region.current.region}.s3"
   vpc_endpoint_type = "Gateway"
   route_table_ids   = aws_route_table.private[*].id
-  tags              = { Name = "${var.resource_name_base}-s3-endpoint" }
+  tags              = merge(local.common_tags, { Name = "${var.resource_name_base}-s3-endpoint" })
 }
 
 locals {
@@ -93,12 +93,12 @@ locals {
 resource "aws_vpc_endpoint" "interfaces" {
   for_each            = toset(local.services)
   vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.${data.aws_region.current.name}.${each.value}"
+  service_name        = "com.amazonaws.${data.aws_region.current.region}.${each.value}"
   vpc_endpoint_type   = "Interface"
   subnet_ids          = aws_subnet.private[*].id
   security_group_ids  = [aws_security_group.vpc_endpoints.id]
   private_dns_enabled = true
-  tags                = { Name = "${var.resource_name_base}-${each.value}-endpoint" }
+  tags                = merge(local.common_tags, { Name = "${var.resource_name_base}-${each.value}-endpoint" })
 }
 
 # -----------------------------------------------------------------------------
@@ -111,7 +111,7 @@ resource "aws_route_table" "public" {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.main.id
   }
-  tags = { Name = "${var.resource_name_base}-public-rt" }
+  tags = merge(local.common_tags, { Name = "${var.resource_name_base}-public-rt" })
 }
 
 resource "aws_route_table" "private" {
@@ -123,9 +123,9 @@ resource "aws_route_table" "private" {
     nat_gateway_id = aws_nat_gateway.main[count.index].id
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.resource_name_base}-private-rt-${local.azs[count.index]}"
-  }
+  })
 }
 
 resource "aws_route_table_association" "public" {

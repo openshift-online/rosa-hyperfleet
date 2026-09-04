@@ -11,7 +11,6 @@
 # =============================================================================
 
 data "aws_caller_identity" "current" {}
-data "aws_region" "current" {}
 data "aws_elb_service_account" "current" {}
 
 # -----------------------------------------------------------------------------
@@ -30,9 +29,9 @@ resource "aws_s3_bucket" "access_logs" {
   bucket        = "${var.regional_id}-sre-alb-logs-${data.aws_caller_identity.current.account_id}"
   force_destroy = true
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-sre-alb-logs"
-  }
+  })
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "access_logs" {
