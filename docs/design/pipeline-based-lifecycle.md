@@ -20,7 +20,7 @@ graph TB
         RC1[Regional Cluster Pipeline<br/>us-east-1]
         RC2[Regional Cluster Pipeline<br/>eu-west-1]
         MC1[Management Cluster Pipeline<br/>mc01-us-east-1]
-        MC2[Management Cluster Pipeline<br/>mc02-us-east-1]
+        MC2[Management Cluster Pipeline<br/>mc01-eu-west-1]
     end
 
     subgraph "Layer 3: Infrastructure"

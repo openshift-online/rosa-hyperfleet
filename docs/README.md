@@ -30,6 +30,8 @@ Detailed architecture and rationale for key technical decisions:
 | [GitOps Cluster Configuration](design/gitops-cluster-configuration.md)               | ApplicationSet pattern, progressive deployment, config modes              |
 | [Infrastructure Logging](design/infrastructure-logging.md)                           | AWS CloudWatch log groups, KMS encryption, Grafana access                 |
 | [Karpenter Node Provisioning](design/karpenter-node-provisioning.md)                 | Self-managed Karpenter IAM roles, Pod Identity, SQS interruption handling |
+| [Kube-Applier Architecture](design/kube-applier-architecture.md)                     | DynamoDB-backed resource distribution to MCs via GSI polling              |
+| [Lifecycle Alert Silencing](design/lifecycle-alert-silencing.md)                     | Alertmanager silences for cluster lifecycle phases                        |
 | [Logging Platform](design/logging-platform.md)                                       | Application-level log collection (Vector + Loki)                          |
 | [MC Metrics Remote Write](design/mc-metrics-remote-write.md)                         | MC-to-RC metrics forwarding via RHOBS API Gateway                         |
 | [Monitoring Platform](design/monitoring-platform.md)                                 | Metrics pipeline (Prometheus + Thanos)                                    |
