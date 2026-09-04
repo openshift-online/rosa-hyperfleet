@@ -30,6 +30,7 @@ regional_cluster:
   hyperfleet_db_monitoring_interval: 0
   enable_sre_tools_gateway: true
   enable_sre_public_access: false
+  telemeter_url: "https://127.0.0.99/metrics/v1/receive"
 
 applications:
   regional-cluster:

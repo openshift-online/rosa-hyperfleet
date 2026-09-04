@@ -9,6 +9,10 @@ eksNodePool:
   instanceFamilies:
   - m8i
   - m7i
+billing-prometheus:
+  billing:
+    telemeterUrl: ''
+    authType: bearer
 baseDomain: us-east-1.stg0.rosa.devshift.org
 hyperfleet:
   oidcS3Bucket: PLACEHOLDER-overridden-by-terraform-output

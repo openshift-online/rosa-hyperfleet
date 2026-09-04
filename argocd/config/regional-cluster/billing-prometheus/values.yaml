@@ -1,0 +1,35 @@
+# Injected by ApplicationSet at runtime — defaults here for helm lint only
+global:
+  cluster_name: ""
+  aws_region: ""
+
+billing:
+  # Telemeter remote-write endpoint. Set per environment in argocd-values-regional-cluster.yaml.
+  telemeterUrl: ""
+
+  # Authentication method for Telemeter remote-write: "bearer" or "oauth2".
+  authType: bearer
+
+  # Bearer token auth (authType: bearer).
+  # Secret name and key must match the ExternalSecret target below.
+  tokenSecretName: hypershift-telemeter-client
+  tokenSecretKey: token
+
+  # OAuth2 auth (authType: oauth2).
+  oauth2:
+    tokenUrl: "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token"
+    # Secret created by ExternalSecret holding client_id and client_secret.
+    credentialsSecretName: telemeter-oauth-credentials
+    scopes:
+      - openid
+
+  # Metrics forwarded to Telemeter (regex applied to __name__).
+  # Only matched metrics are remote-written; everything else is dropped.
+  metricAllowList:
+    - hypershift_cluster_vcpus
+
+  # Thanos Query Frontend in-cluster address. Port 9090 served by thanos-operator.
+  thanosQueryAddress: "thanos-query-frontend-thanos-query.thanos:9090"
+
+  # Prometheus scrape / evaluation interval for the billing job.
+  scrapeInterval: 1m

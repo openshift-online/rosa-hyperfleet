@@ -9,3 +9,4 @@ sla:
   hcpAvailability:
     # 99.95% availability target — 0.05% error budget over 30 days
     target: 0.9995
+

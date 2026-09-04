@@ -1,0 +1,23 @@
+{{- if .Values.billing.telemeterUrl }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: billing-additional-scrape
+  namespace: billing-prometheus
+type: Opaque
+stringData:
+  scrape-config.yaml: |
+    - job_name: thanos-federate
+      scrape_interval: {{ .Values.billing.scrapeInterval }}
+      scrape_timeout: 30s
+      honor_labels: true
+      metrics_path: /federate
+      params:
+        match[]:
+          {{- range .Values.billing.metricAllowList }}
+          - '{{ printf "{__name__=%q}" . }}'
+          {{- end }}
+      static_configs:
+        - targets:
+            - {{ .Values.billing.thanosQueryAddress }}
+{{- end }}

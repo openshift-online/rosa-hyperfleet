@@ -9,6 +9,10 @@ eksNodePool:
   instanceFamilies:
   - m8i-flex
   - m7i-flex
+billing-prometheus:
+  billing:
+    telemeterUrl: https://127.0.0.99/metrics/v1/receive
+    authType: bearer
 baseDomain: us-east-1.dev0.rosa.devshift.net
 hyperfleet:
   oidcS3Bucket: hypershift--regional-oidc-ssm:///infra/ephemeral/us-east-1/account_id
