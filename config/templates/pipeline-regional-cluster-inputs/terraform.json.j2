@@ -32,7 +32,11 @@
   "hyperfleet_db_deletion_protection": {{ regional_cluster.hyperfleet_db_deletion_protection | default(true) | tojson }},
   "hyperfleet_db_skip_final_snapshot": {{ regional_cluster.hyperfleet_db_skip_final_snapshot | default(false) | tojson }},
   "hyperfleet_db_performance_insights_enabled": {{ regional_cluster.hyperfleet_db_performance_insights_enabled | default(true) | tojson }},
-  "hyperfleet_db_monitoring_interval": {{ regional_cluster.hyperfleet_db_monitoring_interval | default(60) | tojson }}
+  "hyperfleet_db_monitoring_interval": {{ regional_cluster.hyperfleet_db_monitoring_interval | default(60) | tojson }},
+  "zoa_lambda_image_tag": {{ regional_cluster.zoa_lambda_image_tag | tojson }},
+  "zoa_runner_image_tag": {{ regional_cluster.zoa_runner_image_tag | tojson }},
+  "zoa_lambda_source_image": {{ regional_cluster.zoa_lambda_source_image | tojson }},
+  "zoa_runner_source_image": {{ regional_cluster.zoa_runner_source_image | tojson }}
 {%- set _mc_info = [] %}
 {%- for mc in management_clusters if mc.account_id is defined %}
 {%- set _ = _mc_info.append({"id": mc.management_id, "account_id": mc.account_id}) %}

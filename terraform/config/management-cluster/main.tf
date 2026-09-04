@@ -112,8 +112,8 @@ module "zoa_lambda" {
 
   cluster_id = var.management_id
 
-  lambda_image_uri = "${var.zoa_lambda_ecr_url}:${var.zoa_image_tag}"
-  job_image_uri    = "${var.zoa_runner_source_image}:${var.zoa_image_tag}"
+  lambda_image_uri = "${var.zoa_lambda_ecr_url}:${var.zoa_lambda_image_tag}"
+  job_image_uri    = "${var.zoa_runner_source_image}:${var.zoa_runner_image_tag}"
 
   private_subnet_ids        = module.vpc.private_subnet_ids
   cluster_security_group_id = module.vpc.cluster_security_group_id

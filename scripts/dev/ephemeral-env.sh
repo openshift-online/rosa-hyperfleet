@@ -45,6 +45,7 @@ usage() {
     echo "  port-forward    Forward ports through RC/MC bastion in an ephemeral env"
     echo "  sre-ui          Tunnel SRE UI tools through the internal ALB via bastion"
     echo "  e2e             Run e2e tests against an ephemeral env"
+    echo "  zoa-e2e         Run rosa-hyperfleet-zoa's deep e2e suite against an ephemeral env"
     echo "  dump-env        Dump EKS must-gather and DB state from RC/MC in an ephemeral env"
 }
 
@@ -1144,6 +1145,49 @@ cmd_e2e() {
         bash ci/e2e-tests.sh
 }
 
+# Runs rosa-hyperfleet-zoa e2e tests against an already-provisioned ephemeral
+# env's ZOA Lambda URLs. Clones ZOA_REPO@ZOA_REF inside the container and runs
+# `make $ZOA_MAKE_TARGET` (default: test-e2e; set to test-e2e-smoke for smoke).
+# Same clone-by-ref pattern cmd_e2e uses for rosa-hyperfleet-api. To test a
+# branch/fork, push it and set ZOA_REF/ZOA_REPO.
+cmd_zoa_e2e() {
+    local zoa_ref="${ZOA_REF:-main}"
+    local zoa_repo="${ZOA_REPO:-https://github.com/openshift-online/rosa-hyperfleet-zoa.git}"
+
+    select_env "STATE=ready" \
+        "Select environment for ZOA e2e tests:" \
+        "No ready environments found."
+
+    local zoa_rc_api_url zoa_mc_api_url region
+    zoa_rc_api_url=$(get_field "$ENV_LINE" ZOA_RC_API_URL)
+    zoa_mc_api_url=$(get_field "$ENV_LINE" ZOA_MC_API_URL)
+    region=$(get_field "$ENV_LINE" REGION)
+    [[ -n "$zoa_rc_api_url" ]] \
+        || die "No ZOA_RC_API_URL found for ID $BUILD_ID. Was it captured during provision?"
+
+    setup_aws_config
+    write_eph_container_config
+
+    echo "Running zoa e2e suite..."
+    echo "  ID:             $BUILD_ID"
+    echo "  ZOA_RC_API_URL: $zoa_rc_api_url"
+    echo "  ZOA_MC_API_URL: ${zoa_mc_api_url:-<not set — MC specs will be skipped>}"
+    echo "  REGION:         $region"
+    echo "  ZOA_REF:        $zoa_ref"
+    echo "  ZOA_REPO:       $zoa_repo"
+
+    $CONTAINER_ENGINE run --rm \
+        $_CONTAINER_AWS_FLAGS \
+        -e "ZOA_RC_API_URL=$zoa_rc_api_url" \
+        -e "ZOA_MC_API_URL=${zoa_mc_api_url:-}" \
+        -e "AWS_DEFAULT_REGION=$region" \
+        -e "AWS_REGION=$region" \
+        -e "ZOA_MAKE_TARGET=${ZOA_MAKE_TARGET:-test-e2e}" \
+        -e "GINKGO_FLAGS=${GINKGO_FLAGS:-}" \
+        "$CI_IMAGE" \
+        bash -c 'git clone --depth 1 --branch "'"${zoa_ref}"'" "'"${zoa_repo}"'" /tmp/zoa-e2e && cd /tmp/zoa-e2e && make ${ZOA_MAKE_TARGET} GINKGO_FLAGS="${GINKGO_FLAGS:-}"'
+}
+
 cmd_dump_env() {
     local cluster_type="${1:-all}"
     # Accept short aliases
@@ -1266,7 +1310,7 @@ case "${1:-help}" in
             command -v "$tool" >/dev/null 2>&1 || die "Missing required tool: $tool"
         done
         ;;
-    shell|e2e|post-account)
+    shell|e2e|zoa-e2e|post-account)
         preflight
         ensure_image
         ;;
@@ -1288,6 +1332,7 @@ case "${1:-help}" in
     port-forward)   shift; cmd_bastion_port_forward "$@" ;;
     sre-ui)         cmd_sre_tunnel ;;
     e2e)            cmd_e2e ;;
+    zoa-e2e)        cmd_zoa_e2e ;;
     dump-env)       shift; cmd_dump_env "$@" ;;
     help|*)
         usage

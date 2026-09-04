@@ -54,11 +54,11 @@ output "lambda_ecr_url" {
 
 output "lambda_image_uri" {
   description = "Full ECR image URI for Lambda (repo:tag). Normalized to non-FIPS endpoint for Lambda API compatibility."
-  value       = var.zoa_image_tag != "" ? "${replace(aws_ecr_repository.lambda.repository_url, "ecr-fips", "ecr")}:${var.zoa_image_tag}" : ""
+  value       = var.zoa_lambda_image_tag != "" ? "${replace(aws_ecr_repository.lambda.repository_url, "ecr-fips", "ecr")}:${var.zoa_lambda_image_tag}" : ""
 }
 
 output "runner_image_uri" {
   description = "Source image URI for the K8s Job runner. K8s nodes pull directly from source registry."
-  value       = var.zoa_image_tag != "" ? "${var.zoa_runner_source_image}:${var.zoa_image_tag}" : ""
+  value       = var.zoa_runner_image_tag != "" ? "${var.zoa_runner_source_image}:${var.zoa_runner_image_tag}" : ""
 }
 

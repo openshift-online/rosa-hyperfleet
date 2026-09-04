@@ -13,6 +13,7 @@ CI is managed through the [OpenShift CI](https://docs.ci.openshift.org/) system 
 | [`on-demand-e2e`](https://prow.ci.openshift.org/job-history/gs/test-platform-results/pr-logs/directory/pull-ci-openshift-online-rosa-hyperfleet-main-on-demand-e2e)               | Pre-submit (manual)      | End-to-end: provisions ephemeral environment using PR rosa-hyperfleet branch, runs tests, tears down. Trigger with `/test on-demand-e2e` on a PR |
 | [`nightly-ephemeral`](https://prow.ci.openshift.org/job-history/gs/test-platform-results/logs/periodic-ci-openshift-online-rosa-hyperfleet-main-nightly-ephemeral)                | Daily at 04:00 UTC       | End-to-end: provisions ephemeral environment using `main` rosa-hyperfleet branch, runs tests, tears down                                         |
 | [`nightly-integration`](https://prow.ci.openshift.org/job-history/gs/test-platform-results/logs/periodic-ci-openshift-online-rosa-hyperfleet-main-nightly-integration)            | Daily at 04:00 UTC       | Runs e2e tests against a standing integration environment                                                                                        |
+| [`nightly-stage`](https://prow.ci.openshift.org/job-history/gs/test-platform-results/logs/periodic-ci-openshift-online-rosa-hyperfleet-main-nightly-stage)                        | Daily at 04:00 UTC       | Runs e2e tests against a standing stage environment                                                                                              |
 | `nightly-m6i` (planned)                                                                                                                                                           | Mon/Wed/Fri at 05:00 UTC | Nightly ephemeral with `m6i.large` instance types — validates general-purpose Intel machines                                                     |
 | `nightly-c6i` (planned)                                                                                                                                                           | Tue/Thu/Sat at 05:00 UTC | Nightly ephemeral with `c6i.xlarge` instance types — validates compute-optimized Intel machines                                                  |
 
@@ -137,6 +138,7 @@ Not every job needs every profile. The table below shows which profiles each job
 | `nightly-ephemeral`   | `rrp-central`, `rrp-rc`, `rrp-mc` |
 | `on-demand-e2e`       | `rrp-central`, `rrp-rc`, `rrp-mc` |
 | `nightly-integration` | `rrp-rc`, `rrp-customer`          |
+| `nightly-stage`       | `rrp-rc`, `rrp-customer`          |
 
 ### How profiles are loaded
 
@@ -146,14 +148,17 @@ Not every job needs every profile. The table below shows which profiles each job
 
 ### CI Vault secrets
 
-CI jobs still use Vault-mounted credentials. These are managed in [Vault](https://vault.ci.openshift.org/ui/vault/secrets/kv/kv/list/selfservice/cluster-secrets-rosa-regional-platform-int/):
+CI jobs still use Vault-mounted credentials. These are managed in [Vault](https://vault.ci.openshift.org/ui/vault/secrets/kv/kv/list/selfservice/cluster-secrets-rosa-regional-platform-int/).
 
-| Secret                                     | Used by                              | Key fields   |
-| ------------------------------------------ | ------------------------------------ | ------------ |
-| `rosa-regional-platform-ephemeral-creds`   | `nightly-ephemeral`, `on-demand-e2e` | `aws_config` |
-| `rosa-regional-platform-integration-creds` | `nightly-integration`                | `aws_config` |
+Vault **path** (where you edit) and **Prow secret name** (what ci-operator mounts) differ. Each Vault entry sets `secretsync/target-name` to the Prow name; jobs reference that name in [openshift/release](https://github.com/openshift/release/tree/master/ci-operator/config/openshift-online/rosa-hyperfleet).
 
-Each `aws_config` field contains a complete AWS CLI config file with only the profiles that job type requires. To update credentials, edit the `aws_config` field in the relevant Vault secret.
+| Prow secret (ci-operator)                  | Vault path                               | Used by                              | Key fields                                                                                                           |
+| ------------------------------------------ | ---------------------------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `rosa-regional-platform-ephemeral-creds`   | `rosa-regional-platform-ephemeral-creds` | `nightly-ephemeral`, `on-demand-e2e` | `aws_config` — `rrp-central`, `rrp-rc`, `rrp-mc` profiles; API/ZOA URLs come from terraform outputs during provision |
+| `rosa-regional-platform-integration-creds` | `integration-creds`                      | `nightly-integration`                | `aws_config`, `api_url`, `rhobs_api_url`, `zoa_rc_api_url`, `zoa_mc_api_url`                                         |
+| `rosa-hyperfleet-stage-creds`              | `stage-creds`                            | `nightly-stage`                      | same keys as integration                                                                                             |
+
+Each `aws_config` field contains a complete AWS CLI config file with only the profiles that job type requires. URL fields (`api_url`, `rhobs_api_url`, `zoa_rc_api_url`, `zoa_mc_api_url`) are configured for integration and stage; update them after a redeploy (same process as `rhobs_api_url` in [`docs/sop/rebuild-integration.md`](../docs/sop/rebuild-integration.md)).
 
 ## AWS Account Cleanup (Janitor)
 

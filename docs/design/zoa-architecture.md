@@ -275,11 +275,11 @@ Quay registry (quay.io/redhat-user-workloads/rosa-tenant/zoa-lambda:<commit-sha>
      ▼ (pipeline step: skopeo mirror — temporary until Konflux pushes to ECR directly)
 ECR repository (in RC account, cross-account pull policy for MC accounts)
      │
-     ▼ (Terraform variable: zoa_image_tag)
-terraform apply → updates both Lambda functions to use new image
+     ▼ (Terraform variables: zoa_lambda_image_tag / zoa_runner_image_tag)
+terraform apply → updates Lambda functions and K8s Job runner to use new images
 ```
 
-**Rollback**: Set `zoa_image_tag` to a previous commit SHA and `terraform apply`. Lambda picks up the ECR image immediately on next cold start. No draining, no rolling update — existing warm instances continue until their next invocation timeout.
+**Rollback**: Set `zoa_lambda_image_tag` (and/or `zoa_runner_image_tag`) to a previous commit SHA and `terraform apply`. Lambda picks up the ECR image immediately on next cold start. No draining, no rolling update — existing warm instances continue until their next invocation timeout.
 
 ## Monitoring
 

@@ -80,6 +80,10 @@ def _create_config_structure(
         "regional_cluster": {
             "enable_bastion": False,
             "node_instance_families": ["m8i", "m7i"],
+            "zoa_lambda_image_tag": "dd76a96",
+            "zoa_runner_image_tag": "dd76a96",
+            "zoa_lambda_source_image": "quay.io/rrp-dev-ci/zoa-lambda",
+            "zoa_runner_source_image": "quay.io/rrp-dev-ci/zoa-runner",
         },
         "management_cluster_defaults": {
             "enable_bastion": False,

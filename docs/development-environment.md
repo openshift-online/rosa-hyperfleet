@@ -299,6 +299,22 @@ make ephemeral-e2e ID=6bd2d3d7 E2E_SKIP_CLEANUP=1
 
 This skips both the cleanup-labeled ginkgo specs and the `DeferCleanup` safety net, so the HCP cluster, VPC, IAM, and OIDC resources survive for investigation. Remember to tear them down manually afterwards with `make ephemeral-teardown` or by re-running without the flag.
 
+### ZOA testing
+
+ZOA e2e tests live in [`rosa-hyperfleet-zoa`](https://github.com/openshift-online/rosa-hyperfleet-zoa); this repo clones and runs them — it does not duplicate test logic.
+
+- **`make ephemeral-e2e`** — runs platform e2e plus ZOA **smoke** (`ci/e2e-tests.sh` clones `rosa-hyperfleet-zoa@main` and runs `test-e2e-smoke` when RC/MC Lambda URLs are available).
+- **`make ephemeral-zoa-e2e`** / **`make ephemeral-zoa-e2e-smoke`** — ZOA **full** or **smoke** only; same clone-by-ref pattern as API e2e (`ZOA_REF` / `ZOA_REPO`).
+
+```bash
+make ephemeral-zoa-e2e ID=6bd2d3d7
+make ephemeral-zoa-e2e ID=6bd2d3d7 ZOA_REF=my-branch ZOA_REPO=https://github.com/my-fork/rosa-hyperfleet-zoa.git
+make ephemeral-zoa-e2e-smoke ID=6bd2d3d7
+make ephemeral-zoa-e2e-smoke ID=6bd2d3d7 ZOA_REF=my-branch ZOA_REPO=https://github.com/my-fork/rosa-hyperfleet-zoa.git
+```
+
+These targets exercise the Lambdas already deployed in the environment; they do not rebuild or redeploy ZOA images. Test suite details: [`rosa-hyperfleet-zoa/docs/e2e-testing.md`](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/e2e-testing.md).
+
 ## Dump Environment
 
 Collect Kubernetes diagnostic logs (`oc adm inspect`) and PostgreSQL database state from the RC and/or MC clusters in an ephemeral environment. Data is gathered by the log-collector ECS Fargate task, uploaded to S3, and downloaded locally.
