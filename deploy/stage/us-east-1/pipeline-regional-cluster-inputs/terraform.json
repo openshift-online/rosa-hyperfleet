@@ -33,8 +33,8 @@
   "hyperfleet_db_skip_final_snapshot": false,
   "hyperfleet_db_performance_insights_enabled": true,
   "hyperfleet_db_monitoring_interval": 60,
-  "zoa_lambda_image_tag": "0e4322a",
-  "zoa_runner_image_tag": "0e4322a",
+  "zoa_lambda_image_tag": "dd76a96",
+  "zoa_runner_image_tag": "dd76a96",
   "zoa_lambda_source_image": "quay.io/rrp-dev-ci/zoa-lambda",
   "zoa_runner_source_image": "quay.io/rrp-dev-ci/zoa-runner",
   "management_clusters_info": [{"account_id": "ssm:///infra/stage/us-east-1/mc01/account_id", "id": "mc01"}]
