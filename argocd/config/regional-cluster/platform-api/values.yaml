@@ -18,7 +18,7 @@ platformApi:
     name: platform-api
     image:
       repository: quay.io/redhat-user-workloads/rosa-tenant/platform-api
-      tag: "bebafd1d82973d17364e49e356b949c29bdd4af3"
+      tag: "406c6e265983611378a1c6db40a4248de7aa6c9a"
       pullPolicy: Always
 
     # Application arguments
