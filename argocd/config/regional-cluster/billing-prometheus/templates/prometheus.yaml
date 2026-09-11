@@ -1,0 +1,73 @@
+{{- if .Values.billing.telemeterUrl }}
+{{- if not (has .Values.billing.authType (list "bearer" "oauth2")) }}
+{{- fail (printf "billing.authType must be \"bearer\" or \"oauth2\", got: %q" .Values.billing.authType) }}
+{{- end }}
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: billing
+  namespace: billing-prometheus
+  annotations:
+    # Prometheus CRD may not exist yet when ArgoCD dry-runs this resource
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  replicas: 1
+  # Short retention — this is a pass-through forwarder, not long-term storage.
+  retention: 2h
+  serviceAccountName: billing-prometheus
+
+  # Disable all automatic discovery; only the additionalScrapeConfigs job runs.
+  serviceMonitorSelector: {}
+  serviceMonitorNamespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: billing-prometheus
+  podMonitorSelector: {}
+  podMonitorNamespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: billing-prometheus
+  ruleSelector: {}
+  ruleNamespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: billing-prometheus
+
+  additionalScrapeConfigs:
+    name: billing-additional-scrape
+    key: scrape-config.yaml
+
+  remoteWrite:
+    - url: {{ .Values.billing.telemeterUrl | quote }}
+      {{- if eq .Values.billing.authType "oauth2" }}
+      oauth2:
+        clientId:
+          secret:
+            name: {{ .Values.billing.oauth2.credentialsSecretName }}
+            key: client_id
+        clientSecret:
+          name: {{ .Values.billing.oauth2.credentialsSecretName }}
+          key: client_secret
+        tokenUrl: {{ .Values.billing.oauth2.tokenUrl | quote }}
+        scopes:
+          {{- toYaml .Values.billing.oauth2.scopes | nindent 10 }}
+      {{- else }}
+      authorization:
+        type: Bearer
+        credentials:
+          name: {{ .Values.billing.tokenSecretName }}
+          key: {{ .Values.billing.tokenSecretKey }}
+      {{- end }}
+      # Forward only billing metrics — drop everything else before sending.
+      writeRelabelConfigs:
+        - sourceLabels: [__name__]
+          regex: {{ .Values.billing.metricAllowList | join "|" | quote }}
+          action: keep
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+  # No persistent storage needed — short retention, pass-through only.
+  storage: {}
+{{- end }}

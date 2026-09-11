@@ -1,0 +1,8 @@
+apiVersion: v2
+name: billing-prometheus
+description: Minimal Prometheus that federates billing metrics from Thanos and remote-writes to Telemeter
+type: application
+version: 0.1.0
+home: https://github.com/openshift-online/rosa-hyperfleet
+maintainers:
+  - name: ROSA HyperFleet Team

@@ -1,0 +1,8 @@
+{{- if .Values.billing.telemeterUrl }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: billing-prometheus
+  labels:
+    kubernetes.io/metadata.name: billing-prometheus
+{{- end }}
