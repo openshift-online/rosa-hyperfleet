@@ -17,7 +17,7 @@ Ephemeral uses the same driver with a default of **1 RC + 1 MC** and full-enviro
 ## Requirements
 
 - Simpler than Terraform + three-tier CodePipeline; MC reconciler calls the same per-MC apply API.
-- GitOps: [`render.py`](../../scripts/render.py) → git → driver `apply` when Terraform inputs change; ArgoCD syncs workloads from `deploy/`.
+- Infrastructure & Workloads remain configurable via GitOps: [`render.py`](../../scripts/render.py) → git → driver `apply` when Terraform inputs change; ArgoCD syncs workloads from `deploy/`.
 - Shared AWS accounts: multiple environments coexist via `regional_id` / `management_id` naming.
 - Dev/CI parity: full isolated environment in ~30 minutes; FedRAMP unchanged (existing modules).
 - Ephemeral: commit-pinned or on-demand via CLI. Default scale **1 RC + 1 MC**.
