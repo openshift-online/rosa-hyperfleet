@@ -21,6 +21,7 @@ Ephemeral uses the same driver with a default of **1 RC + 1 MC** and full-enviro
 - Shared AWS accounts: multiple environments coexist via `regional_id` / `management_id` naming.
 - Dev/CI parity: full isolated environment in ~30 minutes; FedRAMP unchanged (existing modules).
 - Ephemeral: commit-pinned or on-demand via CLI. Default scale **1 RC + 1 MC**.
+- Streamlined and simplified passing of data between regional and management terraform
 
 ## Alternatives Considered
 
