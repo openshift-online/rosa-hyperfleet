@@ -111,10 +111,12 @@ CLI_REF="${CLI_REF:-main}"
 CLI_REPO="${CLI_REPO:-https://github.com/openshift-online/rosa-hyperfleet-cli.git}"
 ROSA_REPO_URL="${ROSA_REPO_URL:-https://github.com/openshift/rosa}"
 ROSA_REPO_BRANCH="${ROSA_REPO_BRANCH:-hyperfleet-v2}"
+ROSA_LABEL_FILTER="${ROSA_LABEL_FILTER:-}"
+ROSA_TEST_PROFILE="${ROSA_TEST_PROFILE:-rosa-hcp-basic}"
 E2E_SKIP_PLATFORM_API="${E2E_SKIP_PLATFORM_API:-false}"  # Set to "true" to skip
-E2E_SKIP_HCP="${E2E_SKIP_HCP:-false}"  # Set to "true" to skip
 E2E_SKIP_MONITORING="${E2E_SKIP_MONITORING:-false}"  # Set to "true" to skip
-E2E_SKIP_ROSA_CLI="${E2E_SKIP_ROSA_CLI:-true}"  # Default to skip (set to "false" to run)
+E2E_SKIP_ROSA_CLI="${E2E_SKIP_ROSA_CLI:-false}"  # Set to "true" to skip
+E2E_SKIP_ZOA="${E2E_SKIP_ZOA:-false}"  # Set to "true" to skip
 ZOA_REF="${ZOA_REF:-main}"
 ZOA_REPO="${ZOA_REPO:-https://github.com/openshift-online/rosa-hyperfleet-zoa.git}"
 WORK_DIR="$(mktemp -d)"
@@ -191,21 +193,27 @@ fi
 # hcp_rc/monitoring_rc: a zoa failure does NOT stop this script or skip the
 # platform API / HCP / monitoring tests, but DOES fail the overall job.
 zoa_exit=0
-if [[ -n "${ZOA_RC_API_URL:-}" ]] || [[ -n "${ZOA_MC_API_URL:-}" ]]; then
-  if git clone --depth 1 --branch "${ZOA_REF}" "${ZOA_REPO}" "${WORK_DIR}/zoa"; then
-    if [[ "${JOB_TYPE:-}" == "periodic" ]]; then
-      echo "Nightly run — executing full ZOA e2e suite"
-      make -C "${WORK_DIR}/zoa" test-e2e || zoa_exit=$?
+if [[ "${E2E_SKIP_ZOA}" == "true" ]]; then
+  echo ""
+  echo "=== ZOA Tests ==="
+  echo "Skipped (E2E_SKIP_ZOA=${E2E_SKIP_ZOA})"
+else
+  if [[ -n "${ZOA_RC_API_URL:-}" ]] || [[ -n "${ZOA_MC_API_URL:-}" ]]; then
+    if git clone --depth 1 --branch "${ZOA_REF}" "${ZOA_REPO}" "${WORK_DIR}/zoa"; then
+      if [[ "${JOB_TYPE:-}" == "periodic" ]]; then
+        echo "Nightly run — executing full ZOA e2e suite"
+        make -C "${WORK_DIR}/zoa" test-e2e || zoa_exit=$?
+      else
+        make -C "${WORK_DIR}/zoa" test-e2e-smoke || zoa_exit=$?
+      fi
     else
-      make -C "${WORK_DIR}/zoa" test-e2e-smoke || zoa_exit=$?
+      echo "WARNING: failed to clone zoa from ${ZOA_REPO}@${ZOA_REF} — ZOA e2e tests skipped" >&2
+      zoa_exit=1
     fi
   else
-    echo "WARNING: failed to clone zoa from ${ZOA_REPO}@${ZOA_REF} — ZOA e2e tests skipped" >&2
+    echo "ERROR: neither ZOA_RC_API_URL nor ZOA_MC_API_URL resolved — ZOA e2e tests cannot run" >&2
     zoa_exit=1
   fi
-else
-  echo "ERROR: neither ZOA_RC_API_URL nor ZOA_MC_API_URL resolved — ZOA e2e tests cannot run" >&2
-  zoa_exit=1
 fi
 
 # Get regional account ID for CLI tests
@@ -244,6 +252,7 @@ if [[ "$_have_customer_creds" == "true" ]]; then
     CLI_WORK_DIR="$(mktemp -d)"
     trap 'rm -rf "${CLI_WORK_DIR}"; rm -rf "${WORK_DIR}"' EXIT
     cd "${CLI_WORK_DIR}"
+
     git clone --depth 1 --branch "${CLI_REF}" \
       "${CLI_REPO}" "${CLI_WORK_DIR}/cli"
     cd "${CLI_WORK_DIR}/cli"
@@ -273,6 +282,7 @@ if [[ "$_have_customer_creds" == "true" ]]; then
 
     echo "HCP creation test completed for: ${HCP_CLUSTER_NAME}"
   }
+
   if [[ "${E2E_SKIP_HCP}" == "true" ]]; then
     echo ""
     echo "=== HCP Creation Tests ==="
@@ -285,8 +295,9 @@ if [[ "$_have_customer_creds" == "true" ]]; then
     echo ""
     echo "=== ROSA CLI Tests ==="
     echo ""
-    export ROSA_REPO_URL ROSA_REPO_BRANCH
-    make test-e2e-rosa-cli || rosa_cli_rc=$?
+    export ROSA_REPO_URL ROSA_REPO_BRANCH TEST_PROFILE="${ROSA_TEST_PROFILE}"
+    export GOTOOLCHAIN=auto
+    ROSA_LABEL_FILTER="${ROSA_LABEL_FILTER}" make test-e2e-rosa-cli || rosa_cli_rc=$?
   else
     echo ""
     echo "=== ROSA CLI Tests ==="

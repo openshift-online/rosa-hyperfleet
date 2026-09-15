@@ -1142,11 +1142,14 @@ cmd_e2e() {
         -e "CLI_REPO=${CLI_REPO:-}" \
         -e "ROSA_REPO_URL=${ROSA_REPO_URL:-}" \
         -e "ROSA_REPO_BRANCH=${ROSA_REPO_BRANCH:-}" \
+        -e "ROSA_LABEL_FILTER=${ROSA_LABEL_FILTER:-}" \
+        -e "ROSA_TEST_PROFILE=${ROSA_TEST_PROFILE:-}" \
         -e "E2E_SKIP_CLEANUP=${E2E_SKIP_CLEANUP:-}" \
         -e "E2E_SKIP_PLATFORM_API=${E2E_SKIP_PLATFORM_API:-}" \
         -e "E2E_SKIP_HCP=${E2E_SKIP_HCP:-}" \
         -e "E2E_SKIP_MONITORING=${E2E_SKIP_MONITORING:-}" \
         -e "E2E_SKIP_ROSA_CLI=${E2E_SKIP_ROSA_CLI:-}" \
+        -e "E2E_SKIP_ZOA=${E2E_SKIP_ZOA:-}" \
         "$CI_IMAGE" \
         bash ci/e2e-tests.sh
 }
