@@ -21,6 +21,8 @@ spec:
         baseDomain: {{ .Values.baseDomain }}
         oidcS3Bucket: {{ index .Values "hyperfleet" "oidcS3Bucket" }}
         oidcIssuerBaseUrl: {{ index .Values "hyperfleet" "oidcIssuerBaseUrl" }}
+        alertmanager:
+          url: http://monitoring-alertmanager.monitoring.svc:9093
         postgres:
           secretName: {{ .Values.global.postgres_secret_name | default "hyperfleet-db-dsn" }}
           secretKey: {{ .Values.global.postgres_secret_key | default "dsn" }}
