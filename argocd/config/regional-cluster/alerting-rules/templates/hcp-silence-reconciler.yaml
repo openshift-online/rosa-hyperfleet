@@ -1,0 +1,24 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hcp-silence-reconciler
+  namespace: thanos
+  annotations:
+    # Prometheus Operator CRD (installed by the monitoring Application) may not exist yet when ArgoCD dry-runs this resource
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+  labels:
+    app.kubernetes.io/name: alerting-rules
+    app.kubernetes.io/managed-by: Helm
+    operator.thanos.io/prometheus-rule: "true"
+spec:
+  groups:
+    - name: hcp-silence-reconciler
+      rules:
+        - alert: SilenceReconcileErrors
+          expr: increase(hyperfleet_silence_reconcile_errors_total[15m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: HyperFleet silence reconciler errors
+            description: The cluster-silence reconciler failed to reach Alertmanager in the last 15 minutes.
