@@ -1,0 +1,60 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  DNS Pod Identity — external-dns + cert-manager cross-account Route53 access.
+  Equivalent to terraform/modules/dns-pod-identity.
+
+Parameters:
+  ManagementId:
+    Type: String
+    Description: Management cluster identifier
+
+  EksClusterName:
+    Type: String
+    Description: EKS cluster name for pod identity associations
+
+  DnsZoneOperatorRoleArn:
+    Type: String
+    Description: ARN of the RC-side dns-zone-operator IAM role
+
+Resources:
+  DnsOperatorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ManagementId}-dns-operator"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: pods.eks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+              - sts:TagSession
+      Policies:
+        - PolicyName: assume-dns-zone-operator
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: sts:AssumeRole
+                Resource: !Ref DnsZoneOperatorRoleArn
+
+  ExternalDnsAssociation:
+    Type: AWS::EKS::PodIdentityAssociation
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: hypershift
+      ServiceAccount: external-dns
+      RoleArn: !GetAtt DnsOperatorRole.Arn
+
+  CertManagerAssociation:
+    Type: AWS::EKS::PodIdentityAssociation
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: cert-manager
+      ServiceAccount: cert-manager
+      RoleArn: !GetAtt DnsOperatorRole.Arn
+
+Outputs:
+  DnsOperatorRoleArn:
+    Value: !GetAtt DnsOperatorRole.Arn

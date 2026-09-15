@@ -1,0 +1,201 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  HyperShift OIDC — operator, installer, and external-secrets pod identities
+  plus the hypershift config secret.
+  Equivalent to terraform/modules/hypershift-oidc.
+
+Parameters:
+  ManagementId:
+    Type: String
+
+  EksClusterName:
+    Type: String
+
+  OidcBucketName:
+    Type: String
+    Default: ""
+
+  OidcBucketArn:
+    Type: String
+    Default: ""
+
+  OidcBucketRegion:
+    Type: String
+    Default: ""
+
+  OidcWriterRoleArn:
+    Type: String
+    Default: ""
+
+  OidcCloudfrontDomain:
+    Type: String
+    Default: ""
+
+Conditions:
+  HasOidcWriter: !Not [!Equals [!Ref OidcWriterRoleArn, ""]]
+
+Resources:
+  # ===========================================================================
+  # HyperShift Operator
+  # ===========================================================================
+
+  HypershiftOperatorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ManagementId}-hypershift-operator"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: pods.eks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+              - sts:TagSession
+      Policies:
+        - PolicyName: ec2-operations
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:CreateSecurityGroup
+                  - ec2:DeleteSecurityGroup
+                  - ec2:AuthorizeSecurityGroupIngress
+                  - ec2:AuthorizeSecurityGroupEgress
+                  - ec2:RevokeSecurityGroupIngress
+                  - ec2:RevokeSecurityGroupEgress
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeSecurityGroupRules
+                  - ec2:CreateVpcEndpoint
+                  - ec2:DeleteVpcEndpoints
+                  - ec2:DescribeVpcEndpoints
+                  - ec2:ModifyVpcEndpoint
+                  - ec2:DescribeVpcs
+                  - ec2:DescribeSubnets
+                  - ec2:CreateTags
+                  - ec2:DeleteTags
+                  - elasticloadbalancing:DescribeLoadBalancers
+                  - elasticloadbalancing:DescribeTargetGroups
+                Resource: "*"
+
+  HypershiftOperatorAssumeOidcWriter:
+    Type: AWS::IAM::Policy
+    Condition: HasOidcWriter
+    Properties:
+      PolicyName: assume-oidc-writer
+      Roles:
+        - !Ref HypershiftOperatorRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Resource: !Ref OidcWriterRoleArn
+
+  HypershiftOperatorAssociation:
+    Type: AWS::EKS::PodIdentityAssociation
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: hypershift
+      ServiceAccount: operator
+      RoleArn: !GetAtt HypershiftOperatorRole.Arn
+
+  # ===========================================================================
+  # HyperShift Installer
+  # ===========================================================================
+
+  HypershiftInstallerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ManagementId}-hypershift-installer"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: pods.eks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+              - sts:TagSession
+      Policies:
+        - PolicyName: secrets-access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                Resource: !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:hypershift/*"
+
+  HypershiftInstallerAssociation:
+    Type: AWS::EKS::PodIdentityAssociation
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: hypershift-install
+      ServiceAccount: hypershift-installer
+      RoleArn: !GetAtt HypershiftInstallerRole.Arn
+
+  # ===========================================================================
+  # External Secrets Operator
+  # ===========================================================================
+
+  ExternalSecretsOperatorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ManagementId}-external-secrets"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: pods.eks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+              - sts:TagSession
+      Policies:
+        - PolicyName: ssm-read
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:GetParametersByPath
+                Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*"
+
+  ExternalSecretsAssociation:
+    Type: AWS::EKS::PodIdentityAssociation
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: external-secrets
+      ServiceAccount: external-secrets
+      RoleArn: !GetAtt ExternalSecretsOperatorRole.Arn
+
+  # ===========================================================================
+  # HyperShift Config Secret
+  # ===========================================================================
+
+  HypershiftConfigSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "hypershift/${ManagementId}-config"
+      SecretString: !Sub |
+        {
+          "bucket": "${OidcBucketName}",
+          "region": "${OidcBucketRegion}",
+          "issuerUrl": "https://${OidcCloudfrontDomain}",
+          "writerRoleArn": "${OidcWriterRoleArn}"
+        }
+
+Outputs:
+  HypershiftOperatorRoleArn:
+    Value: !GetAtt HypershiftOperatorRole.Arn
+
+  HypershiftInstallerRoleArn:
+    Value: !GetAtt HypershiftInstallerRole.Arn
+
+  ExternalSecretsRoleArn:
+    Value: !GetAtt ExternalSecretsOperatorRole.Arn

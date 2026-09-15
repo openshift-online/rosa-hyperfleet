@@ -1,0 +1,57 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  CloudWatch Exporter (YACE) Pod Identity.
+  Equivalent to terraform/modules/cloudwatch-exporter.
+
+Parameters:
+  ManagementId:
+    Type: String
+
+  EksClusterName:
+    Type: String
+
+Resources:
+  CloudWatchExporterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ManagementId}-cloudwatch-exporter"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: pods.eks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+              - sts:TagSession
+      Policies:
+        - PolicyName: cloudwatch-read
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:GetMetricStatistics
+                  - cloudwatch:ListMetrics
+                  - cloudwatch:DescribeAlarms
+                  - tag:GetResources
+                  - apigateway:GET
+                  - rds:DescribeDBInstances
+                  - rds:DescribeDBClusters
+                  - elasticloadbalancing:DescribeLoadBalancers
+                  - elasticloadbalancing:DescribeTargetGroups
+                  - iam:ListAccountAliases
+                Resource: "*"
+
+  CloudWatchExporterAssociation:
+    Type: AWS::EKS::PodIdentityAssociation
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: monitoring
+      ServiceAccount: yace-cw-exporter
+      RoleArn: !GetAtt CloudWatchExporterRole.Arn
+
+Outputs:
+  CloudWatchExporterRoleArn:
+    Value: !GetAtt CloudWatchExporterRole.Arn

@@ -1,0 +1,50 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Loki Log Forwarder — MC → RC log forwarding via API Gateway.
+  Equivalent to terraform/modules/loki-log-forwarder.
+
+Parameters:
+  ManagementId:
+    Type: String
+
+  EksClusterName:
+    Type: String
+
+  RegionalAwsAccountId:
+    Type: String
+    AllowedPattern: "^[0-9]{12}$"
+
+Resources:
+  LokiForwarderRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ManagementId}-loki-forwarder"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: pods.eks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+              - sts:TagSession
+      Policies:
+        - PolicyName: api-gateway-invoke
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: execute-api:Invoke
+                Resource: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${RegionalAwsAccountId}:*/*/POST/loki/api/v1/push"
+
+  Sigv4ProxyLogsAssociation:
+    Type: AWS::EKS::PodIdentityAssociation
+    Properties:
+      ClusterName: !Ref EksClusterName
+      Namespace: vector
+      ServiceAccount: sigv4-proxy-logs
+      RoleArn: !GetAtt LokiForwarderRole.Arn
+
+Outputs:
+  LokiForwarderRoleArn:
+    Value: !GetAtt LokiForwarderRole.Arn

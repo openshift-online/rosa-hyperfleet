@@ -1,0 +1,482 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Management Cluster VPC — networking foundation.
+  Equivalent to terraform/modules/vpc.
+
+Parameters:
+  ResourceNameBase:
+    Type: String
+    Description: Base name for all resources (e.g., mc01)
+
+  VpcCidr:
+    Type: String
+    Default: "10.0.0.0/16"
+
+  PrivateSubnetCidrs:
+    Type: CommaDelimitedList
+    Default: "10.0.0.0/18,10.0.64.0/18,10.0.128.0/18"
+
+  PublicSubnetCidrs:
+    Type: CommaDelimitedList
+    Default: "10.0.192.0/22,10.0.196.0/22,10.0.200.0/22"
+
+Resources:
+  # ===========================================================================
+  # VPC
+  # ===========================================================================
+
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-vpc"
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-igw"
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  # ===========================================================================
+  # Public Subnets (NAT gateway placement only)
+  # ===========================================================================
+
+  PublicSubnet0:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Select [0, !Ref PublicSubnetCidrs]
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-public-0"
+        - Key: kubernetes.io/role/elb
+          Value: "1"
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Select [1, !Ref PublicSubnetCidrs]
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-public-1"
+        - Key: kubernetes.io/role/elb
+          Value: "1"
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Select [2, !Ref PublicSubnetCidrs]
+      AvailabilityZone: !Select [2, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-public-2"
+        - Key: kubernetes.io/role/elb
+          Value: "1"
+
+  # ===========================================================================
+  # Private Subnets (EKS worker nodes)
+  # ===========================================================================
+
+  PrivateSubnet0:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Select [0, !Ref PrivateSubnetCidrs]
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-private-0"
+        - Key: kubernetes.io/role/internal-elb
+          Value: "1"
+        - Key: !Sub "kubernetes.io/cluster/${ResourceNameBase}"
+          Value: owned
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Select [1, !Ref PrivateSubnetCidrs]
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-private-1"
+        - Key: kubernetes.io/role/internal-elb
+          Value: "1"
+        - Key: !Sub "kubernetes.io/cluster/${ResourceNameBase}"
+          Value: owned
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Select [2, !Ref PrivateSubnetCidrs]
+      AvailabilityZone: !Select [2, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-private-2"
+        - Key: kubernetes.io/role/internal-elb
+          Value: "1"
+        - Key: !Sub "kubernetes.io/cluster/${ResourceNameBase}"
+          Value: owned
+
+  # ===========================================================================
+  # NAT Gateways — one per AZ for HA (FedRAMP requirement)
+  # ===========================================================================
+
+  NatEip0:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-nat-0"
+
+  NatEip1:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-nat-1"
+
+  NatEip2:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-nat-2"
+
+  NatGateway0:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEip0.AllocationId
+      SubnetId: !Ref PublicSubnet0
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-nat-0"
+
+  NatGateway1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEip1.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-nat-1"
+
+  NatGateway2:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEip2.AllocationId
+      SubnetId: !Ref PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-nat-2"
+
+  # ===========================================================================
+  # Route Tables
+  # ===========================================================================
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-public"
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociation0:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet0
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  # Per-AZ private route tables for per-AZ NAT gateway routing
+  PrivateRouteTable0:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-private-0"
+
+  PrivateDefaultRoute0:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable0
+      DestinationCidrBlock: "0.0.0.0/0"
+      NatGatewayId: !Ref NatGateway0
+
+  PrivateSubnetRouteTableAssociation0:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet0
+      RouteTableId: !Ref PrivateRouteTable0
+
+  PrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-private-1"
+
+  PrivateDefaultRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      DestinationCidrBlock: "0.0.0.0/0"
+      NatGatewayId: !Ref NatGateway1
+
+  PrivateSubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable1
+
+  PrivateRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-private-2"
+
+  PrivateDefaultRoute2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      DestinationCidrBlock: "0.0.0.0/0"
+      NatGatewayId: !Ref NatGateway2
+
+  PrivateSubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable2
+
+  # ===========================================================================
+  # Security Groups
+  # ===========================================================================
+
+  EksClusterSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "EKS cluster security group for ${ResourceNameBase}"
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-eks-cluster"
+
+  EksClusterIngressHttps:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EksClusterSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIp: !Ref VpcCidr
+      Description: HTTPS from VPC
+
+  EksClusterEgressHttpsRegistries:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref EksClusterSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIpv4: "0.0.0.0/0"
+      Description: HTTPS to container registries
+
+  EksClusterEgressVpcInternal:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref EksClusterSecurityGroup
+      IpProtocol: "-1"
+      CidrIpv4: !Ref VpcCidr
+      Description: All traffic within VPC
+
+  VpcEndpointsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "VPC endpoints security group for ${ResourceNameBase}"
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-vpc-endpoints"
+
+  VpcEndpointsIngressHttps:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref VpcEndpointsSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIp: !Ref VpcCidr
+      Description: HTTPS from VPC
+
+  # ===========================================================================
+  # VPC Endpoints
+  # ===========================================================================
+
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref PrivateRouteTable0
+        - !Ref PrivateRouteTable1
+        - !Ref PrivateRouteTable2
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-s3"
+
+  EcrApiEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ecr.api"
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet0
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VpcEndpointsSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-ecr-api"
+
+  EcrDkrEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ecr.dkr"
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet0
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VpcEndpointsSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-ecr-dkr"
+
+  StsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.sts"
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet0
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VpcEndpointsSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-sts"
+
+  LogsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.logs"
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet0
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VpcEndpointsSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-logs"
+
+  Ec2Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ec2"
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet0
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VpcEndpointsSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "${ResourceNameBase}-ec2"
+
+Outputs:
+  VpcId:
+    Value: !Ref Vpc
+
+  VpcCidr:
+    Value: !GetAtt Vpc.CidrBlock
+
+  PrivateSubnetIds:
+    Value: !Join
+      - ","
+      - - !Ref PrivateSubnet0
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+
+  PublicSubnetIds:
+    Value: !Join
+      - ","
+      - - !Ref PublicSubnet0
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+
+  EksClusterSecurityGroupId:
+    Value: !Ref EksClusterSecurityGroup
+
+  VpcEndpointsSecurityGroupId:
+    Value: !Ref VpcEndpointsSecurityGroup

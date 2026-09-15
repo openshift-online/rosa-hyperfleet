@@ -1,0 +1,403 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Optional bastion for break-glass/dev access to private EKS.
+  Equivalent to terraform/modules/bastion.
+  Only deployed when EnableBastion=true in the root stack.
+
+Parameters:
+  ClusterId:
+    Type: String
+
+  ClusterName:
+    Type: String
+
+  ClusterEndpoint:
+    Type: String
+
+  ClusterSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+
+  ContainerImage:
+    Type: String
+
+Resources:
+  # ===========================================================================
+  # KMS + CloudWatch Logs
+  # ===========================================================================
+
+  BastionLogsKmsKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub "KMS key for ${ClusterId} bastion CloudWatch logs"
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EnableRootAccess
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+          - Sid: AllowCloudWatchLogs
+            Effect: Allow
+            Principal:
+              Service: !Sub "logs.${AWS::Region}.amazonaws.com"
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: "*"
+
+  BastionLogsKmsAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub "alias/${ClusterId}-bastion-logs"
+      TargetKeyId: !Ref BastionLogsKmsKey
+
+  BastionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DependsOn: BastionLogsKmsKey
+    Properties:
+      LogGroupName: !Sub "/ecs/${ClusterId}-bastion"
+      RetentionInDays: 365
+      KmsKeyId: !GetAtt BastionLogsKmsKey.Arn
+
+  # ===========================================================================
+  # Security Group
+  # ===========================================================================
+
+  BastionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "Bastion SG for ${ClusterId}"
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: "0.0.0.0/0"
+          Description: All outbound
+      Tags:
+        - Key: Name
+          Value: !Sub "${ClusterId}-bastion"
+
+  EksIngressFromBastion:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ClusterSecurityGroupId
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !Ref BastionSecurityGroup
+      Description: HTTPS from bastion
+
+  # ===========================================================================
+  # ECS Cluster (with ECS Exec logging)
+  # ===========================================================================
+
+  BastionEcsCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "${ClusterId}-bastion"
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+      Configuration:
+        ExecuteCommandConfiguration:
+          Logging: OVERRIDE
+          LogConfiguration:
+            CloudWatchLogGroupName: !Ref BastionLogGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "${ClusterId}-bastion"
+
+  # ===========================================================================
+  # IAM — Bastion execution + task roles
+  # ===========================================================================
+
+  BastionExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ClusterId}-bastion-execution"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  BastionTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ClusterId}-bastion-task"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: eks-access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - eks:DescribeCluster
+                  - eks:ListClusters
+                  - eks:AccessKubernetesApi
+                Resource: !Sub "arn:${AWS::Partition}:eks:${AWS::Region}:${AWS::AccountId}:cluster/${ClusterName}"
+        - PolicyName: ssm-exec
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssmmessages:CreateControlChannel
+                  - ssmmessages:CreateDataChannel
+                  - ssmmessages:OpenControlChannel
+                  - ssmmessages:OpenDataChannel
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt BastionLogGroup.Arn
+
+  # EKS Access for bastion
+  BastionAccessEntry:
+    Type: AWS::EKS::AccessEntry
+    Properties:
+      ClusterName: !Ref ClusterName
+      PrincipalArn: !GetAtt BastionTaskRole.Arn
+      Type: STANDARD
+
+  BastionAccessPolicy:
+    Type: AWS::EKS::AccessPolicyAssociation
+    DependsOn: BastionAccessEntry
+    Properties:
+      ClusterName: !Ref ClusterName
+      PrincipalArn: !GetAtt BastionTaskRole.Arn
+      PolicyArn: arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy
+      AccessScope:
+        Type: cluster
+
+  # ===========================================================================
+  # Bastion Task Definition (jumphost with ECS Exec)
+  # ===========================================================================
+
+  BastionTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${ClusterId}-bastion"
+      Cpu: "256"
+      Memory: "512"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt BastionExecutionRole.Arn
+      TaskRoleArn: !GetAtt BastionTaskRole.Arn
+      ContainerDefinitions:
+        - Name: jumphost
+          Image: !Ref ContainerImage
+          Essential: true
+          Command:
+            - sleep
+            - infinity
+          Environment:
+            - Name: CLUSTER_NAME
+              Value: !Ref ClusterName
+            - Name: CLUSTER_ENDPOINT
+              Value: !Ref ClusterEndpoint
+            - Name: AWS_REGION
+              Value: !Ref "AWS::Region"
+          LinuxParameters:
+            InitProcessEnabled: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref BastionLogGroup
+              awslogs-region: !Ref "AWS::Region"
+              awslogs-stream-prefix: bastion
+
+  # ===========================================================================
+  # Log Collector Task Definition (oc adm inspect → S3)
+  # ===========================================================================
+  #
+  # NOTE: The TF module also has a log-collector IAM role + EKS access entry
+  # with AdminViewPolicy. Omitted here for brevity — same pattern as above.
+
+  LogCollectorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ClusterId}-log-collector"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: eks-access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - eks:DescribeCluster
+                  - eks:ListClusters
+                  - eks:AccessKubernetesApi
+                Resource: !Sub "arn:${AWS::Partition}:eks:${AWS::Region}:${AWS::AccountId}:cluster/${ClusterName}"
+        - PolicyName: s3-upload
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub "arn:${AWS::Partition}:s3:::${ClusterId}-logs/*"
+
+  LogCollectorAccessEntry:
+    Type: AWS::EKS::AccessEntry
+    Properties:
+      ClusterName: !Ref ClusterName
+      PrincipalArn: !GetAtt LogCollectorRole.Arn
+      Type: STANDARD
+
+  LogCollectorAccessPolicy:
+    Type: AWS::EKS::AccessPolicyAssociation
+    DependsOn: LogCollectorAccessEntry
+    Properties:
+      ClusterName: !Ref ClusterName
+      PrincipalArn: !GetAtt LogCollectorRole.Arn
+      PolicyArn: arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminViewPolicy
+      AccessScope:
+        Type: cluster
+
+  LogCollectorTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${ClusterId}-log-collector"
+      Cpu: "256"
+      Memory: "512"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt BastionExecutionRole.Arn
+      TaskRoleArn: !GetAtt LogCollectorRole.Arn
+      ContainerDefinitions:
+        - Name: log-collector
+          Image: !Ref ContainerImage
+          Essential: true
+          Command:
+            - /bin/bash
+            - -c
+            - /scripts/collect-logs.sh
+          Environment:
+            - Name: CLUSTER_NAME
+              Value: !Ref ClusterName
+            - Name: AWS_REGION
+              Value: !Ref "AWS::Region"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref BastionLogGroup
+              awslogs-region: !Ref "AWS::Region"
+              awslogs-stream-prefix: log-collector
+
+  # ===========================================================================
+  # Custom Resource: Stop all bastion ECS tasks on stack deletion
+  #
+  # Replaces TF's null_resource.stop_bastion_tasks destroy-time provisioner.
+  # CF has no native destroy-time hook, so we need a Lambda-backed Custom
+  # Resource. The Lambda is invoked on Create (no-op) and Delete (stops tasks).
+  #
+  # This is the kind of glue CF requires that TF handles in one line:
+  #   provisioner "local-exec" { when = destroy; command = "aws ecs ..." }
+  # ===========================================================================
+
+  StopTasksLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ClusterId}-bastion-stop-tasks-lambda"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ecs-stop-tasks
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:ListTasks
+                  - ecs:StopTask
+                Resource: "*"
+                Condition:
+                  ArnEquals:
+                    "ecs:cluster": !GetAtt BastionEcsCluster.Arn
+
+  StopTasksLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ClusterId}-bastion-stop-tasks"
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 60
+      Role: !GetAtt StopTasksLambdaRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+
+          def handler(event, context):
+              if event["RequestType"] == "Delete":
+                  ecs = boto3.client("ecs")
+                  cluster = event["ResourceProperties"]["EcsClusterName"]
+                  try:
+                      tasks = ecs.list_tasks(cluster=cluster)["taskArns"]
+                      for task_arn in tasks:
+                          ecs.stop_task(
+                              cluster=cluster,
+                              task=task_arn,
+                              reason="Stack deletion — stopping bastion tasks",
+                          )
+                  except Exception as e:
+                      print(f"Error stopping tasks: {e}")
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+
+  StopTasksOnDelete:
+    Type: Custom::StopBastionTasks
+    DependsOn:
+      - BastionEcsCluster
+      - StopTasksLambda
+    Properties:
+      ServiceToken: !GetAtt StopTasksLambda.Arn
+      EcsClusterName: !Ref BastionEcsCluster
+
+Outputs:
+  BastionEcsClusterName:
+    Value: !Ref BastionEcsCluster
+
+  BastionLogGroupName:
+    Value: !Ref BastionLogGroup
+
+  LogCollectorTaskFamily:
+    Value: !Sub "${ClusterId}-log-collector"

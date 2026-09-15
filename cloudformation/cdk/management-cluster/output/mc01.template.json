@@ -1,0 +1,3017 @@
+{
+ "Resources": {
+  "VpcC3027511": {
+   "Type": "AWS::EC2::VPC",
+   "Properties": {
+    "CidrBlock": "10.0.0.0/16",
+    "EnableDnsHostnames": true,
+    "EnableDnsSupport": true,
+    "InstanceTenancy": "default",
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "mc01-vpc"
+     }
+    ]
+   }
+  },
+  "VpcprivateSubnet1Subnet39076CCE": {
+   "Type": "AWS::EC2::Subnet",
+   "Properties": {
+    "AvailabilityZone": {
+     "Fn::Select": [
+      0,
+      {
+       "Fn::GetAZs": ""
+      }
+     ]
+    },
+    "CidrBlock": "10.0.0.0/18",
+    "MapPublicIpOnLaunch": false,
+    "Tags": [
+     {
+      "Key": "aws-cdk:subnet-name",
+      "Value": "private"
+     },
+     {
+      "Key": "aws-cdk:subnet-type",
+      "Value": "Private"
+     },
+     {
+      "Key": "kubernetes.io/cluster/mc01",
+      "Value": "owned"
+     },
+     {
+      "Key": "kubernetes.io/role/internal-elb",
+      "Value": "1"
+     },
+     {
+      "Key": "Name",
+      "Value": "mc01/Vpc/Vpc/privateSubnet1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "VpcC3027511"
+    }
+   }
+  },
+  "VpcprivateSubnet1RouteTable78030C4E": {
+   "Type": "AWS::EC2::RouteTable",
+   "Properties": {
+    "Tags": [
+     {
+      "Key": "kubernetes.io/cluster/mc01",
+      "Value": "owned"
+     },
+     {
+      "Key": "kubernetes.io/role/internal-elb",
+      "Value": "1"
+     },
+     {
+      "Key": "Name",
+      "Value": "mc01/Vpc/Vpc/privateSubnet1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "VpcC3027511"
+    }
+   }
+  },
+  "VpcprivateSubnet1RouteTableAssociation529FC3D2": {
+   "Type": "AWS::EC2::SubnetRouteTableAssociation",
+   "Properties": {
+    "RouteTableId": {
+     "Ref": "VpcprivateSubnet1RouteTable78030C4E"
+    },
+    "SubnetId": {
+     "Ref": "VpcprivateSubnet1Subnet39076CCE"
+    }
+   }
+  },
+  "VpcprivateSubnet1DefaultRoute3D819D0C": {
+   "Type": "AWS::EC2::Route",
+   "Properties": {
+    "DestinationCidrBlock": "0.0.0.0/0",
+    "NatGatewayId": {
+     "Ref": "VpcpublicSubnet1NATGateway62A15D44"
+    },
+    "RouteTableId": {
+     "Ref": "VpcprivateSubnet1RouteTable78030C4E"
+    }
+   }
+  },
+  "VpcprivateSubnet2SubnetE3A144B4": {
+   "Type": "AWS::EC2::Subnet",
+   "Properties": {
+    "AvailabilityZone": {
+     "Fn::Select": [
+      1,
+      {
+       "Fn::GetAZs": ""
+      }
+     ]
+    },
+    "CidrBlock": "10.0.64.0/18",
+    "MapPublicIpOnLaunch": false,
+    "Tags": [
+     {
+      "Key": "aws-cdk:subnet-name",
+      "Value": "private"
+     },
+     {
+      "Key": "aws-cdk:subnet-type",
+      "Value": "Private"
+     },
+     {
+      "Key": "kubernetes.io/cluster/mc01",
+      "Value": "owned"
+     },
+     {
+      "Key": "kubernetes.io/role/internal-elb",
+      "Value": "1"
+     },
+     {
+      "Key": "Name",
+      "Value": "mc01/Vpc/Vpc/privateSubnet2"
+     }
+    ],
+    "VpcId": {
+     "Ref": "VpcC3027511"
+    }
+   }
+  },
+  "VpcprivateSubnet2RouteTable177870AC": {
+   "Type": "AWS::EC2::RouteTable",
+   "Properties": {
+    "Tags": [
+     {
+      "Key": "kubernetes.io/cluster/mc01",
+      "Value": "owned"
+     },
+     {
+      "Key": "kubernetes.io/role/internal-elb",
+      "Value": "1"
+     },
+     {
+      "Key": "Name",
+      "Value": "mc01/Vpc/Vpc/privateSubnet2"
+     }
+    ],
+    "VpcId": {
+     "Ref": "VpcC3027511"
+    }
+   }
+  },
+  "VpcprivateSubnet2RouteTableAssociationAC3668FA": {
+   "Type": "AWS::EC2::SubnetRouteTableAssociation",
+   "Properties": {
+    "RouteTableId": {
+     "Ref": "VpcprivateSubnet2RouteTable177870AC"
+    },
+    "SubnetId": {
+     "Ref": "VpcprivateSubnet2SubnetE3A144B4"
+    }
+   }
+  },
+  "VpcprivateSubnet2DefaultRouteA70CEFF5": {
+   "Type": "AWS::EC2::Route",
+   "Properties": {
+    "DestinationCidrBlock": "0.0.0.0/0",
+    "NatGatewayId": {
+     "Ref": "VpcpublicSubnet2NATGateway217E0AD7"
+    },
+    "RouteTableId": {
+     "Ref": "VpcprivateSubnet2RouteTable177870AC"
+    }
+   }
+  },
+  "VpcpublicSubnet1Subnet36FCEC5D": {
+   "Type": "AWS::EC2::Subnet",
+   "Properties": {
+    "AvailabilityZone": {
+     "Fn::Select": [
+      0,
+      {
+       "Fn::GetAZs": ""
+      }
+     ]
+    },
+    "CidrBlock": "10.0.128.0/22",
+    "MapPublicIpOnLaunch": true,
+    "Tags": [
+     {
+      "Key": "aws-cdk:subnet-name",
+      "Value": "public"
+     },
+     {
+      "Key": "aws-cdk:subnet-type",
+      "Value": "Public"
+     },
+     {
+      "Key": "Name",
+      "Value": "mc01/Vpc/Vpc/publicSubnet1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "VpcC3027511"
+    }
+   }
+  },
+  "VpcpublicSubnet1RouteTable0E5CB5C9": {
+   "Type": "AWS::EC2::RouteTable",
+   "Properties": {
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "mc01/Vpc/Vpc/publicSubnet1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "VpcC3027511"
+    }
+   }
+  },
+  "VpcpublicSubnet1RouteTableAssociation126214E6": {
+   "Type": "AWS::EC2::SubnetRouteTableAssociation",
+   "Properties": {
+    "RouteTableId": {
+     "Ref": "VpcpublicSubnet1RouteTable0E5CB5C9"
+    },
+    "SubnetId": {
+     "Ref": "VpcpublicSubnet1Subnet36FCEC5D"
+    }
+   }
+  },
+  "VpcpublicSubnet1DefaultRouteF59B28E1": {
+   "Type": "AWS::EC2::Route",
+   "Properties": {
+    "DestinationCidrBlock": "0.0.0.0/0",
+    "GatewayId": {
+     "Ref": "VpcIGW488B0FEB"
+    },
+    "RouteTableId": {
+     "Ref": "VpcpublicSubnet1RouteTable0E5CB5C9"
+    }
+   },
+   "DependsOn": [
+    "VpcVPCGW42EC8516"
+   ]
+  },
+  "VpcpublicSubnet1EIPDF76CDD2": {
+   "Type": "AWS::EC2::EIP",
+   "Properties": {
+    "Domain": "vpc",
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "mc01/Vpc/Vpc/publicSubnet1"
+     }
+    ]
+   }
+  },
+  "VpcpublicSubnet1NATGateway62A15D44": {
+   "Type": "AWS::EC2::NatGateway",
+   "Properties": {
+    "AllocationId": {
+     "Fn::GetAtt": [
+      "VpcpublicSubnet1EIPDF76CDD2",
+      "AllocationId"
+     ]
+    },
+    "SubnetId": {
+     "Ref": "VpcpublicSubnet1Subnet36FCEC5D"
+    },
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "mc01/Vpc/Vpc/publicSubnet1"
+     }
+    ]
+   },
+   "DependsOn": [
+    "VpcpublicSubnet1DefaultRouteF59B28E1",
+    "VpcpublicSubnet1RouteTableAssociation126214E6"
+   ]
+  },
+  "VpcpublicSubnet2Subnet624BAAE1": {
+   "Type": "AWS::EC2::Subnet",
+   "Properties": {
+    "AvailabilityZone": {
+     "Fn::Select": [
+      1,
+      {
+       "Fn::GetAZs": ""
+      }
+     ]
+    },
+    "CidrBlock": "10.0.132.0/22",
+    "MapPublicIpOnLaunch": true,
+    "Tags": [
+     {
+      "Key": "aws-cdk:subnet-name",
+      "Value": "public"
+     },
+     {
+      "Key": "aws-cdk:subnet-type",
+      "Value": "Public"
+     },
+     {
+      "Key": "Name",
+      "Value": "mc01/Vpc/Vpc/publicSubnet2"
+     }
+    ],
+    "VpcId": {
+     "Ref": "VpcC3027511"
+    }
+   }
+  },
+  "VpcpublicSubnet2RouteTable28B3D16A": {
+   "Type": "AWS::EC2::RouteTable",
+   "Properties": {
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "mc01/Vpc/Vpc/publicSubnet2"
+     }
+    ],
+    "VpcId": {
+     "Ref": "VpcC3027511"
+    }
+   }
+  },
+  "VpcpublicSubnet2RouteTableAssociationBE73DA60": {
+   "Type": "AWS::EC2::SubnetRouteTableAssociation",
+   "Properties": {
+    "RouteTableId": {
+     "Ref": "VpcpublicSubnet2RouteTable28B3D16A"
+    },
+    "SubnetId": {
+     "Ref": "VpcpublicSubnet2Subnet624BAAE1"
+    }
+   }
+  },
+  "VpcpublicSubnet2DefaultRoute9259F716": {
+   "Type": "AWS::EC2::Route",
+   "Properties": {
+    "DestinationCidrBlock": "0.0.0.0/0",
+    "GatewayId": {
+     "Ref": "VpcIGW488B0FEB"
+    },
+    "RouteTableId": {
+     "Ref": "VpcpublicSubnet2RouteTable28B3D16A"
+    }
+   },
+   "DependsOn": [
+    "VpcVPCGW42EC8516"
+   ]
+  },
+  "VpcpublicSubnet2EIP107799F4": {
+   "Type": "AWS::EC2::EIP",
+   "Properties": {
+    "Domain": "vpc",
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "mc01/Vpc/Vpc/publicSubnet2"
+     }
+    ]
+   }
+  },
+  "VpcpublicSubnet2NATGateway217E0AD7": {
+   "Type": "AWS::EC2::NatGateway",
+   "Properties": {
+    "AllocationId": {
+     "Fn::GetAtt": [
+      "VpcpublicSubnet2EIP107799F4",
+      "AllocationId"
+     ]
+    },
+    "SubnetId": {
+     "Ref": "VpcpublicSubnet2Subnet624BAAE1"
+    },
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "mc01/Vpc/Vpc/publicSubnet2"
+     }
+    ]
+   },
+   "DependsOn": [
+    "VpcpublicSubnet2DefaultRoute9259F716",
+    "VpcpublicSubnet2RouteTableAssociationBE73DA60"
+   ]
+  },
+  "VpcIGW488B0FEB": {
+   "Type": "AWS::EC2::InternetGateway",
+   "Properties": {
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "mc01-vpc"
+     }
+    ]
+   }
+  },
+  "VpcVPCGW42EC8516": {
+   "Type": "AWS::EC2::VPCGatewayAttachment",
+   "Properties": {
+    "InternetGatewayId": {
+     "Ref": "VpcIGW488B0FEB"
+    },
+    "VpcId": {
+     "Ref": "VpcC3027511"
+    }
+   }
+  },
+  "VpcS3Endpoint4A6BE1FA": {
+   "Type": "AWS::EC2::VPCEndpoint",
+   "Properties": {
+    "RouteTableIds": [
+     {
+      "Ref": "VpcprivateSubnet1RouteTable78030C4E"
+     },
+     {
+      "Ref": "VpcprivateSubnet2RouteTable177870AC"
+     },
+     {
+      "Ref": "VpcpublicSubnet1RouteTable0E5CB5C9"
+     },
+     {
+      "Ref": "VpcpublicSubnet2RouteTable28B3D16A"
+     }
+    ],
+    "ServiceName": {
+     "Fn::Join": [
+      "",
+      [
+       "com.amazonaws.",
+       {
+        "Ref": "AWS::Region"
+       },
+       ".s3"
+      ]
+     ]
+    },
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "mc01-vpc"
+     }
+    ],
+    "VpcEndpointType": "Gateway",
+    "VpcId": {
+     "Ref": "VpcC3027511"
+    }
+   }
+  },
+  "VpcEcrApi415A8DC8": {
+   "Type": "AWS::EC2::VPCEndpoint",
+   "Properties": {
+    "PrivateDnsEnabled": true,
+    "SecurityGroupIds": [
+     {
+      "Fn::GetAtt": [
+       "VpcVpcEndpointsSGAE66B0EA",
+       "GroupId"
+      ]
+     }
+    ],
+    "ServiceName": "com.amazonaws.us-east-1.ecr.api",
+    "SubnetIds": [
+     {
+      "Ref": "VpcprivateSubnet1Subnet39076CCE"
+     },
+     {
+      "Ref": "VpcprivateSubnet2SubnetE3A144B4"
+     }
+    ],
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "mc01-vpc"
+     }
+    ],
+    "VpcEndpointType": "Interface",
+    "VpcId": {
+     "Ref": "VpcC3027511"
+    }
+   }
+  },
+  "VpcEcrDkr467D39FC": {
+   "Type": "AWS::EC2::VPCEndpoint",
+   "Properties": {
+    "PrivateDnsEnabled": true,
+    "SecurityGroupIds": [
+     {
+      "Fn::GetAtt": [
+       "VpcVpcEndpointsSGAE66B0EA",
+       "GroupId"
+      ]
+     }
+    ],
+    "ServiceName": "com.amazonaws.us-east-1.ecr.dkr",
+    "SubnetIds": [
+     {
+      "Ref": "VpcprivateSubnet1Subnet39076CCE"
+     },
+     {
+      "Ref": "VpcprivateSubnet2SubnetE3A144B4"
+     }
+    ],
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "mc01-vpc"
+     }
+    ],
+    "VpcEndpointType": "Interface",
+    "VpcId": {
+     "Ref": "VpcC3027511"
+    }
+   }
+  },
+  "VpcSts1FF9F164": {
+   "Type": "AWS::EC2::VPCEndpoint",
+   "Properties": {
+    "PrivateDnsEnabled": true,
+    "SecurityGroupIds": [
+     {
+      "Fn::GetAtt": [
+       "VpcVpcEndpointsSGAE66B0EA",
+       "GroupId"
+      ]
+     }
+    ],
+    "ServiceName": "com.amazonaws.us-east-1.sts",
+    "SubnetIds": [
+     {
+      "Ref": "VpcprivateSubnet1Subnet39076CCE"
+     },
+     {
+      "Ref": "VpcprivateSubnet2SubnetE3A144B4"
+     }
+    ],
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "mc01-vpc"
+     }
+    ],
+    "VpcEndpointType": "Interface",
+    "VpcId": {
+     "Ref": "VpcC3027511"
+    }
+   }
+  },
+  "VpcLogsBC230C9C": {
+   "Type": "AWS::EC2::VPCEndpoint",
+   "Properties": {
+    "PrivateDnsEnabled": true,
+    "SecurityGroupIds": [
+     {
+      "Fn::GetAtt": [
+       "VpcVpcEndpointsSGAE66B0EA",
+       "GroupId"
+      ]
+     }
+    ],
+    "ServiceName": "com.amazonaws.us-east-1.logs",
+    "SubnetIds": [
+     {
+      "Ref": "VpcprivateSubnet1Subnet39076CCE"
+     },
+     {
+      "Ref": "VpcprivateSubnet2SubnetE3A144B4"
+     }
+    ],
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "mc01-vpc"
+     }
+    ],
+    "VpcEndpointType": "Interface",
+    "VpcId": {
+     "Ref": "VpcC3027511"
+    }
+   }
+  },
+  "VpcEc2B778774C": {
+   "Type": "AWS::EC2::VPCEndpoint",
+   "Properties": {
+    "PrivateDnsEnabled": true,
+    "SecurityGroupIds": [
+     {
+      "Fn::GetAtt": [
+       "VpcVpcEndpointsSGAE66B0EA",
+       "GroupId"
+      ]
+     }
+    ],
+    "ServiceName": "com.amazonaws.us-east-1.ec2",
+    "SubnetIds": [
+     {
+      "Ref": "VpcprivateSubnet1Subnet39076CCE"
+     },
+     {
+      "Ref": "VpcprivateSubnet2SubnetE3A144B4"
+     }
+    ],
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "mc01-vpc"
+     }
+    ],
+    "VpcEndpointType": "Interface",
+    "VpcId": {
+     "Ref": "VpcC3027511"
+    }
+   }
+  },
+  "VpcEksClusterSGDFB260E0": {
+   "Type": "AWS::EC2::SecurityGroup",
+   "Properties": {
+    "GroupDescription": "EKS cluster security group",
+    "GroupName": "mc01-eks-cluster",
+    "SecurityGroupEgress": [
+     {
+      "CidrIp": "0.0.0.0/0",
+      "Description": "HTTPS to container registries",
+      "FromPort": 443,
+      "IpProtocol": "tcp",
+      "ToPort": 443
+     },
+     {
+      "CidrIp": {
+       "Fn::GetAtt": [
+        "VpcC3027511",
+        "CidrBlock"
+       ]
+      },
+      "Description": "All traffic within VPC",
+      "IpProtocol": "-1"
+     }
+    ],
+    "SecurityGroupIngress": [
+     {
+      "CidrIp": {
+       "Fn::GetAtt": [
+        "VpcC3027511",
+        "CidrBlock"
+       ]
+      },
+      "Description": "HTTPS from VPC",
+      "FromPort": 443,
+      "IpProtocol": "tcp",
+      "ToPort": 443
+     }
+    ],
+    "VpcId": {
+     "Ref": "VpcC3027511"
+    }
+   }
+  },
+  "VpcEksClusterSGfrommc01EcsBootstrapBootstrapSG7F7C384E443B7916487": {
+   "Type": "AWS::EC2::SecurityGroupIngress",
+   "Properties": {
+    "Description": "HTTPS from bootstrap task",
+    "FromPort": 443,
+    "GroupId": {
+     "Fn::GetAtt": [
+      "VpcEksClusterSGDFB260E0",
+      "GroupId"
+     ]
+    },
+    "IpProtocol": "tcp",
+    "SourceSecurityGroupId": {
+     "Fn::GetAtt": [
+      "EcsBootstrapBootstrapSG48C342E4",
+      "GroupId"
+     ]
+    },
+    "ToPort": 443
+   }
+  },
+  "VpcEksClusterSGfrommc01BastionBastionSGD31FE5DD4430C62AAD1": {
+   "Type": "AWS::EC2::SecurityGroupIngress",
+   "Properties": {
+    "Description": "HTTPS from bastion",
+    "FromPort": 443,
+    "GroupId": {
+     "Fn::GetAtt": [
+      "VpcEksClusterSGDFB260E0",
+      "GroupId"
+     ]
+    },
+    "IpProtocol": "tcp",
+    "SourceSecurityGroupId": {
+     "Fn::GetAtt": [
+      "BastionBastionSG54F5CE55",
+      "GroupId"
+     ]
+    },
+    "ToPort": 443
+   }
+  },
+  "VpcVpcEndpointsSGAE66B0EA": {
+   "Type": "AWS::EC2::SecurityGroup",
+   "Properties": {
+    "GroupDescription": "VPC endpoints security group",
+    "GroupName": "mc01-vpc-endpoints",
+    "SecurityGroupEgress": [
+     {
+      "CidrIp": "0.0.0.0/0",
+      "Description": "Allow all outbound traffic by default",
+      "IpProtocol": "-1"
+     }
+    ],
+    "SecurityGroupIngress": [
+     {
+      "CidrIp": {
+       "Fn::GetAtt": [
+        "VpcC3027511",
+        "CidrBlock"
+       ]
+      },
+      "Description": "HTTPS from VPC",
+      "FromPort": 443,
+      "IpProtocol": "tcp",
+      "ToPort": 443
+     }
+    ],
+    "VpcId": {
+     "Ref": "VpcC3027511"
+    }
+   }
+  },
+  "EksClusterCwLogsKey5852C788": {
+   "Type": "AWS::KMS::Key",
+   "Properties": {
+    "Description": "KMS key for EKS cluster CloudWatch log group encryption (FedRAMP AU-09)",
+    "EnableKeyRotation": true,
+    "KeyPolicy": {
+     "Statement": [
+      {
+       "Action": "kms:*",
+       "Effect": "Allow",
+       "Principal": {
+        "AWS": {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":iam::",
+           {
+            "Ref": "AWS::AccountId"
+           },
+           ":root"
+          ]
+         ]
+        }
+       },
+       "Resource": "*"
+      },
+      {
+       "Action": [
+        "kms:Decrypt",
+        "kms:Encrypt",
+        "kms:ReEncrypt*",
+        "kms:GenerateDataKey*"
+       ],
+       "Effect": "Allow",
+       "Principal": {
+        "Service": {
+         "Fn::Join": [
+          "",
+          [
+           "logs.",
+           {
+            "Ref": "AWS::Region"
+           },
+           ".amazonaws.com"
+          ]
+         ]
+        }
+       },
+       "Resource": "*"
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PendingWindowInDays": 30
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain"
+  },
+  "EksClusterCwLogsKeyAlias0EA65C9D": {
+   "Type": "AWS::KMS::Alias",
+   "Properties": {
+    "AliasName": "alias/mc01-cloudwatch-logs",
+    "TargetKeyId": {
+     "Fn::GetAtt": [
+      "EksClusterCwLogsKey5852C788",
+      "Arn"
+     ]
+    }
+   }
+  },
+  "EksClusterEksLogGroup38BE2845": {
+   "Type": "AWS::Logs::LogGroup",
+   "Properties": {
+    "KmsKeyId": {
+     "Fn::GetAtt": [
+      "EksClusterCwLogsKey5852C788",
+      "Arn"
+     ]
+    },
+    "LogGroupName": "/aws/eks/mc01/cluster",
+    "RetentionInDays": 365
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain"
+  },
+  "EksClusterSecretsKeyD8A5E216": {
+   "Type": "AWS::KMS::Key",
+   "Properties": {
+    "Description": "KMS key for EKS cluster secrets encryption",
+    "EnableKeyRotation": true,
+    "KeyPolicy": {
+     "Statement": [
+      {
+       "Action": "kms:*",
+       "Effect": "Allow",
+       "Principal": {
+        "AWS": {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":iam::",
+           {
+            "Ref": "AWS::AccountId"
+           },
+           ":root"
+          ]
+         ]
+        }
+       },
+       "Resource": "*"
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PendingWindowInDays": 7
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain"
+  },
+  "EksClusterSecretsKeyAliasFE0B826A": {
+   "Type": "AWS::KMS::Alias",
+   "Properties": {
+    "AliasName": "alias/mc01-eks-secrets",
+    "TargetKeyId": {
+     "Fn::GetAtt": [
+      "EksClusterSecretsKeyD8A5E216",
+      "Arn"
+     ]
+    }
+   }
+  },
+  "EksClusterClusterRoleBDBF4439": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "eks.amazonaws.com"
+       }
+      },
+      {
+       "Action": "sts:TagSession",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "eks.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/AmazonEKSClusterPolicy"
+       ]
+      ]
+     },
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/AmazonEKSComputePolicy"
+       ]
+      ]
+     },
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/AmazonEKSBlockStoragePolicy"
+       ]
+      ]
+     },
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/AmazonEKSLoadBalancingPolicy"
+       ]
+      ]
+     },
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/AmazonEKSNetworkingPolicy"
+       ]
+      ]
+     }
+    ],
+    "RoleName": "mc01-cluster-role"
+   }
+  },
+  "EksClusterClusterRoleDefaultPolicy06981BB4": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "kms:Decrypt",
+        "kms:Encrypt",
+        "kms:ReEncrypt*",
+        "kms:GenerateDataKey*"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EksClusterSecretsKeyD8A5E216",
+         "Arn"
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "EksClusterClusterRoleDefaultPolicy06981BB4",
+    "Roles": [
+     {
+      "Ref": "EksClusterClusterRoleBDBF4439"
+     }
+    ]
+   }
+  },
+  "EksClusterAutoNodeRole16B1882E": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "ec2.amazonaws.com"
+       }
+      },
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "eks.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/AmazonEKSWorkerNodeMinimalPolicy"
+       ]
+      ]
+     },
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/AmazonEC2ContainerRegistryPullOnly"
+       ]
+      ]
+     }
+    ],
+    "RoleName": "mc01-auto-node-role"
+   }
+  },
+  "EksCluster2DA9749A": {
+   "Type": "AWS::EKS::Cluster",
+   "Properties": {
+    "AccessConfig": {
+     "AuthenticationMode": "API_AND_CONFIG_MAP"
+    },
+    "BootstrapSelfManagedAddons": false,
+    "ComputeConfig": {
+     "Enabled": true,
+     "NodePools": [
+      "system"
+     ],
+     "NodeRoleArn": {
+      "Fn::GetAtt": [
+       "EksClusterAutoNodeRole16B1882E",
+       "Arn"
+      ]
+     }
+    },
+    "EncryptionConfig": [
+     {
+      "Provider": {
+       "KeyArn": {
+        "Fn::GetAtt": [
+         "EksClusterSecretsKeyD8A5E216",
+         "Arn"
+        ]
+       }
+      },
+      "Resources": [
+       "secrets"
+      ]
+     }
+    ],
+    "KubernetesNetworkConfig": {
+     "ElasticLoadBalancing": {
+      "Enabled": true
+     }
+    },
+    "Logging": {
+     "ClusterLogging": {
+      "EnabledTypes": [
+       {
+        "Type": "api"
+       },
+       {
+        "Type": "audit"
+       },
+       {
+        "Type": "authenticator"
+       },
+       {
+        "Type": "controllerManager"
+       },
+       {
+        "Type": "scheduler"
+       }
+      ]
+     }
+    },
+    "Name": "mc01",
+    "ResourcesVpcConfig": {
+     "EndpointPrivateAccess": true,
+     "EndpointPublicAccess": false,
+     "SecurityGroupIds": [
+      {
+       "Fn::GetAtt": [
+        "VpcEksClusterSGDFB260E0",
+        "GroupId"
+       ]
+      }
+     ],
+     "SubnetIds": [
+      {
+       "Ref": "VpcprivateSubnet1Subnet39076CCE"
+      },
+      {
+       "Ref": "VpcprivateSubnet2SubnetE3A144B4"
+      }
+     ]
+    },
+    "RoleArn": {
+     "Fn::GetAtt": [
+      "EksClusterClusterRoleBDBF4439",
+      "Arn"
+     ]
+    },
+    "StorageConfig": {
+     "BlockStorage": {
+      "Enabled": true
+     }
+    },
+    "Version": "1.34"
+   }
+  },
+  "EksClusterAddoncoredns74F2480F": {
+   "Type": "AWS::EKS::Addon",
+   "Properties": {
+    "AddonName": "coredns",
+    "ClusterName": "mc01"
+   }
+  },
+  "EksClusterAddonmetricsserver86C80356": {
+   "Type": "AWS::EKS::Addon",
+   "Properties": {
+    "AddonName": "metrics-server",
+    "ClusterName": "mc01"
+   }
+  },
+  "EksClusterAddonekspodidentityagentA9655BE2": {
+   "Type": "AWS::EKS::Addon",
+   "Properties": {
+    "AddonName": "eks-pod-identity-agent",
+    "ClusterName": "mc01"
+   }
+  },
+  "EksClusterAddonawssecretsstorecsidriverproviderF894EE61": {
+   "Type": "AWS::EKS::Addon",
+   "Properties": {
+    "AddonName": "aws-secrets-store-csi-driver-provider",
+    "ClusterName": "mc01",
+    "ConfigurationValues": "{\"secrets-store-csi-driver\":{\"syncSecret\":{\"enabled\":true}}}"
+   }
+  },
+  "EcsBootstrapClusterB164C471": {
+   "Type": "AWS::ECS::Cluster",
+   "Properties": {
+    "ClusterName": "mc01-bootstrap",
+    "ClusterSettings": [
+     {
+      "Name": "containerInsights",
+      "Value": "enabled"
+     }
+    ]
+   }
+  },
+  "EcsBootstrapLogsKey1275B7DD": {
+   "Type": "AWS::KMS::Key",
+   "Properties": {
+    "Description": "KMS key for mc01 bootstrap CloudWatch logs",
+    "EnableKeyRotation": true,
+    "KeyPolicy": {
+     "Statement": [
+      {
+       "Action": "kms:*",
+       "Effect": "Allow",
+       "Principal": {
+        "AWS": {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":iam::",
+           {
+            "Ref": "AWS::AccountId"
+           },
+           ":root"
+          ]
+         ]
+        }
+       },
+       "Resource": "*"
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain"
+  },
+  "EcsBootstrapLogGroupAEFACCCC": {
+   "Type": "AWS::Logs::LogGroup",
+   "Properties": {
+    "KmsKeyId": {
+     "Fn::GetAtt": [
+      "EcsBootstrapLogsKey1275B7DD",
+      "Arn"
+     ]
+    },
+    "LogGroupName": "/ecs/mc01-bootstrap",
+    "RetentionInDays": 365
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain"
+  },
+  "EcsBootstrapTaskRoleC5B33B52": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "ecs-tasks.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "RoleName": "mc01-bootstrap-task"
+   }
+  },
+  "EcsBootstrapTaskRoleDefaultPolicy463EDD93": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "eks:DescribeCluster",
+        "eks:ListClusters",
+        "eks:AccessKubernetesApi"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EksCluster2DA9749A",
+         "Arn"
+        ]
+       }
+      },
+      {
+       "Action": [
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:GetParametersByPath"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":ssm:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":parameter/mc01/*"
+         ]
+        ]
+       }
+      },
+      {
+       "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":secretsmanager:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":secret:mc01/*"
+         ]
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "EcsBootstrapTaskRoleDefaultPolicy463EDD93",
+    "Roles": [
+     {
+      "Ref": "EcsBootstrapTaskRoleC5B33B52"
+     }
+    ]
+   }
+  },
+  "EcsBootstrapAccessEntry237859FB": {
+   "Type": "AWS::EKS::AccessEntry",
+   "Properties": {
+    "AccessPolicies": [
+     {
+      "AccessScope": {
+       "Type": "cluster"
+      },
+      "PolicyArn": "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+     }
+    ],
+    "ClusterName": "mc01",
+    "PrincipalArn": {
+     "Fn::GetAtt": [
+      "EcsBootstrapTaskRoleC5B33B52",
+      "Arn"
+     ]
+    },
+    "Type": "STANDARD"
+   }
+  },
+  "EcsBootstrapBootstrapSG48C342E4": {
+   "Type": "AWS::EC2::SecurityGroup",
+   "Properties": {
+    "GroupDescription": "Bootstrap ECS task SG for mc01",
+    "SecurityGroupEgress": [
+     {
+      "CidrIp": "0.0.0.0/0",
+      "Description": "Allow all outbound traffic by default",
+      "IpProtocol": "-1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "VpcC3027511"
+    }
+   }
+  },
+  "EcsBootstrapTaskDef725D852C": {
+   "Type": "AWS::ECS::TaskDefinition",
+   "Properties": {
+    "ContainerDefinitions": [
+     {
+      "Command": [
+       "/bin/bash",
+       "-c",
+       "/scripts/bootstrap-argocd.sh"
+      ],
+      "Environment": [
+       {
+        "Name": "AWS_REGION",
+        "Value": {
+         "Ref": "AWS::Region"
+        }
+       },
+       {
+        "Name": "CLUSTER_ID",
+        "Value": "mc01"
+       },
+       {
+        "Name": "CLUSTER_NAME",
+        "Value": "mc01"
+       },
+       {
+        "Name": "CLUSTER_TYPE",
+        "Value": "management-cluster"
+       },
+       {
+        "Name": "RC_AWS_ACCOUNT_ID",
+        "Value": "123456789012"
+       },
+       {
+        "Name": "REPOSITORY_BRANCH",
+        "Value": "main"
+       },
+       {
+        "Name": "REPOSITORY_URL",
+        "Value": "https://github.com/org/rosa-hyperfleet"
+       }
+      ],
+      "Essential": true,
+      "Image": "public.ecr.aws/example/platform:latest",
+      "LogConfiguration": {
+       "LogDriver": "awslogs",
+       "Options": {
+        "awslogs-group": {
+         "Ref": "EcsBootstrapLogGroupAEFACCCC"
+        },
+        "awslogs-stream-prefix": "bootstrap",
+        "awslogs-region": "us-east-1"
+       }
+      },
+      "Name": "bootstrap"
+     }
+    ],
+    "Cpu": "256",
+    "ExecutionRoleArn": {
+     "Fn::GetAtt": [
+      "EcsBootstrapTaskDefExecutionRole20151F6E",
+      "Arn"
+     ]
+    },
+    "Family": "mc01-bootstrap",
+    "Memory": "512",
+    "NetworkMode": "awsvpc",
+    "RequiresCompatibilities": [
+     "FARGATE"
+    ],
+    "TaskRoleArn": {
+     "Fn::GetAtt": [
+      "EcsBootstrapTaskRoleC5B33B52",
+      "Arn"
+     ]
+    }
+   }
+  },
+  "EcsBootstrapTaskDefExecutionRole20151F6E": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "ecs-tasks.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   }
+  },
+  "EcsBootstrapTaskDefExecutionRoleDefaultPolicy4C19E66C": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "EcsBootstrapLogGroupAEFACCCC",
+         "Arn"
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "EcsBootstrapTaskDefExecutionRoleDefaultPolicy4C19E66C",
+    "Roles": [
+     {
+      "Ref": "EcsBootstrapTaskDefExecutionRole20151F6E"
+     }
+    ]
+   }
+  },
+  "BastionLogsKey89F2A5BB": {
+   "Type": "AWS::KMS::Key",
+   "Properties": {
+    "Description": "KMS key for mc01 bastion CloudWatch logs",
+    "EnableKeyRotation": true,
+    "KeyPolicy": {
+     "Statement": [
+      {
+       "Action": "kms:*",
+       "Effect": "Allow",
+       "Principal": {
+        "AWS": {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":iam::",
+           {
+            "Ref": "AWS::AccountId"
+           },
+           ":root"
+          ]
+         ]
+        }
+       },
+       "Resource": "*"
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain"
+  },
+  "BastionLogsKeyAliasB28622B9": {
+   "Type": "AWS::KMS::Alias",
+   "Properties": {
+    "AliasName": "alias/mc01-bastion-logs",
+    "TargetKeyId": {
+     "Fn::GetAtt": [
+      "BastionLogsKey89F2A5BB",
+      "Arn"
+     ]
+    }
+   }
+  },
+  "BastionLogGroup702D4ECA": {
+   "Type": "AWS::Logs::LogGroup",
+   "Properties": {
+    "KmsKeyId": {
+     "Fn::GetAtt": [
+      "BastionLogsKey89F2A5BB",
+      "Arn"
+     ]
+    },
+    "LogGroupName": "/ecs/mc01-bastion",
+    "RetentionInDays": 365
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain"
+  },
+  "BastionBastionSG54F5CE55": {
+   "Type": "AWS::EC2::SecurityGroup",
+   "Properties": {
+    "GroupDescription": "Bastion SG",
+    "GroupName": "mc01-bastion",
+    "SecurityGroupEgress": [
+     {
+      "CidrIp": "0.0.0.0/0",
+      "Description": "Allow all outbound traffic by default",
+      "IpProtocol": "-1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "VpcC3027511"
+    }
+   }
+  },
+  "BastionClusterE351D25B": {
+   "Type": "AWS::ECS::Cluster",
+   "Properties": {
+    "ClusterName": "mc01-bastion",
+    "ClusterSettings": [
+     {
+      "Name": "containerInsights",
+      "Value": "enabled"
+     }
+    ],
+    "Configuration": {
+     "ExecuteCommandConfiguration": {
+      "LogConfiguration": {
+       "CloudWatchLogGroupName": {
+        "Ref": "BastionLogGroup702D4ECA"
+       }
+      },
+      "Logging": "OVERRIDE"
+     }
+    }
+   }
+  },
+  "BastionbastiontaskRoleDC296EC8": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "ecs-tasks.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "RoleName": "mc01-bastion-task"
+   }
+  },
+  "BastionbastiontaskRoleDefaultPolicy60A20A24": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "eks:DescribeCluster",
+        "eks:ListClusters",
+        "eks:AccessKubernetesApi"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":eks:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":cluster/mc01"
+         ]
+        ]
+       }
+      },
+      {
+       "Action": [
+        "ssmmessages:CreateControlChannel",
+        "ssmmessages:CreateDataChannel",
+        "ssmmessages:OpenControlChannel",
+        "ssmmessages:OpenDataChannel"
+       ],
+       "Effect": "Allow",
+       "Resource": "*"
+      },
+      {
+       "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "BastionLogGroup702D4ECA",
+         "Arn"
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "BastionbastiontaskRoleDefaultPolicy60A20A24",
+    "Roles": [
+     {
+      "Ref": "BastionbastiontaskRoleDC296EC8"
+     }
+    ]
+   }
+  },
+  "BastionbastiontaskAccess56B06862": {
+   "Type": "AWS::EKS::AccessEntry",
+   "Properties": {
+    "AccessPolicies": [
+     {
+      "AccessScope": {
+       "Type": "cluster"
+      },
+      "PolicyArn": "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+     }
+    ],
+    "ClusterName": "mc01",
+    "PrincipalArn": {
+     "Fn::GetAtt": [
+      "BastionbastiontaskRoleDC296EC8",
+      "Arn"
+     ]
+    },
+    "Type": "STANDARD"
+   }
+  },
+  "BastionlogcollectorRole8665D257": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "ecs-tasks.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "RoleName": "mc01-log-collector"
+   }
+  },
+  "BastionlogcollectorRoleDefaultPolicyD10D1952": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "eks:DescribeCluster",
+        "eks:ListClusters",
+        "eks:AccessKubernetesApi"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":eks:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":cluster/mc01"
+         ]
+        ]
+       }
+      },
+      {
+       "Action": "s3:PutObject",
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":s3:::mc01-logs/*"
+         ]
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "BastionlogcollectorRoleDefaultPolicyD10D1952",
+    "Roles": [
+     {
+      "Ref": "BastionlogcollectorRole8665D257"
+     }
+    ]
+   }
+  },
+  "BastionlogcollectorAccessF138594C": {
+   "Type": "AWS::EKS::AccessEntry",
+   "Properties": {
+    "AccessPolicies": [
+     {
+      "AccessScope": {
+       "Type": "cluster"
+      },
+      "PolicyArn": "arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminViewPolicy"
+     }
+    ],
+    "ClusterName": "mc01",
+    "PrincipalArn": {
+     "Fn::GetAtt": [
+      "BastionlogcollectorRole8665D257",
+      "Arn"
+     ]
+    },
+    "Type": "STANDARD"
+   }
+  },
+  "BastionBastionTaskDef58EBC946": {
+   "Type": "AWS::ECS::TaskDefinition",
+   "Properties": {
+    "ContainerDefinitions": [
+     {
+      "Command": [
+       "sleep",
+       "infinity"
+      ],
+      "Environment": [
+       {
+        "Name": "AWS_REGION",
+        "Value": {
+         "Ref": "AWS::Region"
+        }
+       },
+       {
+        "Name": "CLUSTER_ENDPOINT",
+        "Value": {
+         "Fn::GetAtt": [
+          "EksCluster2DA9749A",
+          "Endpoint"
+         ]
+        }
+       },
+       {
+        "Name": "CLUSTER_NAME",
+        "Value": "mc01"
+       }
+      ],
+      "Essential": true,
+      "Image": "public.ecr.aws/example/platform:latest",
+      "LinuxParameters": {
+       "Capabilities": {},
+       "InitProcessEnabled": true
+      },
+      "LogConfiguration": {
+       "LogDriver": "awslogs",
+       "Options": {
+        "awslogs-group": {
+         "Ref": "BastionLogGroup702D4ECA"
+        },
+        "awslogs-stream-prefix": "bastion",
+        "awslogs-region": "us-east-1"
+       }
+      },
+      "Name": "jumphost"
+     }
+    ],
+    "Cpu": "256",
+    "ExecutionRoleArn": {
+     "Fn::GetAtt": [
+      "BastionBastionTaskDefExecutionRoleCAFAB7B3",
+      "Arn"
+     ]
+    },
+    "Family": "mc01-bastion",
+    "Memory": "512",
+    "NetworkMode": "awsvpc",
+    "RequiresCompatibilities": [
+     "FARGATE"
+    ],
+    "TaskRoleArn": {
+     "Fn::GetAtt": [
+      "BastionbastiontaskRoleDC296EC8",
+      "Arn"
+     ]
+    }
+   }
+  },
+  "BastionBastionTaskDefExecutionRoleCAFAB7B3": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "ecs-tasks.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   }
+  },
+  "BastionBastionTaskDefExecutionRoleDefaultPolicy30C551F5": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "BastionLogGroup702D4ECA",
+         "Arn"
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "BastionBastionTaskDefExecutionRoleDefaultPolicy30C551F5",
+    "Roles": [
+     {
+      "Ref": "BastionBastionTaskDefExecutionRoleCAFAB7B3"
+     }
+    ]
+   }
+  },
+  "BastionLogCollectorTaskDefA49C4382": {
+   "Type": "AWS::ECS::TaskDefinition",
+   "Properties": {
+    "ContainerDefinitions": [
+     {
+      "Command": [
+       "/bin/bash",
+       "-c",
+       "/scripts/collect-logs.sh"
+      ],
+      "Environment": [
+       {
+        "Name": "AWS_REGION",
+        "Value": {
+         "Ref": "AWS::Region"
+        }
+       },
+       {
+        "Name": "CLUSTER_NAME",
+        "Value": "mc01"
+       }
+      ],
+      "Essential": true,
+      "Image": "public.ecr.aws/example/platform:latest",
+      "LogConfiguration": {
+       "LogDriver": "awslogs",
+       "Options": {
+        "awslogs-group": {
+         "Ref": "BastionLogGroup702D4ECA"
+        },
+        "awslogs-stream-prefix": "log-collector",
+        "awslogs-region": "us-east-1"
+       }
+      },
+      "Name": "log-collector"
+     }
+    ],
+    "Cpu": "256",
+    "ExecutionRoleArn": {
+     "Fn::GetAtt": [
+      "BastionLogCollectorTaskDefExecutionRoleC4D6AAEE",
+      "Arn"
+     ]
+    },
+    "Family": "mc01-log-collector",
+    "Memory": "512",
+    "NetworkMode": "awsvpc",
+    "RequiresCompatibilities": [
+     "FARGATE"
+    ],
+    "TaskRoleArn": {
+     "Fn::GetAtt": [
+      "BastionlogcollectorRole8665D257",
+      "Arn"
+     ]
+    }
+   }
+  },
+  "BastionLogCollectorTaskDefExecutionRoleC4D6AAEE": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "ecs-tasks.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   }
+  },
+  "BastionLogCollectorTaskDefExecutionRoleDefaultPolicy585FC06C": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "BastionLogGroup702D4ECA",
+         "Arn"
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "BastionLogCollectorTaskDefExecutionRoleDefaultPolicy585FC06C",
+    "Roles": [
+     {
+      "Ref": "BastionLogCollectorTaskDefExecutionRoleC4D6AAEE"
+     }
+    ]
+   }
+  },
+  "BastionStopTasksFnServiceRole18F48196": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ]
+   }
+  },
+  "BastionStopTasksFnServiceRoleDefaultPolicy316D5B81": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "ecs:ListTasks",
+        "ecs:StopTask"
+       ],
+       "Condition": {
+        "ArnEquals": {
+         "ecs:cluster": {
+          "Fn::GetAtt": [
+           "BastionClusterE351D25B",
+           "Arn"
+          ]
+         }
+        }
+       },
+       "Effect": "Allow",
+       "Resource": "*"
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "BastionStopTasksFnServiceRoleDefaultPolicy316D5B81",
+    "Roles": [
+     {
+      "Ref": "BastionStopTasksFnServiceRole18F48196"
+     }
+    ]
+   }
+  },
+  "BastionStopTasksFn183DD8FA": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "ZipFile": "\nimport boto3\ndef handler(event, context):\n    if event.get(\"RequestType\") == \"Delete\":\n        ecs = boto3.client(\"ecs\")\n        cluster = event[\"ResourceProperties\"][\"EcsClusterName\"]\n        try:\n            for arn in ecs.list_tasks(cluster=cluster).get(\"taskArns\", []):\n                ecs.stop_task(cluster=cluster, task=arn, reason=\"Stack deletion\")\n        except Exception as e:\n            print(f\"Error: {e}\")\n    return {\"Status\": \"SUCCESS\"}\n"
+    },
+    "FunctionName": "mc01-bastion-stop-tasks",
+    "Handler": "index.handler",
+    "Role": {
+     "Fn::GetAtt": [
+      "BastionStopTasksFnServiceRole18F48196",
+      "Arn"
+     ]
+    },
+    "Runtime": "python3.12",
+    "Timeout": 60
+   },
+   "DependsOn": [
+    "BastionStopTasksFnServiceRoleDefaultPolicy316D5B81",
+    "BastionStopTasksFnServiceRole18F48196"
+   ]
+  },
+  "BastionStopTasksProviderframeworkonEventServiceRoleE2DEE731": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     }
+    ]
+   }
+  },
+  "BastionStopTasksProviderframeworkonEventServiceRoleDefaultPolicy4FBDB476": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "lambda:InvokeFunction",
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::GetAtt": [
+          "BastionStopTasksFn183DD8FA",
+          "Arn"
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::GetAtt": [
+             "BastionStopTasksFn183DD8FA",
+             "Arn"
+            ]
+           },
+           ":*"
+          ]
+         ]
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "BastionStopTasksProviderframeworkonEventServiceRoleDefaultPolicy4FBDB476",
+    "Roles": [
+     {
+      "Ref": "BastionStopTasksProviderframeworkonEventServiceRoleE2DEE731"
+     }
+    ]
+   }
+  },
+  "BastionStopTasksProviderframeworkonEventD00D3BFF": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-us-east-1"
+     },
+     "S3Key": "bdc104ed9cab1b5b6421713c8155f0b753380595356f710400609664d3635eca.zip"
+    },
+    "Description": "AWS CDK resource provider framework - onEvent (mc01/Bastion/StopTasksProvider)",
+    "Environment": {
+     "Variables": {
+      "USER_ON_EVENT_FUNCTION_ARN": {
+       "Fn::GetAtt": [
+        "BastionStopTasksFn183DD8FA",
+        "Arn"
+       ]
+      }
+     }
+    },
+    "Handler": "framework.onEvent",
+    "Role": {
+     "Fn::GetAtt": [
+      "BastionStopTasksProviderframeworkonEventServiceRoleE2DEE731",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs20.x",
+    "Timeout": 900
+   },
+   "DependsOn": [
+    "BastionStopTasksProviderframeworkonEventServiceRoleDefaultPolicy4FBDB476",
+    "BastionStopTasksProviderframeworkonEventServiceRoleE2DEE731"
+   ]
+  },
+  "BastionStopTasksOnDelete6C07527E": {
+   "Type": "AWS::CloudFormation::CustomResource",
+   "Properties": {
+    "ServiceToken": {
+     "Fn::GetAtt": [
+      "BastionStopTasksFn183DD8FA",
+      "Arn"
+     ]
+    },
+    "EcsClusterName": {
+     "Ref": "BastionClusterE351D25B"
+    }
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete"
+  },
+  "DnsPodIdentityDnsOperatorDFD7FE06": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "pods.eks.amazonaws.com"
+       }
+      },
+      {
+       "Action": "sts:TagSession",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "pods.eks.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "RoleName": "mc01-dns-operator"
+   }
+  },
+  "DnsPodIdentityDnsOperatorDefaultPolicyFAAE5CF8": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Resource": ""
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "DnsPodIdentityDnsOperatorDefaultPolicyFAAE5CF8",
+    "Roles": [
+     {
+      "Ref": "DnsPodIdentityDnsOperatorDFD7FE06"
+     }
+    ]
+   }
+  },
+  "DnsPodIdentityDnsOperatorAssoc57D1FA06": {
+   "Type": "AWS::EKS::PodIdentityAssociation",
+   "Properties": {
+    "ClusterName": "mc01",
+    "Namespace": "hypershift",
+    "RoleArn": {
+     "Fn::GetAtt": [
+      "DnsPodIdentityDnsOperatorDFD7FE06",
+      "Arn"
+     ]
+    },
+    "ServiceAccount": "external-dns"
+   }
+  },
+  "DnsPodIdentityCertMgrAssoc03043ACB": {
+   "Type": "AWS::EKS::PodIdentityAssociation",
+   "Properties": {
+    "ClusterName": "mc01",
+    "Namespace": "cert-manager",
+    "RoleArn": {
+     "Fn::GetAtt": [
+      "DnsPodIdentityDnsOperatorDFD7FE06",
+      "Arn"
+     ]
+    },
+    "ServiceAccount": "cert-manager"
+   }
+  },
+  "HypershiftOidcOperator49CF009E": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "pods.eks.amazonaws.com"
+       }
+      },
+      {
+       "Action": "sts:TagSession",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "pods.eks.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "RoleName": "mc01-hypershift-operator"
+   }
+  },
+  "HypershiftOidcOperatorDefaultPolicyB006EE3E": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "ec2:CreateSecurityGroup",
+        "ec2:DeleteSecurityGroup",
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:AuthorizeSecurityGroupEgress",
+        "ec2:RevokeSecurityGroupIngress",
+        "ec2:RevokeSecurityGroupEgress",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSecurityGroupRules",
+        "ec2:CreateVpcEndpoint",
+        "ec2:DeleteVpcEndpoints",
+        "ec2:DescribeVpcEndpoints",
+        "ec2:ModifyVpcEndpoint",
+        "ec2:DescribeVpcs",
+        "ec2:DescribeSubnets",
+        "ec2:CreateTags",
+        "ec2:DeleteTags",
+        "elasticloadbalancing:DescribeLoadBalancers",
+        "elasticloadbalancing:DescribeTargetGroups"
+       ],
+       "Effect": "Allow",
+       "Resource": "*"
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "HypershiftOidcOperatorDefaultPolicyB006EE3E",
+    "Roles": [
+     {
+      "Ref": "HypershiftOidcOperator49CF009E"
+     }
+    ]
+   }
+  },
+  "HypershiftOidcOperatorAssoc1C32378A": {
+   "Type": "AWS::EKS::PodIdentityAssociation",
+   "Properties": {
+    "ClusterName": "mc01",
+    "Namespace": "hypershift",
+    "RoleArn": {
+     "Fn::GetAtt": [
+      "HypershiftOidcOperator49CF009E",
+      "Arn"
+     ]
+    },
+    "ServiceAccount": "operator"
+   }
+  },
+  "HypershiftOidcInstaller3F6279CD": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "pods.eks.amazonaws.com"
+       }
+      },
+      {
+       "Action": "sts:TagSession",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "pods.eks.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "RoleName": "mc01-hypershift-installer"
+   }
+  },
+  "HypershiftOidcInstallerDefaultPolicyF29800EE": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":secretsmanager:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":secret:hypershift/*"
+         ]
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "HypershiftOidcInstallerDefaultPolicyF29800EE",
+    "Roles": [
+     {
+      "Ref": "HypershiftOidcInstaller3F6279CD"
+     }
+    ]
+   }
+  },
+  "HypershiftOidcInstallerAssocAEA2CDE5": {
+   "Type": "AWS::EKS::PodIdentityAssociation",
+   "Properties": {
+    "ClusterName": "mc01",
+    "Namespace": "hypershift-install",
+    "RoleArn": {
+     "Fn::GetAtt": [
+      "HypershiftOidcInstaller3F6279CD",
+      "Arn"
+     ]
+    },
+    "ServiceAccount": "hypershift-installer"
+   }
+  },
+  "HypershiftOidcExternalSecrets68B5B57C": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "pods.eks.amazonaws.com"
+       }
+      },
+      {
+       "Action": "sts:TagSession",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "pods.eks.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "RoleName": "mc01-external-secrets"
+   }
+  },
+  "HypershiftOidcExternalSecretsDefaultPolicy0BB45D01": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:GetParametersByPath"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":ssm:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":parameter/*"
+         ]
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "HypershiftOidcExternalSecretsDefaultPolicy0BB45D01",
+    "Roles": [
+     {
+      "Ref": "HypershiftOidcExternalSecrets68B5B57C"
+     }
+    ]
+   }
+  },
+  "HypershiftOidcExternalSecretsAssoc60CF4766": {
+   "Type": "AWS::EKS::PodIdentityAssociation",
+   "Properties": {
+    "ClusterName": "mc01",
+    "Namespace": "external-secrets",
+    "RoleArn": {
+     "Fn::GetAtt": [
+      "HypershiftOidcExternalSecrets68B5B57C",
+      "Arn"
+     ]
+    },
+    "ServiceAccount": "external-secrets"
+   }
+  },
+  "HypershiftOidcConfigSecret3251531A": {
+   "Type": "AWS::SecretsManager::Secret",
+   "Properties": {
+    "Name": "hypershift/mc01-config",
+    "SecretString": "{\"bucket\":\"\",\"region\":\"\",\"issuerUrl\":\"https://\",\"writerRoleArn\":\"\"}"
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete"
+  },
+  "PrometheusRemoteWritePrometheusE8BEE917": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "pods.eks.amazonaws.com"
+       }
+      },
+      {
+       "Action": "sts:TagSession",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "pods.eks.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "RoleName": "mc01-prometheus"
+   }
+  },
+  "PrometheusRemoteWritePrometheusDefaultPolicy2E397B00": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "execute-api:Invoke",
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":execute-api:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":123456789012:*/*/POST/api/v1/receive"
+         ]
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "PrometheusRemoteWritePrometheusDefaultPolicy2E397B00",
+    "Roles": [
+     {
+      "Ref": "PrometheusRemoteWritePrometheusE8BEE917"
+     }
+    ]
+   }
+  },
+  "PrometheusRemoteWritePrometheusAssoc225A44B1": {
+   "Type": "AWS::EKS::PodIdentityAssociation",
+   "Properties": {
+    "ClusterName": "mc01",
+    "Namespace": "monitoring",
+    "RoleArn": {
+     "Fn::GetAtt": [
+      "PrometheusRemoteWritePrometheusE8BEE917",
+      "Arn"
+     ]
+    },
+    "ServiceAccount": "sigv4-proxy"
+   }
+  },
+  "LokiLogForwarderLokiForwarderA16FBA99": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "pods.eks.amazonaws.com"
+       }
+      },
+      {
+       "Action": "sts:TagSession",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "pods.eks.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "RoleName": "mc01-loki-forwarder"
+   }
+  },
+  "LokiLogForwarderLokiForwarderDefaultPolicy9934BA0C": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "execute-api:Invoke",
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":execute-api:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":123456789012:*/*/POST/loki/api/v1/push"
+         ]
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "LokiLogForwarderLokiForwarderDefaultPolicy9934BA0C",
+    "Roles": [
+     {
+      "Ref": "LokiLogForwarderLokiForwarderA16FBA99"
+     }
+    ]
+   }
+  },
+  "LokiLogForwarderLokiForwarderAssoc4EF907EE": {
+   "Type": "AWS::EKS::PodIdentityAssociation",
+   "Properties": {
+    "ClusterName": "mc01",
+    "Namespace": "vector",
+    "RoleArn": {
+     "Fn::GetAtt": [
+      "LokiLogForwarderLokiForwarderA16FBA99",
+      "Arn"
+     ]
+    },
+    "ServiceAccount": "sigv4-proxy-logs"
+   }
+  },
+  "CloudWatchExporterCwExporter30B3A556": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "pods.eks.amazonaws.com"
+       }
+      },
+      {
+       "Action": "sts:TagSession",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "pods.eks.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "RoleName": "mc01-cloudwatch-exporter"
+   }
+  },
+  "CloudWatchExporterCwExporterDefaultPolicy6C76A762": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "cloudwatch:GetMetricData",
+        "cloudwatch:GetMetricStatistics",
+        "cloudwatch:ListMetrics",
+        "cloudwatch:DescribeAlarms",
+        "tag:GetResources",
+        "apigateway:GET",
+        "rds:DescribeDBInstances",
+        "rds:DescribeDBClusters",
+        "elasticloadbalancing:DescribeLoadBalancers",
+        "elasticloadbalancing:DescribeTargetGroups",
+        "iam:ListAccountAliases"
+       ],
+       "Effect": "Allow",
+       "Resource": "*"
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "CloudWatchExporterCwExporterDefaultPolicy6C76A762",
+    "Roles": [
+     {
+      "Ref": "CloudWatchExporterCwExporter30B3A556"
+     }
+    ]
+   }
+  },
+  "CloudWatchExporterCwExporterAssoc663A66D7": {
+   "Type": "AWS::EKS::PodIdentityAssociation",
+   "Properties": {
+    "ClusterName": "mc01",
+    "Namespace": "monitoring",
+    "RoleArn": {
+     "Fn::GetAtt": [
+      "CloudWatchExporterCwExporter30B3A556",
+      "Arn"
+     ]
+    },
+    "ServiceAccount": "yace-cw-exporter"
+   }
+  },
+  "KubeApplierC62AB0C1": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "pods.eks.amazonaws.com"
+       }
+      },
+      {
+       "Action": "sts:TagSession",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "pods.eks.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "RoleName": "mc01-kube-applier"
+   }
+  },
+  "KubeApplierDefaultPolicyA982F693": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:Scan",
+        "dynamodb:DescribeTable",
+        "dynamodb:GetRecords",
+        "dynamodb:GetShardIterator",
+        "dynamodb:DescribeStream",
+        "dynamodb:ListStreams"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":dynamodb:",
+           {
+            "Ref": "AWS::Region"
+           },
+           ":123456789012:table/mc01-specs-*"
+          ]
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":dynamodb:",
+           {
+            "Ref": "AWS::Region"
+           },
+           ":123456789012:table/mc01-specs-*/stream/*"
+          ]
+         ]
+        }
+       ]
+      },
+      {
+       "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:Query",
+        "dynamodb:Scan",
+        "dynamodb:DescribeTable"
+       ],
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:",
+          {
+           "Ref": "AWS::Partition"
+          },
+          ":dynamodb:",
+          {
+           "Ref": "AWS::Region"
+          },
+          ":123456789012:table/mc01-status-*"
+         ]
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "KubeApplierDefaultPolicyA982F693",
+    "Roles": [
+     {
+      "Ref": "KubeApplierC62AB0C1"
+     }
+    ]
+   }
+  },
+  "KubeApplierKubeApplierAssoc772533D6": {
+   "Type": "AWS::EKS::PodIdentityAssociation",
+   "Properties": {
+    "ClusterName": "mc01",
+    "Namespace": "kube-applier",
+    "RoleArn": {
+     "Fn::GetAtt": [
+      "KubeApplierC62AB0C1",
+      "Arn"
+     ]
+    },
+    "ServiceAccount": "kube-applier"
+   }
+  },
+  "GrafanaCloudWatchLogsGrafanaReader87324732": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "AWS": {
+         "Fn::Join": [
+          "",
+          [
+           "arn:",
+           {
+            "Ref": "AWS::Partition"
+           },
+           ":iam::123456789012:role/mc01-grafana-cloudwatch"
+          ]
+         ]
+        }
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "Policies": [
+     {
+      "PolicyDocument": {
+       "Statement": [
+        {
+         "Action": [
+          "logs:GetLogEvents",
+          "logs:GetLogRecord",
+          "logs:GetQueryResults",
+          "logs:DescribeLogGroups",
+          "logs:DescribeLogStreams",
+          "logs:StartQuery",
+          "logs:StopQuery",
+          "logs:FilterLogEvents",
+          "cloudwatch:ListMetrics"
+         ],
+         "Effect": "Allow",
+         "Resource": "*"
+        }
+       ],
+       "Version": "2012-10-17"
+      },
+      "PolicyName": "cloudwatch-logs-read"
+     }
+    ],
+    "RoleName": "mc01-grafana-cw-logs-reader"
+   }
+  }
+ },
+ "Parameters": {
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

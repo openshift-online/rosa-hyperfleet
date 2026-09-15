@@ -1,0 +1,260 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  ECS Fargate bootstrap for private EKS clusters.
+  Equivalent to terraform/modules/ecs-bootstrap.
+
+Parameters:
+  ClusterId:
+    Type: String
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+
+  EksClusterArn:
+    Type: String
+
+  EksClusterName:
+    Type: String
+
+  EksClusterSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+
+  ContainerImage:
+    Type: String
+    Description: Public ECR image URI for platform container
+
+  RcAwsAccountId:
+    Type: String
+    Description: Regional cluster AWS account ID
+
+  RepositoryUrl:
+    Type: String
+
+  RepositoryBranch:
+    Type: String
+    Default: main
+
+Resources:
+  # ===========================================================================
+  # ECS Cluster
+  # ===========================================================================
+
+  BootstrapEcsCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "${ClusterId}-bootstrap"
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+      Tags:
+        - Key: Name
+          Value: !Sub "${ClusterId}-bootstrap"
+
+  # ===========================================================================
+  # KMS + CloudWatch Logs
+  # ===========================================================================
+
+  BootstrapLogsKmsKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub "KMS key for ${ClusterId} bootstrap CloudWatch logs"
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EnableRootAccess
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+          - Sid: AllowCloudWatchLogs
+            Effect: Allow
+            Principal:
+              Service: !Sub "logs.${AWS::Region}.amazonaws.com"
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: "*"
+
+  BootstrapLogGroup:
+    Type: AWS::Logs::LogGroup
+    DependsOn: BootstrapLogsKmsKey
+    Properties:
+      LogGroupName: !Sub "/ecs/${ClusterId}-bootstrap"
+      RetentionInDays: 365
+      KmsKeyId: !GetAtt BootstrapLogsKmsKey.Arn
+
+  # ===========================================================================
+  # IAM — ECS Execution Role
+  # ===========================================================================
+
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ClusterId}-bootstrap-execution"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  # ===========================================================================
+  # IAM — ECS Task Role (bootstrap permissions)
+  # ===========================================================================
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ClusterId}-bootstrap-task"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: bootstrap
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: EKSAccess
+                Effect: Allow
+                Action:
+                  - eks:DescribeCluster
+                  - eks:ListClusters
+                  - eks:AccessKubernetesApi
+                Resource: !Ref EksClusterArn
+              - Sid: SSMRead
+                Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:GetParametersByPath
+                Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ClusterId}/*"
+              - Sid: SecretsRead
+                Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                Resource: !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ClusterId}/*"
+
+  # ===========================================================================
+  # EKS Access — grant bootstrap task cluster-admin
+  # ===========================================================================
+
+  BootstrapAccessEntry:
+    Type: AWS::EKS::AccessEntry
+    Properties:
+      ClusterName: !Ref EksClusterName
+      PrincipalArn: !GetAtt TaskRole.Arn
+      Type: STANDARD
+
+  BootstrapAccessPolicy:
+    Type: AWS::EKS::AccessPolicyAssociation
+    DependsOn: BootstrapAccessEntry
+    Properties:
+      ClusterName: !Ref EksClusterName
+      PrincipalArn: !GetAtt TaskRole.Arn
+      PolicyArn: arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy
+      AccessScope:
+        Type: cluster
+
+  # ===========================================================================
+  # Security Group — bootstrap ECS task
+  # ===========================================================================
+
+  BootstrapSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "Bootstrap ECS task SG for ${ClusterId}"
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: "0.0.0.0/0"
+          Description: All outbound
+      Tags:
+        - Key: Name
+          Value: !Sub "${ClusterId}-bootstrap"
+
+  EksIngressFromBootstrap:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EksClusterSecurityGroupId
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !Ref BootstrapSecurityGroup
+      Description: HTTPS from bootstrap task
+
+  # ===========================================================================
+  # ECS Task Definition
+  # ===========================================================================
+
+  BootstrapTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${ClusterId}-bootstrap"
+      Cpu: "256"
+      Memory: "512"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: bootstrap
+          Image: !Ref ContainerImage
+          Essential: true
+          Command:
+            - /bin/bash
+            - -c
+            - /scripts/bootstrap-argocd.sh
+          Environment:
+            - Name: CLUSTER_NAME
+              Value: !Ref EksClusterName
+            - Name: CLUSTER_TYPE
+              Value: management-cluster
+            - Name: CLUSTER_ID
+              Value: !Ref ClusterId
+            - Name: RC_AWS_ACCOUNT_ID
+              Value: !Ref RcAwsAccountId
+            - Name: REPOSITORY_URL
+              Value: !Ref RepositoryUrl
+            - Name: REPOSITORY_BRANCH
+              Value: !Ref RepositoryBranch
+            - Name: AWS_REGION
+              Value: !Ref "AWS::Region"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref BootstrapLogGroup
+              awslogs-region: !Ref "AWS::Region"
+              awslogs-stream-prefix: bootstrap
+
+Outputs:
+  EcsClusterArn:
+    Value: !GetAtt BootstrapEcsCluster.Arn
+
+  EcsClusterName:
+    Value: !Ref BootstrapEcsCluster
+
+  TaskDefinitionArn:
+    Value: !Ref BootstrapTaskDefinition
+
+  LogGroupName:
+    Value: !Ref BootstrapLogGroup
+
+  BootstrapSecurityGroupId:
+    Value: !Ref BootstrapSecurityGroup

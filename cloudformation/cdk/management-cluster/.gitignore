@@ -1,0 +1,7 @@
+management-cluster-cdk
+go.sum
+output/asset.*
+output/cdk.out
+output/manifest.json
+output/*.assets.json
+output/tree.json
