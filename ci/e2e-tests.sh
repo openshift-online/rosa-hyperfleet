@@ -269,6 +269,21 @@ if [[ "$_have_customer_creds" == "true" ]]; then
       echo "E2E_SKIP_CLEANUP is set — cleanup specs will be skipped"
       export E2E_LABEL_FILTER='!cleanup'
     fi
+
+    # Opt-in silence e2e: tunnel regional Alertmanager for ephemeral CI unless caller
+    # already set ALERTMANAGER_URL / E2E_ALERTMANAGER_URL (local dev wrappers).
+    if [[ "${E2E_SKIP_ALERTMANAGER_FORWARD:-}" != "true" ]]; then
+      if [[ -z "${ALERTMANAGER_URL:-}" && -z "${E2E_ALERTMANAGER_URL:-}" && -n "${CLUSTER_PREFIX:-}" ]]; then
+        echo "=== Alertmanager tunnel for silence e2e specs ==="
+        # shellcheck source=ci/alertmanager-forward.sh
+        if source "${REPO_ROOT}/ci/alertmanager-forward.sh" && start_alertmanager_forward; then
+          echo "Silence e2e specs enabled (E2E_ALERTMANAGER_URL=${E2E_ALERTMANAGER_URL})"
+        else
+          echo "WARNING: Alertmanager tunnel failed — silence-installing/silence-ready specs will skip" >&2
+        fi
+      fi
+    fi
+
     make test-e2e-cli || return $?
 
     echo "HCP creation test completed for: ${HCP_CLUSTER_NAME}"
