@@ -1,0 +1,155 @@
+# Weekly adversary security scan using the rosa-claude-plugins security skill.
+#
+# Runs every Saturday at 6am UTC and on-demand via workflow_dispatch.
+# Posts a traffic-light Slack notification (red/yellow/green) with findings.
+#
+# Required secrets:
+#   ANTHROPIC_API_KEY      — Anthropic API key for Claude Code
+#   SLACK_WEBHOOK_URL      — Slack incoming webhook for notifications
+#
+# Optional inputs (workflow_dispatch):
+#   scan_mode              — merge-ref-scan, full-scan, or groundwork (default: groundwork)
+name: Adversary Security Scan
+
+on:
+  schedule:
+    - cron: "0 6 * * 6"  # Saturday at 6am UTC
+  workflow_dispatch:
+    inputs:
+      scan_mode:
+        description: "Scan mode"
+        required: false
+        type: choice
+        options:
+          - groundwork
+          - full-scan
+          - merge-ref-scan
+        default: "groundwork"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: adversary-scan
+  cancel-in-progress: true
+
+jobs:
+  adversary-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      SCAN_MODE: ${{ github.event.inputs.scan_mode || 'groundwork' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Install adversary skill
+        run: |
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          claude plugin marketplace add openshift-online/rosa-claude-plugins
+          claude plugin install security@rosa-claude-plugins
+
+      - name: Run adversary scan
+        id: scan
+        run: |
+          echo "=== Adversary Security Scan ==="
+          echo "Mode: ${SCAN_MODE}"
+          echo "Repo: ${{ github.repository }}"
+
+          PROMPT="/adversary"
+          if [[ "${SCAN_MODE}" == "groundwork" ]]; then
+            PROMPT="/adversary groundwork"
+          fi
+
+          SCAN_START=$(date +%s)
+          EXIT_CODE=0
+
+          timeout 10200 claude \
+            --model "claude-opus-4-6" \
+            --output-format stream-json \
+            --max-turns 100 \
+            -p "${PROMPT}" \
+            --verbose 2>&1 | tee adversary-scan.log || EXIT_CODE=$?
+
+          SCAN_DURATION=$(( $(date +%s) - SCAN_START ))
+
+          # Parse severity counts from output
+          CRITICAL=$(grep -c '\[CRITICAL\]' adversary-scan.log 2>/dev/null) || CRITICAL=0
+          HIGH=$(grep -c '\[HIGH\]' adversary-scan.log 2>/dev/null) || HIGH=0
+          MEDIUM=$(grep -c '\[MEDIUM\]' adversary-scan.log 2>/dev/null) || MEDIUM=0
+          LOW=$(grep -c '\[LOW\]' adversary-scan.log 2>/dev/null) || LOW=0
+
+          echo "Findings: ${CRITICAL} critical, ${HIGH} high, ${MEDIUM} medium, ${LOW} low"
+
+          # Set outputs for notification step
+          echo "critical=${CRITICAL}" >> "$GITHUB_OUTPUT"
+          echo "high=${HIGH}" >> "$GITHUB_OUTPUT"
+          echo "medium=${MEDIUM}" >> "$GITHUB_OUTPUT"
+          echo "low=${LOW}" >> "$GITHUB_OUTPUT"
+          echo "scan_duration=${SCAN_DURATION}" >> "$GITHUB_OUTPUT"
+          echo "exit_code=${EXIT_CODE}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload scan artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: adversary-scan-results
+          path: |
+            adversary-scan.log
+            /tmp/groundwork-report.html
+          retention-days: 90
+
+      - name: Send Slack notification
+        if: always() && env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SCAN_CRITICAL: ${{ steps.scan.outputs.critical || 0 }}
+          SCAN_HIGH: ${{ steps.scan.outputs.high || 0 }}
+          SCAN_MEDIUM: ${{ steps.scan.outputs.medium || 0 }}
+          SCAN_LOW: ${{ steps.scan.outputs.low || 0 }}
+          SCAN_DURATION_SECS: ${{ steps.scan.outputs.scan_duration || 0 }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          NL=$'\n'
+
+          # Traffic-light logic
+          if [[ $(( SCAN_CRITICAL + SCAN_HIGH )) -gt 0 ]]; then
+            ICON=":red_circle:"
+            MSG="${ICON} *Adversary Security Scan* — ${REPO} (${SCAN_MODE})"
+            MSG+="${NL}*${SCAN_CRITICAL}* critical, *${SCAN_HIGH}* high, *${SCAN_MEDIUM}* medium, *${SCAN_LOW}* low"
+          elif [[ $(( SCAN_MEDIUM + SCAN_LOW )) -gt 0 ]]; then
+            ICON=":large_yellow_circle:"
+            MSG="${ICON} *Adversary Security Scan* — ${REPO} (${SCAN_MODE})"
+            MSG+="${NL}*${SCAN_MEDIUM}* medium, *${SCAN_LOW}* low"
+          else
+            ICON=":large_green_circle:"
+            MSG="${ICON} *Adversary Security Scan* — ${REPO} (${SCAN_MODE}) — No findings."
+          fi
+
+          # Format duration
+          MINS=$(( SCAN_DURATION_SECS / 60 ))
+          SECS=$(( SCAN_DURATION_SECS % 60 ))
+          if [[ ${MINS} -gt 0 ]]; then
+            DURATION_STR="${MINS}m ${SECS}s"
+          else
+            DURATION_STR="${SECS}s"
+          fi
+
+          MSG+="${NL}Duration: ${DURATION_STR} | <${RUN_URL}|View Run>"
+
+          PAYLOAD=$(jq -nc --arg text "${MSG}" '{"text": $text}')
+
+          curl -sf -X POST -H 'Content-type: application/json' \
+            --connect-timeout 10 --max-time 20 \
+            --data "${PAYLOAD}" \
+            "${SLACK_WEBHOOK_URL}"
+
+          echo "Slack notification sent."
