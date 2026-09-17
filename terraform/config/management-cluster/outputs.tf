@@ -168,6 +168,15 @@ output "kube_applier_role_arn" {
 }
 
 # =============================================================================
+# ECR credentials synchronizer Outputs
+# =============================================================================
+
+output "ecr_creds_sync_role_arn" {
+  description = "IAM role ARN for the ecr-creds-sync controller"
+  value       = module.ecr_creds_sync.ecr_creds_sync_role_arn
+}
+
+# =============================================================================
 # ZOA Outputs
 # =============================================================================
 
