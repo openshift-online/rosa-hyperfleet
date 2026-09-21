@@ -15,11 +15,9 @@ hypershift:
 
   # Hypershift configuration
   hypershift:
-    # Self-built image on top of hypershift main adding:
-    # - aws-iam-authenticator KAS sidecar injection and webhook redirect (CPO)
-    # - aws-iam-auth-config ConfigMap sync from HC to HCP namespace (HC controller)
-    # - hypershift.openshift.io/aws-iam-authenticator annotation propagation
-    # - managed ingress DNS zone creation (RFE-9235)
-    # Branch: https://github.com/typeid/hypershift/tree/managed_ingress
-    # Requires --tech-preview-no-upgrade in 05-job.yaml for AWSManagedDNS feature gate
-    image: quay.io/cbusse_openshift/hypershift-operator:managed-ingress-dns-50a03de4e3
+    # TEMP(OCPBUGS-42107 e2e): upstream-based build from the OCPBUGS-42107 branch to
+    # test the AWS HC deletion cloud-resource cleanup fix end to end. This image does
+    # NOT include the aws-iam-authenticator features or managed-ingress DNS (RFE-9235);
+    # -api has ManagedDNS disabled to match. Restore the managed_ingress image before merge.
+    # Branch: https://github.com/openshift/hypershift/tree/OCPBUGS-42107
+    image: quay.io/cbusse_openshift/hypershift-operator:ocpbugs-42107-15d0bfec
