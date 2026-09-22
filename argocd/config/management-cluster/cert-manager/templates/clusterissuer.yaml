@@ -13,6 +13,7 @@ spec:
       name: letsencrypt-dns01-key
     solvers:
     - dns01:
+        cnameStrategy: Follow
         route53:
           region: {{ .Values.global.aws_region }}
           role: {{ .Values.global.dns_zone_operator_role_arn }}
