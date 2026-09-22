@@ -15,9 +15,4 @@ hypershift:
 
   # Hypershift configuration
   hypershift:
-    # TEMP(OCPBUGS-42107 e2e): upstream-based build from the OCPBUGS-42107 branch to
-    # test the AWS HC deletion cloud-resource cleanup fix end to end. This image does
-    # NOT include the aws-iam-authenticator features or managed-ingress DNS (RFE-9235);
-    # -api has ManagedDNS disabled to match. Restore the managed_ingress image before merge.
-    # Branch: https://github.com/openshift/hypershift/tree/OCPBUGS-42107
-    image: quay.io/cbusse_openshift/hypershift-operator:ocpbugs-42107-15d0bfec
+    image: quay.io/cbusse_openshift/hypershift-operator:managed-ingress-dns-65d4692137
