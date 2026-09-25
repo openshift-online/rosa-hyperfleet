@@ -232,7 +232,7 @@ The Platform API implements per-account rate limiting using the GCRA (Generic Ce
 | `argocd/config/regional-cluster/alerting-rules/templates/` | PrometheusRule CRs for rate limit alerts                                    |
 | `docs/design/rate-limiting-architecture.md`                | ADR: rate limiting design decisions                                         |
 
-**Key files (rosa-hyperfleet-api)**: Rate limiting Go implementation lives in the API repo — `pkg/ratelimit/` (GCRA limiter, config loading), `pkg/middleware/ratelimit.go` (HTTP middleware), `cmd/rosa-regional-platform-api/main.go` (wiring).
+**Key files (rosa-hyperfleet-api)**: Rate limiting Go implementation lives in the API repo — `pkg/ratelimit/` (GCRA limiter, config loading), `pkg/ratelimit/middleware.go` (HTTP middleware), `cmd/main.go` (wiring).
 
 **Data flow for Valkey endpoint**: Terraform output → `bootstrap-argocd.sh` (combines host:port) → ECS task env var → cluster secret annotation → ApplicationSet valuesObject → Helm values → `REDIS_ENDPOINT` env var on platform-api pods.
 
