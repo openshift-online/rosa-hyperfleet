@@ -24,7 +24,7 @@ Three-stage CodePipeline (validate → deploy → bootstrap) for provisioning a 
 
 ### `regional-cluster/`
 
-Provisions the full regional cluster stack: EKS, VPC, API Gateway, kube-applier DynamoDB tables, RDS (hyperfleet-db), authorization (DynamoDB + Pod Identity), ECS bootstrap, optional CloudTrail audit logging (disabled by default; enable with `enable_cloudtrail` for compliance environments), and optional bastion.
+Provisions the full regional cluster stack: EKS, VPC, API Gateway, kube-applier DynamoDB tables, RDS (hyperfleet-db), ECS bootstrap, optional CloudTrail audit logging (disabled by default; enable with `enable_cloudtrail` for compliance environments), and optional bastion.
 
 ### `management-cluster/`
 

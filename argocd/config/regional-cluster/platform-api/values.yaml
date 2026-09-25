@@ -2,6 +2,7 @@
 
 global:
   git_revision: "unknown"
+  aws_region: ""
 
 platformApi:
   # Namespace to deploy into
@@ -18,16 +19,13 @@ platformApi:
     name: platform-api
     image:
       repository: quay.io/redhat-user-workloads/rosa-tenant/platform-api
-      tag: "20da14928ff3b91e288849e5a7e4049c270495df"
+      tag: "da21887edd27bb5cae2aba7780470c3cd1da3fe3"
       pullPolicy: Always
 
     # Application arguments
     args:
       logLevel: info
       logFormat: json
-      allowedAccounts: "123456789012"
-      dynamodbRegion: us-east-2
-      dynamodbPrefix: rosa
       oidcIssuerBaseURL: ""
       # Auto-delete clusters this long after creation when the caller does not
       # supply an explicit spec.expirationTimestamp. Go duration (e.g. "24h").

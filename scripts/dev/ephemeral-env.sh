@@ -41,7 +41,6 @@ usage() {
     echo "  list            List ephemeral environments"
     echo "  shell           Interactive shell for Platform API access"
     echo "  bastion         Connect to RC/MC bastion in an ephemeral env"
-    echo "  post-account    Register a customer AWS account with the RC platform API"
     echo "  port-forward    Forward ports through RC/MC bastion in an ephemeral env"
     echo "  sre-ui          Tunnel SRE UI tools through the internal ALB via bastion"
     echo "  e2e             Run e2e tests against an ephemeral env"
@@ -744,83 +743,6 @@ cmd_bastion_interactive() {
         --command '/bin/bash'
 }
 
-usage_post_account() {
-    echo "Usage: make ephemeral-post-account-shell ACCOUNT_ID=<12-digit-aws-account-id> [ID=<env-id>]"
-    echo ""
-    echo "Register a customer AWS account with the platform API using the ephemeral shell"
-    echo "container, where awscurl and API_URL are already configured."
-    echo ""
-    echo "Example:"
-    echo "  make ephemeral-post-account-shell ACCOUNT_ID=123456789012"
-}
-
-cmd_post_account() {
-    local account_id="${ACCOUNT_ID:-}"
-
-    if [[ -z "$account_id" ]]; then
-        echo "Error: ACCOUNT_ID is required"
-        echo ""
-        usage_post_account
-        exit 1
-    fi
-
-    if [[ ! "$account_id" =~ ^[0-9]{12}$ ]]; then
-        echo "Error: ACCOUNT_ID must be a 12-digit AWS account number, got: $account_id"
-        exit 1
-    fi
-
-    select_env "STATE=ready" \
-        "Select environment:" \
-        "No ready environments found." \
-        true
-
-    local api_url region
-    api_url=$(get_field "$ENV_LINE" API_URL)
-    region=$(get_field "$ENV_LINE" REGION)
-
-    setup_aws_config
-    write_eph_container_config
-
-    # account_id is validated as 12 digits so embedding it in the payload is safe.
-    # awscurl does not support curl's -s/-w flags, so success/failure is detected
-    # from the response body: the platform API always returns metav1.Status JSON
-    # with "status":"Failure" on errors.
-    local script
-    script="$(cat <<SCRIPT
-RESPONSE=\$(awscurl --service execute-api "\$API_URL/api/v0/accounts" \\
-    -X POST \\
-    -H 'Content-Type: application/json' \\
-    -d '{"accountId":"${account_id}","privileged":true}')
-echo "\$RESPONSE"
-echo ""
-if echo "\$RESPONSE" | grep -q '"status":"Failure"'; then
-    REASON=\$(echo "\$RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('reason',''))" 2>/dev/null)
-    if [ "\$REASON" = "AlreadyExists" ]; then
-        echo "==> OK: account already registered"
-    else
-        echo "==> FAILED: \${REASON:-unknown error}"
-        exit 1
-    fi
-else
-    echo "==> SUCCESS: account registered"
-fi
-SCRIPT
-)"
-
-    echo "==> Registering account ${account_id}..."
-    echo ""
-
-    # shellcheck disable=SC2086
-    $CONTAINER_ENGINE run --rm -i \
-        $_CONTAINER_AWS_FLAGS \
-        -e "AWS_PROFILE=rrp-rc" \
-        -e "AWS_DEFAULT_REGION=$region" \
-        -e "AWS_REGION=$region" \
-        -e "API_URL=$api_url" \
-        "$CI_IMAGE" \
-        bash -c "$script"
-}
-
 cmd_bastion_port_forward() {
     local all_svcs=false
     local cluster_type
@@ -1323,7 +1245,7 @@ case "${1:-help}" in
             command -v "$tool" >/dev/null 2>&1 || die "Missing required tool: $tool"
         done
         ;;
-    shell|e2e|zoa-e2e|post-account)
+    shell|e2e|zoa-e2e)
         preflight
         ensure_image
         ;;
@@ -1341,7 +1263,6 @@ case "${1:-help}" in
     swap-branch)    cmd_swap_branch ;;
     shell)          cmd_shell ;;
     bastion)        shift; cmd_bastion_interactive "$@" ;;
-    post-account)   cmd_post_account ;;
     port-forward)   shift; cmd_bastion_port_forward "$@" ;;
     sre-ui)         cmd_sre_tunnel ;;
     e2e)            cmd_e2e ;;

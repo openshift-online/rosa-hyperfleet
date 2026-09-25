@@ -41,12 +41,9 @@ spec:
             - serve
             - --log-level={{ .Values.platformApi.app.args.logLevel }}
             - --log-format={{ .Values.platformApi.app.args.logFormat }}
-            - --allowed-accounts={{ .Values.platformApi.app.args.allowedAccounts }}
             - --api-port={{ .Values.platformApi.app.args.apiPort }}
             - --health-port={{ .Values.platformApi.app.args.healthPort }}
             - --metrics-port={{ .Values.platformApi.app.args.metricsPort }}
-            - --dynamodb-region={{ .Values.platformApi.app.args.dynamodbRegion }}
-            - --dynamodb-prefix={{ .Values.platformApi.app.args.dynamodbPrefix }}
             {{- if .Values.platformApi.app.args.oidcIssuerBaseURL }}
             - --oidc-issuer-base-url={{ .Values.platformApi.app.args.oidcIssuerBaseURL }}
             {{- end }}
@@ -54,6 +51,8 @@ spec:
             - --default-cluster-expiration={{ .Values.platformApi.app.args.defaultClusterExpiration }}
             {{- end }}
           env:
+            - name: AWS_REGION
+              value: {{ .Values.global.aws_region | quote }}
             - name: POSTGRES_DSN
               valueFrom:
                 secretKeyRef:

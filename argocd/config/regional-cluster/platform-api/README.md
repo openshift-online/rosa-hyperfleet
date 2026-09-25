@@ -6,7 +6,7 @@ Helm chart for the ROSA HyperFleet API with Envoy sidecar proxy.
 
 This chart deploys:
 
-- Platform API application with authorization middleware
+- Platform API application with API Gateway IAM authentication and rate limiting
 - Envoy sidecar for unified traffic routing
 - Service exposing ports 8080 (Envoy), 8000 (API), 8081 (health), 9090 (metrics)
 - TargetGroupBinding for AWS Application Load Balancer integration
@@ -30,8 +30,6 @@ platformApi:
     image:
       repository: quay.io/cdoan0/rosa-regional-platform-api
       tag: nodb
-    args:
-      allowedAccounts: "123456789012" # Comma-separated AWS account IDs
 
   envoy:
     enabled: true
@@ -53,8 +51,7 @@ helm install platform-api ./deployment/helm/rosa-hyperfleet
 
 ```bash
 helm install platform-api ./deployment/helm/rosa-hyperfleet \
-  --set platformApi.targetGroup.arn="arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/platform-api/abc123def456" \
-  --set platformApi.app.args.allowedAccounts="111111111111,222222222222,333333333333"
+  --set platformApi.targetGroup.arn="arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/platform-api/abc123def456"
 ```
 
 ### Using a Custom Values File
@@ -67,7 +64,6 @@ platformApi:
     image:
       tag: "v1.2.3"
     args:
-      allowedAccounts: "111111111111,222222222222"
       logLevel: debug
 
   targetGroup:
@@ -97,8 +93,7 @@ helm install platform-api ./deployment/helm/rosa-hyperfleet \
 
 ```bash
 helm upgrade platform-api ./deployment/helm/rosa-hyperfleet \
-  --set platformApi.targetGroup.arn="arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/platform-api/abc123def456" \
-  --set platformApi.app.args.allowedAccounts="111111111111,222222222222"
+  --set platformApi.targetGroup.arn="arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/platform-api/abc123def456"
 ```
 
 ## Uninstallation
@@ -117,15 +112,14 @@ kubectl delete namespace platform-api
 
 ### Application Configuration
 
-| Parameter                              | Description                          | Default                                     |
-| -------------------------------------- | ------------------------------------ | ------------------------------------------- |
-| `platformApi.namespace`                | Namespace to deploy into             | `platform-api`                              |
-| `platformApi.app.name`                 | Application name                     | `platform-api`                              |
-| `platformApi.app.image.repository`     | Container image repository           | `quay.io/cdoan0/rosa-regional-platform-api` |
-| `platformApi.app.image.tag`            | Container image tag                  | `nodb`                                      |
-| `platformApi.app.args.allowedAccounts` | Comma-separated AWS account IDs      | `"123456789012"`                            |
-| `platformApi.app.args.logLevel`        | Log level (debug, info, warn, error) | `info`                                      |
-| `platformApi.deployment.replicas`      | Number of replicas                   | `1`                                         |
+| Parameter                          | Description                          | Default                                     |
+| ---------------------------------- | ------------------------------------ | ------------------------------------------- |
+| `platformApi.namespace`            | Namespace to deploy into             | `platform-api`                              |
+| `platformApi.app.name`             | Application name                     | `platform-api`                              |
+| `platformApi.app.image.repository` | Container image repository           | `quay.io/cdoan0/rosa-regional-platform-api` |
+| `platformApi.app.image.tag`        | Container image tag                  | `nodb`                                      |
+| `platformApi.app.args.logLevel`    | Log level (debug, info, warn, error) | `info`                                      |
+| `platformApi.deployment.replicas`  | Number of replicas                   | `1`                                         |
 
 ### Envoy Configuration
 

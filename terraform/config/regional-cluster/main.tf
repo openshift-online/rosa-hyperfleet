@@ -57,15 +57,6 @@ provider "pagerduty" {
 
 data "aws_caller_identity" "current" {}
 
-locals {
-  mc_entries     = var.management_clusters != "" ? split(",", var.management_clusters) : []
-  mc_account_ids = [for entry in local.mc_entries : element(split(":", entry), 1)]
-  api_allowed_accounts = distinct(compact(concat(
-    [data.aws_caller_identity.current.account_id],
-    local.mc_account_ids,
-  )))
-}
-
 # =============================================================================
 # External Secrets Operator — Pod Identity
 #
@@ -420,26 +411,6 @@ module "dns_zone_operator" {
   regional_hosted_zone_id    = aws_route53_zone.regional[0].zone_id
   zone_shard_hosted_zone_ids = aws_route53_zone.zone_shard[*].zone_id
   region_ou_path             = var.region_ou_path
-}
-
-# =============================================================================
-# Authorization Module
-# =============================================================================
-
-module "authz" {
-  source = "../../modules/authz"
-
-  regional_id      = var.regional_id
-  eks_cluster_name = module.regional_cluster.cluster_name
-
-  billing_mode                  = var.authz_billing_mode
-  enable_point_in_time_recovery = var.authz_enable_pitr
-  enable_deletion_protection    = var.authz_deletion_protection
-
-  frontend_api_namespace       = var.authz_frontend_api_namespace
-  frontend_api_service_account = var.authz_frontend_api_service_account
-
-  bootstrap_accounts = local.api_allowed_accounts
 }
 
 # =============================================================================

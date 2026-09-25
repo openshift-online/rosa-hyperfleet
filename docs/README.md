@@ -75,7 +75,6 @@ Each module has its own README with usage, inputs, outputs, and architecture:
 - [`eks-cluster`](../terraform/modules/eks-cluster/README.md) - Private EKS cluster with GitOps bootstrap
 - [`ecs-bootstrap`](../terraform/modules/ecs-bootstrap/README.md) - ECS Fargate bootstrap infrastructure
 - [`api-gateway`](../terraform/modules/api-gateway/README.md) - API Gateway with VPC Link to internal ALB
-- [`authz`](../terraform/modules/authz/README.md) - Cedar/AVP authorization (DynamoDB, IAM)
 - [`bastion`](../terraform/modules/bastion/README.md) - Ephemeral bastion for private cluster access
 - [`kube-applier`](../terraform/modules/kube-applier/README.md) - IAM and Pod Identity for the kube-applier controller on MCs
 - [`kube-applier-dynamodb`](../terraform/modules/kube-applier-dynamodb/README.md) - DynamoDB tables and backend IAM role for kube-applier (RC account)
