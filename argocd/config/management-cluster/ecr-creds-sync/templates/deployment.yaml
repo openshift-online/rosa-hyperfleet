@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ecr-creds-sync.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ecr-creds-sync.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.ecrCredsSync.deployment.replicas }}
+  selector:
+    matchLabels:
+      {{- include "ecr-creds-sync.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "ecr-creds-sync.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "ecr-creds-sync.serviceAccountName" . }}
+      containers:
+        - name: ecr-creds-sync
+          image: "{{ .Values.ecrCredsSync.image.registry }}/{{ .Values.ecrCredsSync.image.repository }}:{{ .Values.ecrCredsSync.image.tag }}"
+          imagePullPolicy: {{ .Values.ecrCredsSync.image.pullPolicy }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          args:
+            - --ecr-repository={{ .Values.ecrCredsSync.config.ecrRepository }}
+            - --aws-region={{ .Values.ecrCredsSync.config.awsRegion | default .Values.global.aws_region }}
+            - --refresh-after={{ .Values.ecrCredsSync.config.refreshAfter }}
+            {{- if .Values.ecrCredsSync.config.awsEndpointUrl }}
+            - --aws-endpoint-url={{ .Values.ecrCredsSync.config.awsEndpointUrl }}
+            {{- end }}
+          ports:
+            - name: health
+              containerPort: 8081
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: {{ .Values.ecrCredsSync.deployment.resources.requests.cpu | quote }}
+              memory: {{ .Values.ecrCredsSync.deployment.resources.requests.memory | quote }}
+            limits:
+              cpu: {{ .Values.ecrCredsSync.deployment.resources.limits.cpu | quote }}
+              memory: {{ .Values.ecrCredsSync.deployment.resources.limits.memory | quote }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault

@@ -224,3 +224,14 @@ module "kube_applier" {
   rc_aws_account_id = var.regional_aws_account_id
   aws_region        = var.region
 }
+
+# =============================================================================
+# ECR credentials synchronizer
+# =============================================================================
+
+module "ecr_creds_sync" {
+  source = "../../modules/ecr-creds-sync"
+
+  management_id    = var.management_id
+  eks_cluster_name = module.management_cluster.cluster_name
+}

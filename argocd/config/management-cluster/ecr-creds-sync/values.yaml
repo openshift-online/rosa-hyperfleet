@@ -1,0 +1,32 @@
+# ECR credentials synchronizer Helm chart values.
+
+ecrCredsSync:
+  image:
+    registry: "quay.io"
+    repository: "psav/ecr-creds-sync"
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+  deployment:
+    replicas: 1
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "256Mi"
+
+  config:
+    # Override this with the ECR repository containing HostedCluster release images.
+    ecrRepository: "123456789012.dkr.ecr.us-east-1.amazonaws.com/rosa/release"
+    awsRegion: ""
+    awsEndpointUrl: ""
+    refreshAfter: "2h"
+
+  serviceAccount:
+    name: ecr-creds-sync
+
+# Global values are injected by the ArgoCD ApplicationSet.
+global:
+  aws_region: ""
