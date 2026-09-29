@@ -492,9 +492,11 @@ module "zoa_lambda" {
   uploader_role_arn    = module.zoa.uploader_role_arn
 
   hyperfleet_db_resource_arn = local.hyperfleet_db_iam_arn
-  hyperfleet_db_endpoint     = module.hyperfleet_db.endpoint
-  hyperfleet_db_name         = module.hyperfleet_db.database_name
-  hyperfleet_db_username     = module.hyperfleet_db.master_username
+  # RDS endpoint output is the hostname only; append the port so the value is
+  # host:port as required by RDS IAM auth token generation (BuildAuthToken).
+  hyperfleet_db_endpoint = "${module.hyperfleet_db.endpoint}:${module.hyperfleet_db.port}"
+  hyperfleet_db_name     = module.hyperfleet_db.database_name
+  hyperfleet_db_username = module.hyperfleet_db.master_username
 }
 
 # =============================================================================

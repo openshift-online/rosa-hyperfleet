@@ -3,7 +3,7 @@
 # =============================================================================
 
 output "endpoint" {
-  description = "Aurora cluster endpoint (host:port)"
+  description = "Aurora cluster endpoint (hostname only, no port)"
   value       = aws_rds_cluster.hyperfleet_db.endpoint
 }
 
