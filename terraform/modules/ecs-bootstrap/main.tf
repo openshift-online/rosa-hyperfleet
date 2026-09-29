@@ -251,6 +251,33 @@ resource "aws_ecs_task_definition" "bootstrap" {
                 - CreateNamespace=true
           APP_EOF
 
+          # -------------------------------------------------------------
+          # HyperFleet DB: provision the ZOA read-only IAM role (RC only)
+          #
+          # ZOA's Lambda connects to hyperfleet-db via RDS IAM auth to serve
+          # read TAs (e.g. get_db_resource). IAM auth requires a dedicated
+          # Postgres role granted rds_iam; it cannot reuse the master user
+          # because a role with rds_iam can no longer use password auth, which
+          # the hyperfleet-operator and platform-api rely on. Idempotent, so it
+          # re-runs safely on every bootstrap/resync.
+          # -------------------------------------------------------------
+          if [[ -n "$HYPERFLEET_DB_DSN_SECRET_ARN" ]]; then
+            echo "Provisioning ZOA read-only DB role ($HYPERFLEET_DB_READER_USERNAME)..."
+            DB_DSN=$(aws secretsmanager get-secret-value \
+              --secret-id "$HYPERFLEET_DB_DSN_SECRET_ARN" \
+              --query SecretString --output text)
+            psql "$DB_DSN" -v ON_ERROR_STOP=1 \
+              -c "DO \$do\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='$HYPERFLEET_DB_READER_USERNAME') THEN CREATE ROLE \"$HYPERFLEET_DB_READER_USERNAME\" LOGIN; END IF; END \$do\$;" \
+              -c "GRANT rds_iam TO \"$HYPERFLEET_DB_READER_USERNAME\";" \
+              -c "GRANT CONNECT ON DATABASE \"$HYPERFLEET_DB_NAME\" TO \"$HYPERFLEET_DB_READER_USERNAME\";" \
+              -c "GRANT USAGE ON SCHEMA public TO \"$HYPERFLEET_DB_READER_USERNAME\";" \
+              -c "GRANT SELECT ON ALL TABLES IN SCHEMA public TO \"$HYPERFLEET_DB_READER_USERNAME\";" \
+              -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO \"$HYPERFLEET_DB_READER_USERNAME\";"
+            echo "✓ ZOA read-only DB role ready"
+          else
+            echo "No HYPERFLEET_DB_DSN_SECRET_ARN set; skipping ZOA DB role provisioning"
+          fi
+
           echo "=== Bootstrap completed successfully ==="
         EOF
       ]
@@ -289,6 +316,18 @@ resource "aws_ecs_task_definition" "bootstrap" {
         {
           name  = "VPC_ID"
           value = var.vpc_id
+        },
+        {
+          name  = "HYPERFLEET_DB_DSN_SECRET_ARN"
+          value = var.hyperfleet_db_dsn_secret_arn
+        },
+        {
+          name  = "HYPERFLEET_DB_NAME"
+          value = var.hyperfleet_db_name
+        },
+        {
+          name  = "HYPERFLEET_DB_READER_USERNAME"
+          value = var.hyperfleet_db_reader_username
         }
       ]
 
