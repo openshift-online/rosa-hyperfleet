@@ -56,6 +56,7 @@ provider "pagerduty" {
 # =============================================================================
 
 data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 
 locals {
   mc_entries     = var.management_clusters != "" ? split(",", var.management_clusters) : []
@@ -64,6 +65,11 @@ locals {
     [data.aws_caller_identity.current.account_id],
     local.mc_account_ids,
   )))
+
+  # RDS IAM authentication resource ARN for ZOA Lambda read role
+  # Format: arn:aws:rds-db:region:account:dbuser:cluster-resource-id/username
+  # This allows the zoa_aws_read role to connect as the master user via IAM auth
+  hyperfleet_db_iam_arn = "arn:aws:rds-db:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:dbuser:${module.hyperfleet_db.cluster_resource_id}/${module.hyperfleet_db.master_username}"
 }
 
 # =============================================================================
@@ -484,6 +490,11 @@ module "zoa_lambda" {
   artifact_bucket_arn  = module.zoa.bucket_arn
   kms_key_arn          = module.zoa.kms_key_arn
   uploader_role_arn    = module.zoa.uploader_role_arn
+
+  hyperfleet_db_resource_arn = local.hyperfleet_db_iam_arn
+  hyperfleet_db_endpoint     = module.hyperfleet_db.endpoint
+  hyperfleet_db_name         = module.hyperfleet_db.database_name
+  hyperfleet_db_username     = module.hyperfleet_db.master_username
 }
 
 # =============================================================================

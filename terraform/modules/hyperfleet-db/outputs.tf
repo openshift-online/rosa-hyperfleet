@@ -51,3 +51,13 @@ output "cluster_id" {
   description = "Aurora cluster identifier"
   value       = aws_rds_cluster.hyperfleet_db.id
 }
+
+output "cluster_resource_id" {
+  description = "Aurora cluster resource ID (DBI resource ID for IAM auth ARN)"
+  value       = aws_rds_cluster.hyperfleet_db.cluster_resource_id
+}
+
+output "master_username" {
+  description = "Master username for the Aurora cluster"
+  value       = aws_rds_cluster.hyperfleet_db.master_username
+}
