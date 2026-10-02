@@ -1,6 +1,6 @@
 # Zero Operator Access (ZOA) — Architecture
 
-**Last Updated Date**: 2026-09-14
+**Last Updated Date**: 2026-09-25
 
 ## Summary
 

@@ -204,6 +204,7 @@ See [`docs/development-environment.md`](docs/development-environment.md) for ful
   enforce. Skipping this step is how formatting and lint failures reach CI (e.g. PR #364).
 - **Terraform Validation**: Always run `terraform validate` and `terraform plan`
 - **Format Check**: `make terraform-fmt` (also run automatically by `make pre-push`)
+- **Alerting Rule Tests**: `make promtool-test` validates PrometheusRule syntax and runs unit tests from `ci/promtool-test/`
 - **ArgoCD Health**: Verify applications sync successfully
 - **Security Review**: Use architect agent for security-sensitive changes
 
