@@ -207,24 +207,11 @@ terraform output -raw api_test_command
 # awscurl --service execute-api --region us-east-2 https://<id>.execute-api.<region>.amazonaws.com/prod/v0/live
 ```
 
-> **Note:** The API Gateway accepts requests from any authenticated AWS principal. Authorization is enforced by the Platform API backend — only accounts registered with the Platform API (starting with the bootstrap account) receive a successful response.
+> **Note:** API Gateway authenticates callers with AWS IAM. The Platform API uses the caller account identity forwarded by API Gateway when handling account-scoped resources.
 
 ---
 
 ## Appendix
-
-### Register additional accounts
-
-The bootstrap account (seeded by Terraform via the `bootstrap_accounts` variable) is the only account authorized to call the Platform API initially. To authorize additional AWS accounts, the first invocation must be made from the bootstrap account:
-
-```bash
-awscurl -X POST $API_GATEWAY_URL/api/v0/accounts \
-    --service execute-api --region <region> \
-    -H "Content-Type: application/json" \
-    -d '{"accountId": "<AWS_ACCOUNT_ID>", "privileged": true}'
-```
-
-> **Note:** The `API_GATEWAY_URL` can be obtained from `terraform output -raw api_gateway_invoke_url` in the regional cluster terraform config. The `awscurl` request must be signed with credentials from an already-authorized account (initially, the bootstrap account).
 
 ### Trigger pipelines via CLI
 

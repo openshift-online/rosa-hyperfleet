@@ -15,6 +15,18 @@ eksNodePool:
   rootVolumeSize: 50Gi
 baseDomain: us-east-1.dev0.rosa.devshift.net
 platformApi:
+  authz:
+    resolver: config
+    config: 'formatVersion: 1
+
+
+      registeredAccounts: []
+
+      policies: []
+
+      attachments: []
+
+      '
   app:
     args:
       defaultClusterExpiration: ''

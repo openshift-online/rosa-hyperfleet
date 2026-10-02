@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: authz-config
+  namespace: {{ .Values.platformApi.namespace }}
+data:
+  config.yaml: |
+{{ required "platformApi.authz.config is required" .Values.platformApi.authz.config | indent 4 }}

@@ -1,0 +1,32 @@
+applications:
+  regional-cluster:
+    platformApi:
+      authz:
+        resolver: config
+        config: |
+          formatVersion: 1
+          registeredAccounts: ["599476212575", "114594328247"]
+          policies:
+            - id: read-clusters-599476212575
+              ownerAccountID: "599476212575"
+              content: |
+                permit(principal, action in HyperFleet::Action::"ReadOnly", resource)
+                when { context.accountId == "599476212575" && context.region == "us-east-1" };
+            - id: read-clusters-114594328247
+              ownerAccountID: "114594328247"
+              content: |
+                permit(principal, action in HyperFleet::Action::"ReadOnly", resource)
+                when { context.accountId == "114594328247" && context.region == "us-east-1" };
+          attachments:
+            - id: dev-readers-599476212575
+              policyID: read-clusters-599476212575
+              principalARN: arn:aws:iam::599476212575:role/OrganizationAccountAccessRole
+              bindingMode: role-membership
+              scope: regional
+              region: us-east-1
+            - id: dev-readers-114594328247
+              policyID: read-clusters-114594328247
+              principalARN: arn:aws:iam::114594328247:role/OrganizationAccountAccessRole
+              bindingMode: role-membership
+              scope: regional
+              region: us-east-1

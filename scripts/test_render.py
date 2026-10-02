@@ -10,8 +10,11 @@
 # ///
 """Unit tests for render.py"""
 
+import copy
+import hashlib
 import json
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -2388,6 +2391,250 @@ class TestUpdateDocs:
         update_docs(config, tpl)
         content = (config / "defaults.yaml").read_text()
         assert "My custom description" in content
+
+
+AUTHZ_BUNDLE = '''formatVersion: 1
+registeredAccounts: ["012345678901"]
+policies:
+  - id: read-clusters
+    ownerAccountID: "012345678901"
+    content: |
+      permit(principal, action in HyperFleet::Action::"ReadOnly", resource)
+      when { context.region == "us-east-1" && context.accountId == "012345678901" };
+attachments:
+  - id: readers
+    policyID: read-clusters
+    principalARN: arn:aws:iam::012345678901:role/platform/readers
+    bindingMode: role-membership
+    scope: regional
+    region: us-east-1
+'''
+AUTHZ_EXAMPLE = PROJECT_ROOT / "docs" / "examples" / "authz-dev"
+PLATFORM_CHART = REAL_ARGOCD_CONFIG_DIR / "regional-cluster" / "platform-api"
+
+
+def _authz_values(tmp_path, env, overrides=None, eph_prefix=""):
+    defaults = load_yaml(PROJECT_ROOT / "config" / "defaults.yaml")
+    env_defaults = load_yaml(PROJECT_ROOT / "config" / env / "defaults.yaml")
+    deploy = TestMainIntegration()._run_main(
+        tmp_path,
+        defaults,
+        {env: {
+            "defaults": deep_merge(env_defaults, overrides or {}),
+            "regions": {"us-east-1": {"provision_mcs": {"mc01": {}}}},
+        }},
+        eph_prefix,
+    )
+    return load_yaml(deploy / env / "us-east-1" / "argocd-values-regional-cluster.yaml")
+
+
+def _helm_platform(tmp_path, overrides):
+    helm = shutil.which("helm")
+    assert helm, "Helm is required for authz delivery checks. Use the CI-pinned CLI."
+    values = tmp_path / "helm-values.yaml"
+    values.write_text(yaml.safe_dump(overrides))
+    rendered = subprocess.run(
+        [helm, "template", "authz-test", str(PLATFORM_CHART),
+         "--set", "global.aws_region=us-east-1", "-f", str(values)],
+        check=True, capture_output=True, text=True,
+    ).stdout
+    resources = list(yaml.safe_load_all(rendered))
+    return resources, rendered
+
+
+def _resource(resources, kind, name):
+    return next(r for r in resources if r["kind"] == kind and r["metadata"]["name"] == name)
+
+
+class TestAuthzDelivery:
+    def test_operating_metrics_docs(self):
+        # Keep the operator contract searchable across Markdown line wrapping.
+        doc = " ".join((PROJECT_ROOT / "docs" / "platform-api-authorization.md").read_text().split())
+        for contract in (
+            "| `authz_requests_total` | Counter | requests | `operation`, `outcome` |",
+            "| `authz_duration_seconds` | Histogram | seconds | `operation`, `outcome` |",
+            "| `authz_failures_total` | Counter | failed requests | `operation`, `stage` |",
+            "`operation` is only `ListClusters` or `DescribeCluster`",
+            "`outcome` is only `allow`, `deny`, or `error`",
+            "`resolution`, `parsing`, `binding`, `entity_validation`, `evaluation`, or `resource_loading`",
+            "`0.001`, `0.005`, `0.01`, `0.025`, `0.05`, `0.1`, `0.25`, `0.5`, and `1`",
+            "automatic `+Inf` bucket",
+            "50 ms bucket is not a latency SLO",
+            "`sum by (operation) (authz_requests_total)`",
+            "includes resolution, parsing, binding, entity construction and validation, evaluation, and required account-scoped FleetDB reads",
+            "excludes identity and enrollment admission, rate limiting, response conversion and serialization, and socket delivery",
+            "A successful filtered list records one `allow`",
+            "A missing or foreign Cluster returns 404 and records one `deny`",
+            "A late item failure aborts the whole list and records one `error`",
+            "A storage-read failure preserves its API error and records one `error` at `resource_loading`",
+            "A response-write failure after authorization does not revise an `allow`",
+            "Unmapped routes produce no authorization samples",
+            "`X-Amz-Account-Id` and `X-Amz-Caller-Arn`",
+            "raw API port 8000 through a ClusterIP Service",
+            "Gateway-only access is a required prerequisite and remains unproven",
+            "Local-only loopback proof is not permission for shared rollout",
+        ):
+            assert contract in doc, f"Missing authorization operating contract: {contract}"
+
+    @pytest.mark.parametrize("env,ci,eph_prefix", [
+        ("integration", False, ""), ("stage", False, ""),
+        ("ephemeral", False, ""), ("ephemeral", False, "authz-test"),
+        ("ephemeral", True, ""),
+    ])
+    def test_safe_source_defaults(self, tmp_path, monkeypatch, env, ci, eph_prefix):
+        monkeypatch.setenv("BUILD_ID", "test-ci" if ci else "")
+        values = _authz_values(tmp_path, env, eph_prefix=eph_prefix)
+        authz = values["platformApi"]["authz"]
+        assert set(authz) == {"resolver", "config"}
+        assert authz["resolver"] == "config"
+        assert yaml.safe_load(authz["config"]) == {
+            "formatVersion": 1, "registeredAccounts": [], "policies": [], "attachments": [],
+        }
+
+    def test_ci_role_grants(self, tmp_path, monkeypatch):
+        # Only actual CI provisioning receives these feature-branch role grants.
+        monkeypatch.setenv("BUILD_ID", "test-ci")
+        values = _authz_values(tmp_path, "ephemeral", eph_prefix="authz-test")
+        resources, _ = _helm_platform(tmp_path, values)
+        bundle = yaml.safe_load(_resource(resources, "ConfigMap", "authz-config")["data"]["config.yaml"])
+        assert bundle["formatVersion"] == 1
+        assert bundle["registeredAccounts"] == ["720644165472", "313828097858"]
+        assert len(bundle["policies"]) == len(bundle["attachments"]) == 2
+        for account, policy, attachment in zip(
+            bundle["registeredAccounts"], bundle["policies"], bundle["attachments"], strict=True,
+        ):
+            assert policy == {
+                "id": f"ci-read-clusters-{account}", "ownerAccountID": account,
+                "content": 'permit(principal, action in HyperFleet::Action::"ReadOnly", resource)\n'
+                           f'when {{ context.accountId == "{account}" && context.region == "us-east-1" }};\n',
+            }
+            assert attachment == {
+                "id": f"ci-readers-{account}", "policyID": policy["id"],
+                "principalARN": f"arn:aws:iam::{account}:role/OrganizationAccountAccessRole",
+                "bindingMode": "role-membership", "scope": "regional", "region": "us-east-1",
+            }
+
+    @pytest.mark.parametrize("binding,scope", [
+        ("role-membership", "regional"), ("exact-principal", "global"),
+    ])
+    def test_bundle_passes_through(self, tmp_path, binding, scope):
+        content = AUTHZ_BUNDLE.replace("bindingMode: role-membership", f"bindingMode: {binding}")
+        if scope == "global":
+            content = content.replace("scope: regional\n    region: us-east-1", "scope: global")
+            content = content.replace("iam::012345678901:role/platform/readers",
+                                      "sts::012345678901:assumed-role/readers/session-a")
+        bundle = yaml.safe_load(content)
+        overrides = {"applications": {"regional-cluster": {"platformApi": {
+            "authz": {"resolver": "config", "config": content},
+        }}}}
+        values = _authz_values(tmp_path, "ephemeral", overrides)
+        assert values["platformApi"]["authz"] == {
+            "resolver": "config", "config": content.removesuffix("\n"),
+        }
+        resources, _ = _helm_platform(tmp_path, values)
+        config = _resource(resources, "ConfigMap", "authz-config")["data"]["config.yaml"]
+        assert config == content
+        assert yaml.safe_load(config) == bundle
+        assert yaml.safe_load(config)["registeredAccounts"] == ["012345678901"]
+
+    def test_dev_override(self, tmp_path):
+        overrides = load_yaml(AUTHZ_EXAMPLE / "defaults.yaml")
+        assert load_yaml(AUTHZ_EXAMPLE / "us-east-1.yaml") == {"provision_mcs": {"mc01": {}}}
+        values = _authz_values(tmp_path, "ephemeral", overrides)
+        resources, _ = _helm_platform(tmp_path, values)
+        bundle = yaml.safe_load(_resource(resources, "ConfigMap", "authz-config")["data"]["config.yaml"])
+        assert bundle["formatVersion"] == 1
+        assert bundle["registeredAccounts"] == ["599476212575", "114594328247"]
+        assert len(bundle["policies"]) == len(bundle["attachments"]) == 2
+        for account, policy, attachment in zip(
+            bundle["registeredAccounts"], bundle["policies"], bundle["attachments"], strict=True,
+        ):
+            assert policy == {
+                "id": f"read-clusters-{account}", "ownerAccountID": account,
+                "content": 'permit(principal, action in HyperFleet::Action::"ReadOnly", resource)\n'
+                           f'when {{ context.accountId == "{account}" && context.region == "us-east-1" }};\n',
+            }
+            assert attachment == {
+                "id": f"dev-readers-{account}", "policyID": policy["id"],
+                "principalARN": f"arn:aws:iam::{account}:role/OrganizationAccountAccessRole",
+                "bindingMode": "role-membership", "scope": "regional", "region": "us-east-1",
+            }
+
+    @pytest.mark.parametrize("rate_enabled", [False, True])
+    def test_mount_inputs_metrics(self, tmp_path, rate_enabled):
+        resources, rendered = _helm_platform(tmp_path, {"platformApi": {
+            "rateLimit": {"enabled": rate_enabled},
+        }})
+        bundle = _resource(resources, "ConfigMap", "authz-config")
+        assert yaml.safe_load(bundle["data"]["config.yaml"]) == {
+            "formatVersion": 1, "registeredAccounts": [], "policies": [], "attachments": [],
+        }
+        deployment = _resource(resources, "Deployment", "platform-api")
+        pod = deployment["spec"]["template"]
+        app = next(c for c in pod["spec"]["containers"] if c["name"] == "platform-api")
+        env = {e["name"]: e.get("value") for e in app["env"]}
+        assert env["AUTHZ_RESOLVER"] == "config"
+        assert env["AUTHZ_CONFIG_FILE"] == "/etc/platform-api/authz/config.yaml"
+        mounts = {m["name"]: m for m in app["volumeMounts"]}
+        assert mounts["authz-config"] == {
+            "name": "authz-config", "mountPath": "/etc/platform-api/authz", "readOnly": True,
+        }
+        volumes = {v["name"]: v for v in pod["spec"]["volumes"]}
+        assert volumes["authz-config"]["configMap"] == {"name": "authz-config", "defaultMode": 0o644}
+        assert "defaultMode: 0644" in rendered
+        config_text = next(part.split("\n", 1)[1] for part in rendered.split("---\n")
+                           if part.startswith("# Source:") and "/authz-configmap.yaml\n" in part)
+        annotations = pod["metadata"]["annotations"]
+        # Helm trims the terminal indented blank line from printed manifests, not include.
+        assert annotations["checksum/authz-config"] == hashlib.sha256((config_text + "    \n").encode()).hexdigest()
+        assert ("rate-limits" in mounts) == ("rate-limits" in volumes) == rate_enabled
+        assert ("checksum/rate-limits" in annotations) == rate_enabled
+        assert ("RATE_LIMIT_CONFIG_FILE" in env) == rate_enabled
+        if rate_enabled:
+            assert mounts["rate-limits"]["readOnly"] is True
+            assert mounts["rate-limits"]["mountPath"] == "/etc/platform-api/rate-limits"
+            assert env["RATE_LIMIT_CONFIG_FILE"] == "/etc/platform-api/rate-limits/limits.yaml"
+            assert _resource(resources, "ConfigMap", "rate-limits")["data"]["limits.yaml"]
+        assert "envoy-config" in volumes
+        service = _resource(resources, "Service", "platform-api")
+        monitor = _resource(resources, "ServiceMonitor", "platform-api")
+        port = next(p for p in app["ports"] if p["name"] == "metrics")
+        service_port = next(p for p in service["spec"]["ports"] if p["name"] == "metrics")
+        assert port["containerPort"] == service_port["port"] == 9090
+        assert service_port["targetPort"] == monitor["spec"]["endpoints"][0]["port"] == "metrics"
+        assert monitor["spec"]["endpoints"][0].get("path", "/metrics") == "/metrics"
+        assert monitor["spec"]["selector"]["matchLabels"] == service["metadata"]["labels"]
+        assert monitor["spec"]["namespaceSelector"]["matchNames"] == [service["metadata"]["namespace"]]
+
+    @pytest.mark.parametrize("change", ["registeredAccounts", "policies", "attachments", "namespace"])
+    def test_complete_checksum(self, tmp_path, change):
+        values = {"platformApi": {"authz": {"resolver": "config", "config": AUTHZ_BUNDLE}}}
+        before, _ = _helm_platform(tmp_path, values)
+        changed = copy.deepcopy(values)
+        if change == "namespace":
+            changed["platformApi"]["namespace"] = "other-platform-api"
+        else:
+            if change == "registeredAccounts":
+                content = AUTHZ_BUNDLE.replace('["012345678901"]', '["012345678901", "999999999999"]')
+            elif change == "policies":
+                content = AUTHZ_BUNDLE.replace('context.region == "us-east-1"', 'context.region == "us-west-2"')
+            else:
+                content = AUTHZ_BUNDLE.replace("role/platform/readers", "role/platform/others")
+            changed["platformApi"]["authz"]["config"] = content
+        after, _ = _helm_platform(tmp_path, changed)
+        def annotations(resources):
+            return _resource(resources, "Deployment", "platform-api")["spec"]["template"]["metadata"]["annotations"]
+        assert annotations(before)["checksum/authz-config"] != annotations(after)["checksum/authz-config"]
+        if change == "namespace":
+            assert annotations(before)["checksum/rate-limits"] != annotations(after)["checksum/rate-limits"]
+        else:
+            assert annotations(before)["checksum/rate-limits"] == annotations(after)["checksum/rate-limits"]
+
+    @pytest.mark.parametrize("field", ["resolver", "config"])
+    def test_mandatory_inputs(self, tmp_path, field):
+        with pytest.raises(subprocess.CalledProcessError) as failure:
+            _helm_platform(tmp_path, {"platformApi": {"authz": {field: ""}}})
+        assert f"platformApi.authz.{field} is required" in failure.value.stderr
 
 
 if __name__ == "__main__":

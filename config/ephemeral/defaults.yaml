@@ -44,6 +44,42 @@ regional_cluster:
 
 applications:
   regional-cluster:
+    platformApi:
+      authz:
+        # Feature-branch CI grants for verified local roles; Prow callers are logged separately.
+        config: |
+          formatVersion: 1
+          {% if ci %}
+          registeredAccounts: ["720644165472", "313828097858"]
+          policies:
+            - id: ci-read-clusters-720644165472
+              ownerAccountID: "720644165472"
+              content: |
+                permit(principal, action in HyperFleet::Action::"ReadOnly", resource)
+                when { context.accountId == "720644165472" && context.region == "us-east-1" };
+            - id: ci-read-clusters-313828097858
+              ownerAccountID: "313828097858"
+              content: |
+                permit(principal, action in HyperFleet::Action::"ReadOnly", resource)
+                when { context.accountId == "313828097858" && context.region == "us-east-1" };
+          attachments:
+            - id: ci-readers-720644165472
+              policyID: ci-read-clusters-720644165472
+              principalARN: arn:aws:iam::720644165472:role/OrganizationAccountAccessRole
+              bindingMode: role-membership
+              scope: regional
+              region: us-east-1
+            - id: ci-readers-313828097858
+              policyID: ci-read-clusters-313828097858
+              principalARN: arn:aws:iam::313828097858:role/OrganizationAccountAccessRole
+              bindingMode: role-membership
+              scope: regional
+              region: us-east-1
+          {% else %}
+          registeredAccounts: []
+          policies: []
+          attachments: []
+          {% endif %}
     hyperfleet:
       oidcS3Bucket: "hypershift-{{ eph_prefix }}-regional-oidc-{{ account_id }}"
 

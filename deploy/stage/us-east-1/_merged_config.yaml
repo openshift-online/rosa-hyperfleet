@@ -230,6 +230,17 @@ applications:
     # @used-by applications.regional-cluster.baseDomain _context
     baseDomain: "{% if dns.domain %}{{ deployment_name }}.{{ dns.domain }}{% endif %}"
     platformApi:
+      authz:
+        # @doc applications.regional-cluster.platformApi.authz.resolver Authorization resolver. Only config is supported.
+        # @used-by applications.regional-cluster.platformApi.authz.resolver _context
+        resolver: config
+        # @doc applications.regional-cluster.platformApi.authz.config Serialized version-1 authorization bundle. Empty arrays deny protected reads. Override only with verified caller records.
+        # @used-by applications.regional-cluster.platformApi.authz.config _context
+        config: |
+          formatVersion: 1
+          registeredAccounts: []
+          policies: []
+          attachments: []
       app:
         args:
           # @doc applications.regional-cluster.platformApi.app.args.defaultClusterExpiration Maps cluster_lifecycle.default_expiration into the platform-api --default-cluster-expiration flag.
