@@ -3,7 +3,7 @@ dns:
   create_environment_zone: true
 
 # Pin a specific AMI for all worker nodes (RC + MC), covering both the Karpenter
-# EC2NodeClass and the Terraform bootstrap node group. ami-08534dafc055ff299 is a
+# EC2NodeClass and the Terraform bootstrap node group. ami-0bfaadce939859f01 is a
 # RHEL EKS image bootstrapped via nodeadm. amiFamily AL2023: Karpenter generates
 # the nodeadm NodeConfig itself, including apiServerEndpoint, certificateAuthority,
 # and cidr. The image is nodeadm-compatible, so the AL2023-family bootstrap works
@@ -11,7 +11,7 @@ dns:
 # "Apiserver endpoint is missing" rather than resolving it via eks:DescribeCluster.)
 worker_node_ami:
   family: AL2023
-  id: ami-08534dafc055ff299
+  id: ami-0bfaadce939859f01
 
 regional_cluster:
   enable_bastion: true

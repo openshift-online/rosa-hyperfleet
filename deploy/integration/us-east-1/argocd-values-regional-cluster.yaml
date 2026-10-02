@@ -11,7 +11,7 @@ eksNodePool:
   - m7i
   ami:
     family: AL2023
-    id: ami-08534dafc055ff299
+    id: ami-0bfaadce939859f01
   rootVolumeSize: 50Gi
 baseDomain: us-east-1.int0.rosa.devshift.net
 platformApi:

@@ -75,7 +75,7 @@ worker_node_ami:
 # @used-by worker_node_root_volume_size pipeline-regional-cluster-inputs/terraform.json.j2
 # @used-by worker_node_root_volume_size pipeline-management-cluster-inputs/terraform.json.j2
   family: AL2023
-  id: ami-08534dafc055ff299
+  id: ami-0bfaadce939859f01
 
 worker_node_root_volume_size: 50
 
