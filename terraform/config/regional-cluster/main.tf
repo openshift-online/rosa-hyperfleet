@@ -56,6 +56,7 @@ provider "pagerduty" {
 # =============================================================================
 
 data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 
 locals {
   mc_entries     = var.management_clusters != "" ? split(",", var.management_clusters) : []
@@ -64,6 +65,17 @@ locals {
     [data.aws_caller_identity.current.account_id],
     local.mc_account_ids,
   )))
+
+  # Dedicated read-only Postgres role for ZOA IAM auth. The master user cannot
+  # be reused: granting it rds_iam would disable its password auth, which the
+  # hyperfleet-operator and platform-api depend on. This role is provisioned by
+  # the ECS bootstrap task (see module.ecs_bootstrap).
+  zoa_db_reader_username = "zoa_ro"
+
+  # RDS IAM authentication resource ARN for the ZOA Lambda read role.
+  # Format: arn:aws:rds-db:region:account:dbuser:cluster-resource-id/username
+  # Allows the zoa_aws_read role to connect as the zoa_ro role via IAM auth.
+  hyperfleet_db_iam_arn = "arn:aws:rds-db:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:dbuser:${module.hyperfleet_db.cluster_resource_id}/${local.zoa_db_reader_username}"
 }
 
 # =============================================================================
@@ -227,6 +239,12 @@ module "ecs_bootstrap" {
 
   rc_aws_account_id = var.target_account_id
   redis_endpoint    = var.enable_rate_limit_redis ? "${module.elasticache_valkey[0].endpoint}:${module.elasticache_valkey[0].port}" : ""
+
+  # ZOA read-only IAM DB role provisioning (runs psql during bootstrap).
+  hyperfleet_db_dsn_secret_arn  = module.hyperfleet_db.dsn_secret_arn
+  hyperfleet_db_kms_key_arn     = module.hyperfleet_db.kms_key_arn
+  hyperfleet_db_name            = module.hyperfleet_db.database_name
+  hyperfleet_db_reader_username = local.zoa_db_reader_username
 }
 
 # =============================================================================
@@ -484,6 +502,14 @@ module "zoa_lambda" {
   artifact_bucket_arn  = module.zoa.bucket_arn
   kms_key_arn          = module.zoa.kms_key_arn
   uploader_role_arn    = module.zoa.uploader_role_arn
+
+  hyperfleet_db_resource_arn = local.hyperfleet_db_iam_arn
+  # RDS endpoint output is the hostname only; append the port so the value is
+  # host:port as required by RDS IAM auth token generation (BuildAuthToken).
+  hyperfleet_db_endpoint = "${module.hyperfleet_db.endpoint}:${module.hyperfleet_db.port}"
+  hyperfleet_db_name     = module.hyperfleet_db.database_name
+  # Connect as the dedicated read-only IAM role, not the master user.
+  hyperfleet_db_username = local.zoa_db_reader_username
 }
 
 # =============================================================================
