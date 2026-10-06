@@ -46,7 +46,7 @@ BUILD_IDS=$(aws codebuild list-builds-for-project \
 if [ -z "$BUILD_IDS" ]; then
     echo "check-queue: no builds found for project ${PROJECT_NAME}"
     # Self is the only build; continue
-    exit 0
+    return 0
 fi
 
 # ── Get build details ─────────────────────────────────────────────────────────
@@ -62,7 +62,7 @@ QUEUED_BUILDS=$(echo "$BUILDS_JSON" | jq -r '.[] | select(.[2] == "QUEUED") | @j
 
 if [ -z "$QUEUED_BUILDS" ]; then
     echo "check-queue: no queued builds; continuing"
-    exit 0
+    return 0
 fi
 
 echo "check-queue: found $(echo "$QUEUED_BUILDS" | wc -l) queued build(s)"

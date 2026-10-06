@@ -37,15 +37,10 @@ resource "aws_iam_role_policy" "mc_codebuild_policy" {
           "logs:PutLogEvents"
         ]
         Resource = [
-          # Explicit suffixes for the 4 MC CodeBuild project types
-          "arn:aws:logs:${var.region}:${data.aws_caller_identity.mc_shared.account_id}:log-group:/aws/codebuild/mc*-apply",
-          "arn:aws:logs:${var.region}:${data.aws_caller_identity.mc_shared.account_id}:log-group:/aws/codebuild/mc*-apply:*",
-          "arn:aws:logs:${var.region}:${data.aws_caller_identity.mc_shared.account_id}:log-group:/aws/codebuild/mc*-bootstrap",
-          "arn:aws:logs:${var.region}:${data.aws_caller_identity.mc_shared.account_id}:log-group:/aws/codebuild/mc*-bootstrap:*",
-          "arn:aws:logs:${var.region}:${data.aws_caller_identity.mc_shared.account_id}:log-group:/aws/codebuild/mc*-register",
-          "arn:aws:logs:${var.region}:${data.aws_caller_identity.mc_shared.account_id}:log-group:/aws/codebuild/mc*-register:*",
-          "arn:aws:logs:${var.region}:${data.aws_caller_identity.mc_shared.account_id}:log-group:/aws/codebuild/mc*-kube-applier-dynamodb",
-          "arn:aws:logs:${var.region}:${data.aws_caller_identity.mc_shared.account_id}:log-group:/aws/codebuild/mc*-kube-applier-dynamodb:*"
+          # MC CodeBuild projects use the configured prefix, e.g.
+          # "eph-6dc98675-mc01" for ephemeral environments.
+          "arn:aws:logs:${var.region}:${data.aws_caller_identity.mc_shared.account_id}:log-group:/aws/codebuild/${local.name_prefix}mc*",
+          "arn:aws:logs:${var.region}:${data.aws_caller_identity.mc_shared.account_id}:log-group:/aws/codebuild/${local.name_prefix}mc*:*"
         ]
       },
       {
@@ -93,7 +88,7 @@ resource "aws_iam_role_policy" "mc_codebuild_policy" {
           "codebuild:BatchGetBuilds",
           "codebuild:StopBuild"
         ]
-        Resource = "arn:aws:codebuild:${var.region}:${data.aws_caller_identity.mc_shared.account_id}:project/mc*"
+        Resource = "arn:aws:codebuild:${var.region}:${data.aws_caller_identity.mc_shared.account_id}:project/${local.name_prefix}mc*"
       },
       {
         # Cross-account assume role for child MC accounts. Account IDs are

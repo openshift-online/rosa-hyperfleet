@@ -6,7 +6,7 @@
 #   ENVIRONMENT          - Target environment (e.g., staging, production)
 #   GITHUB_REPOSITORY    - GitHub repository in owner/name format
 #   GITHUB_BRANCH        - GitHub branch to track
-#   GITHUB_CONNECTION_ARN - CodeStar connection ARN
+#   GITHUB_CONNECTION_ARN - resolved CodeStar connection ARN from bootstrap
 #   PLATFORM_IMAGE       - Platform container image URI
 #   RC_CODEBUILD_ROLE_ARN - ARN of the centrally-managed RC CodeBuild role
 #   MC_CODEBUILD_ROLE_ARN - ARN of the shared MC CodeBuild role
@@ -33,17 +33,22 @@ verify_platform_image_exists() {
     local image_uri="$1"
     local repo="${image_uri%:*}"
     local tag="${image_uri##*:}"
+    local repository_name
 
     # Public ECR uses different API
     if [[ "$repo" =~ ^public\.ecr\.aws ]]; then
-        if ! aws ecr-public describe-images --repository-name "${repo##*/}" --image-ids imageTag="$tag" --region us-east-1 --no-cli-pager >/dev/null 2>&1; then
+        # Remove the public ECR registry alias but preserve nested repository paths.
+        repository_name="${repo#public.ecr.aws/}"
+        repository_name="${repository_name#*/}"
+        if ! aws ecr-public describe-images --repository-name "$repository_name" --image-ids imageTag="$tag" --region us-east-1 --no-cli-pager >/dev/null 2>&1; then
             return 1
         fi
     else
         # Private ECR - extract region from repo URI
         local region="${repo#*.ecr.}"
         region="${region%%.*}"
-        if ! aws ecr describe-images --repository-name "${repo##*/}" --image-ids imageTag="$tag" --region "$region" --no-cli-pager >/dev/null 2>&1; then
+        repository_name="${repo#*/}"
+        if ! aws ecr describe-images --repository-name "$repository_name" --image-ids imageTag="$tag" --region "$region" --no-cli-pager >/dev/null 2>&1; then
             return 1
         fi
     fi
@@ -304,7 +309,7 @@ generate_project_spec() {
                     resource: $github_conn_arn
                 }
             },
-            buildTimeout: $timeout,
+            timeoutInMinutes: $timeout,
             concurrentBuildLimit: 1
         }'
 }

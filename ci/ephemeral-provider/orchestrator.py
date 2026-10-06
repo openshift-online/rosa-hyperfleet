@@ -123,6 +123,76 @@ class EphemeralEnvOrchestrator:
         if save_mc_state:
             self._save_mc_terraform_outputs(git, save_mc_state)
 
+    def resume(
+        self,
+        save_rc_state: str | None = None,
+        save_mc_state: str | None = None,
+        resync_before_resume: bool = False,
+    ):
+        """Resume provisioning from an existing ephemeral branch.
+
+        This retries the bootstrap and CodeBuild stages without creating a new
+        branch or appending another environment record. When requested, the
+        existing branch is first reset to the latest source branch, ephemeral
+        configuration is re-injected, and the rendered result is force-pushed.
+        Existing Terraform state and CodeBuild projects are reused.
+        """
+        git = GitManager(
+            self.creds_dir,
+            self.repo,
+            self.branch,
+            eph_branch_name=self.eph_branch_name,
+        )
+        self.git = git
+        git.checkout_eph_branch(self.eph_prefix)
+
+        env_config_dir = git.work_dir / "config" / TARGET_ENVIRONMENT
+        self.region = discover_region(env_config_dir)
+        log.info("Region (from ephemeral branch): %s", self.region)
+
+        self._setup_aws()
+        self.central_monitor = BuildMonitor(self.aws.session)
+        self.target_monitor = BuildMonitor(self.aws.target_session)
+
+        if resync_before_resume:
+            self._read_project_names(git)
+            project_names = [self.rc_project, *self.mc_projects]
+            project_names = [name for name in project_names if name]
+            active_builds = self.target_monitor.active_builds(project_names)
+            active_builds.extend(
+                self.central_monitor.active_builds(
+                    [f"{git.eph_prefix}-build-platform-image"]
+                )
+            )
+            if active_builds:
+                raise RuntimeError(
+                    "Cannot automatically resync while CodeBuild builds are active: "
+                    f"{', '.join(active_builds)}. Wait for them to finish, or rerun "
+                    "with RESYNC=false to resume without force-pushing the branch."
+                )
+
+            log.info("Resyncing ephemeral branch before resuming provisioning")
+            git.resync_eph_branch(self.eph_prefix)
+            self._inject_ephemeral_config(git)
+            desired_sha = git.render_and_push(
+                "ci: resync ephemeral environment config",
+                force=True,
+                force_push_if_clean=True,
+            )
+        else:
+            desired_sha = git.current_sha()
+
+        log.info("Resuming provisioning at commit: %s", desired_sha)
+
+        self._bootstrap_provisioner(git)
+        self._read_project_names(git)
+        self._wait_for_provision(desired_sha)
+
+        if save_rc_state:
+            self._save_terraform_outputs(git, save_rc_state)
+        if save_mc_state:
+            self._save_mc_terraform_outputs(git, save_mc_state)
+
     def teardown(self, fire_and_forget: bool = False):
         """Tear down a previously provisioned ephemeral environment.
 
@@ -180,7 +250,11 @@ class EphemeralEnvOrchestrator:
         git.resync_eph_branch(self.eph_prefix)
 
         self._inject_ephemeral_config(git)
-        git.render_and_push("ci: resync ephemeral environment config", force=True)
+        git.render_and_push(
+            "ci: resync ephemeral environment config",
+            force=True,
+            force_push_if_clean=True,
+        )
 
     def collect_codebuild_logs(self):
         """Download CloudWatch logs for all CodeBuild projects matching our ephemeral prefix.
@@ -397,6 +471,8 @@ class EphemeralEnvOrchestrator:
         avoid hardcoding the pattern in Python.
         """
         log.info("Reading CodeBuild project names from rendered config...")
+        self.rc_project = None
+        self.mc_projects = []
 
         deploy_dir = git.work_dir / "deploy" / TARGET_ENVIRONMENT / self.region
 
@@ -441,12 +517,12 @@ class EphemeralEnvOrchestrator:
         builds = []
 
         # Start RC build
-        rc_build_id = self.target_monitor.start_build(self.rc_project, desired_sha)
+        rc_build_id = self.target_monitor.start_or_reuse_build(self.rc_project, desired_sha)
         builds.append((self.rc_project, rc_build_id))
 
         # Start MC builds
         for mc_project in self.mc_projects:
-            mc_build_id = self.target_monitor.start_build(mc_project, desired_sha)
+            mc_build_id = self.target_monitor.start_or_reuse_build(mc_project, desired_sha)
             builds.append((mc_project, mc_build_id))
 
         log.info("Started %d build(s) at SHA %s", len(builds), desired_sha[:7])

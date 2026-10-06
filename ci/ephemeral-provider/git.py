@@ -79,6 +79,10 @@ class GitManager:
             )
         return result
 
+    def current_sha(self) -> str:
+        """Return the checked-out commit SHA."""
+        return self._run_git("rev-parse", "HEAD").stdout.strip()
+
     def _resolve_fork_owner(self, token: str) -> str:
         """Get the GitHub username associated with the git token."""
         import urllib.request
@@ -233,7 +237,12 @@ class GitManager:
         branch_url = f"https://github.com/{self.fork_repo}/commits/{self.eph_branch}/"
         log.info("Resync complete: %s", branch_url)
 
-    def push(self, message: str, force: bool = False) -> str | None:
+    def push(
+        self,
+        message: str,
+        force: bool = False,
+        force_push_if_clean: bool = False,
+    ) -> str | None:
         """Stage all changes, commit, and push to the ephemeral branch.
 
         Returns:
@@ -243,8 +252,16 @@ class GitManager:
 
         result = self._run_git("diff", "--cached", "--quiet", check=False)
         if result.returncode == 0:
-            log.info("No changes to commit, skipping push")
-            return None
+            if not force_push_if_clean:
+                log.info("No changes to commit, skipping push")
+                return None
+
+            log.info("No changes to commit; force-updating the ephemeral branch")
+            push_cmd = ["push", "ci", self.eph_branch]
+            if force:
+                push_cmd.insert(1, "--force")
+            self._run_git(*push_cmd, auth=True)
+            return self.current_sha()
 
         self._run_git("commit", "-m", message)
         push_cmd = ["push", "ci", self.eph_branch]
@@ -258,7 +275,12 @@ class GitManager:
         log.info("Pushed: %s (SHA: %s)", message, pushed_sha[:7])
         return pushed_sha
 
-    def render_and_push(self, message: str, force: bool = False) -> str | None:
+    def render_and_push(
+        self,
+        message: str,
+        force: bool = False,
+        force_push_if_clean: bool = False,
+    ) -> str | None:
         """Run render.py in the work directory, then commit and push.
 
         Returns:
@@ -284,7 +306,11 @@ class GitManager:
                 f"render.py failed (exit {result.returncode})\n"
                 f"stdout: {result.stdout}\nstderr: {result.stderr}"
             )
-        return self.push(message, force=force)
+        return self.push(
+            message,
+            force=force,
+            force_push_if_clean=force_push_if_clean,
+        )
 
     def modify_config(self, environment: str, region: str, callback) -> str | None:
         """Load a region config file, apply callback modifications, render, and push.
