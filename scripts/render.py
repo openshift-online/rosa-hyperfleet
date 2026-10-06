@@ -287,13 +287,13 @@ def cleanup_stale_files(
 
             valid_mcs = env_region_mcs.get(env_dir.name, {}).get(region_dir.name, set())
             for item in region_dir.iterdir():
-                if item.is_dir() and item.name.startswith("pipeline-management-cluster-"):
-                    mc_name = item.name.removeprefix("pipeline-management-cluster-").removesuffix("-inputs")
+                if item.is_dir() and item.name.startswith("codebuild-management-cluster-"):
+                    mc_name = item.name.removeprefix("codebuild-management-cluster-").removesuffix("-inputs")
                     if mc_name not in valid_mcs:
                         print(f"  [CLEANUP] Removing stale MC dir: {item}")
                         shutil.rmtree(item)
 
-            prov_dir = region_dir / "pipeline-provisioner-inputs"
+            prov_dir = region_dir / "codebuild-provisioner-inputs"
             if prov_dir.exists():
                 for mc_file in prov_dir.glob("management-cluster-*.json"):
                     mc_name = mc_file.stem.removeprefix("management-cluster-")
@@ -336,6 +336,12 @@ def build_context(
     ctx["management_cluster_defaults"] = resolve_templates(ctx.get("management_cluster_defaults", {}), ctx)
     ctx["dns"] = resolve_templates(ctx.get("dns", {}), ctx)
 
+    # Compute regional_id using configurable naming pattern
+    codebuild_naming = ctx.get("codebuild_naming", {})
+    rc_pattern = codebuild_naming.get("rc_pattern", "{prefix}-regional")
+    prefix = eph_prefix if eph_prefix else "regional"
+    ctx["regional_id"] = rc_pattern.format(prefix=prefix)
+
     if ctx["regional_cluster"].get("enable_write_sre_tools") and env_name != "ephemeral":
         raise ValueError(
             f"regional_cluster.enable_write_sre_tools can only be true for ephemeral "
@@ -353,9 +359,15 @@ def build_mc_list(
     default_mc_account = merged.get("aws", {}).get("management_cluster_account_id")
     mc_list = []
 
+    # Get MC naming pattern from config
+    codebuild_naming = merged.get("codebuild_naming", {})
+    mc_pattern = codebuild_naming.get("mc_pattern", "{prefix}-{mc_key}")
+
     for mc_key, mc_val in mc_dict.items():
         mc = dict(mc_val) if mc_val else {}
-        mc["management_id"] = f"{eph_prefix}-{mc_key}" if eph_prefix else mc_key
+        # Compute management_id using configurable naming pattern
+        prefix = eph_prefix if eph_prefix else mc_key
+        mc["management_id"] = mc_pattern.format(prefix=prefix, mc_key=mc_key)
         if "account_id" not in mc and default_mc_account:
             mc["account_id"] = default_mc_account
         mc = resolve_templates(mc, {**ctx, "cluster_prefix": mc_key})
@@ -735,9 +747,10 @@ def main() -> int:
             out_dir = deploy_dir / env_name / region
 
             # 1:1 templates
-            render_file(templates_dir, "pipeline-provisioner-inputs/terraform.json", ctx, out_dir / "pipeline-provisioner-inputs" / "terraform.json")
-            render_file(templates_dir, "pipeline-provisioner-inputs/regional-cluster.json", ctx, out_dir / "pipeline-provisioner-inputs" / "regional-cluster.json")
-            render_file(templates_dir, "pipeline-regional-cluster-inputs/terraform.json", ctx, out_dir / "pipeline-regional-cluster-inputs" / "terraform.json")
+            render_file(templates_dir, "codebuild-provisioner-inputs/terraform.json", ctx, out_dir / "codebuild-provisioner-inputs" / "terraform.json")
+            render_file(templates_dir, "codebuild-provisioner-inputs/regional-cluster.json", ctx, out_dir / "codebuild-provisioner-inputs" / "regional-cluster.json")
+            render_file(templates_dir, "codebuild-regional-cluster-inputs/terraform.json", ctx, out_dir / "codebuild-regional-cluster-inputs" / "terraform.json")
+            render_file(templates_dir, "codebuild-regional-cluster-inputs/static.tfvars.json", ctx, out_dir / "codebuild-regional-cluster-inputs" / "static.tfvars.json")
 
             # Per-cluster-type: ArgoCD values + bootstrap
             app_config = resolve_templates(ctx.get("applications", {}), ctx)
@@ -751,8 +764,9 @@ def main() -> int:
             for mc in mc_list:
                 mc_ctx = {**ctx, "mc": mc}
                 mc_id = mc["management_id"]
-                render_file(templates_dir, "pipeline-provisioner-inputs/management-cluster.json", mc_ctx, out_dir / "pipeline-provisioner-inputs" / f"management-cluster-{mc_id}.json")
-                render_file(templates_dir, "pipeline-management-cluster-inputs/terraform.json", mc_ctx, out_dir / f"pipeline-management-cluster-{mc_id}-inputs" / "terraform.json")
+                render_file(templates_dir, "codebuild-provisioner-inputs/management-cluster.json", mc_ctx, out_dir / "codebuild-provisioner-inputs" / f"management-cluster-{mc_id}.json")
+                render_file(templates_dir, "codebuild-management-cluster-inputs/terraform.json", mc_ctx, out_dir / f"codebuild-management-cluster-{mc_id}-inputs" / "terraform.json")
+                render_file(templates_dir, "codebuild-management-cluster-inputs/static.tfvars.json", mc_ctx, out_dir / f"codebuild-management-cluster-{mc_id}-inputs" / "static.tfvars.json")
 
         print()
 

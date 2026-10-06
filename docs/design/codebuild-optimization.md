@@ -78,6 +78,74 @@ Rejected: keeping CodePipeline with `QUEUED`/`SUPERSEDED` (doesn't eliminate met
 
 ### After this ADR
 
+#### CodeStar connection and CodeBuild source flow
+
+The shared CodeStar connection is the authorization bridge between GitHub and CodeBuild. Bootstrap locates the pre-existing connection and refuses to create a replacement, Terraform wires its ARN into the central CodeBuild project, and the SDK provisioner reuses the same ARN for RC and MC projects. CodeBuild IAM roles may use the connection, but GitHub repository and webhook access is granted by the GitHub App authorization behind the connection.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Op as Operator or CI
+  participant Eph as Ephemeral provider
+  participant Git as GitHub fork
+  participant Boot as Bootstrap script
+  participant Conn as CodeStar connection
+  participant TF as Terraform
+  participant IAM as CodeBuild IAM role
+  participant CB as CodeBuild
+  participant Prov as SDK provisioner
+
+  Op->>Eph: make ephemeral-provision ID
+  Eph->>Git: Create and push ephemeral branch
+  Git-->>Eph: Branch available
+  Eph->>Boot: Start central-account bootstrap
+
+  Boot->>Conn: Find existing rosa-regional-github-shared
+  alt Exactly one matching connection exists
+    Conn-->>Boot: Return connection ARN
+  else Missing or duplicate connection
+    Conn-->>Boot: Fail bootstrap
+    Note over Op,Conn: Bootstrap never creates a replacement connection
+  end
+  Boot->>Conn: Verify connection status
+  Conn-->>Boot: AVAILABLE
+
+  Boot->>TF: Import connection ARN and apply
+  TF->>Conn: Read shared connection
+  Conn-->>TF: Connection ARN
+  TF->>IAM: Create roles and UseConnection policy
+  TF->>TF: Wait for IAM propagation
+  TF->>CB: Create build-platform-image project
+  CB-->>TF: Project created
+  TF->>CB: Create CodeBuild webhook
+  CB->>Conn: Authorize webhook operation
+  Conn->>Git: Register repository webhook
+
+  alt GitHub App can access the repository
+    Git-->>Conn: Webhook registered
+    Conn-->>CB: Webhook created
+    CB-->>TF: Terraform apply succeeds
+  else Repository or webhook permission is missing
+    Git-->>Conn: Access denied
+    Conn-->>CB: OAuthProviderException
+    CB-->>TF: CreateWebhook fails
+    Note over TF,Git: No GitHub hook is registered
+  end
+
+  Boot->>Prov: Run provision-codebuilds.sh with ARN
+  Prov->>CB: Create or update RC/MC projects
+  CB->>Conn: Associate GitHub source connection
+  CB->>Git: Create RC/MC webhooks
+  Eph->>CB: StartBuild at ephemeral commit SHA
+  CB->>IAM: Assume service role
+  IAM->>Conn: Use connection
+  Conn->>Git: Fetch source branch
+  Git-->>Conn: Repository source
+  Conn-->>CB: Source available
+  CB->>CB: Run buildspec and assume target-account roles
+  CB-->>Eph: Build status and logs
+```
+
 #### Day 1: Initial Region Provisioning
 
 Bootstrap **invokes** the provisioner script once. Nobody reruns bootstrap until the next env recreate.
@@ -244,6 +312,8 @@ Instance type and other terraform/config changes are **hash2**. Cluster projects
 
 [`check-queue.sh`](../../scripts/pipeline-common/check-queue.sh) is the first command of every combined buildspec. It `StopBuild`s older **QUEUED** builds and **exit 0** if a newer SHA is pending. Winner: `git merge-base --is-ancestor` on `sourceVersion` (unrelated SHAs â†’ higher `buildNumber`). Never stop past `pre_build`. IAM: `ListBuildsForProject` / `BatchGetBuilds` / `StopBuild` **self ARN only**. EventBridge Slack: `FAILED` only.
 
+**Full implementation details:** See [check-queue-skip-logic.md](check-queue-skip-logic.md) for the complete algorithm, source vs. execute distinction, example timeline, and troubleshooting guide.
+
 ```mermaid
 flowchart TD
   Start[Build starts pre_build] --> List[ListBuildsForProject and BatchGetBuilds]
@@ -283,4 +353,4 @@ CodePipeline V2 glob `file_paths` become CodeBuild regex webhook groups (`**` â†
 
 **Local buildspec testing** using AWS CodeBuild local images, for faster iteration on `check-queue.sh` and combined specs.
 
-Related: [pipeline-based-lifecycle.md](pipeline-based-lifecycle.md), [fully-private-eks-bootstrap.md](fully-private-eks-bootstrap.md), [testing-strategy.md](testing-strategy.md), [environment-provisioning.md](../environment-provisioning.md), [regional-account-minting.md](regional-account-minting.md), [kube-applier-architecture.md](kube-applier-architecture.md).
+Related: [check-queue-skip-logic.md](check-queue-skip-logic.md), [pipeline-based-lifecycle.md](pipeline-based-lifecycle.md), [fully-private-eks-bootstrap.md](fully-private-eks-bootstrap.md), [testing-strategy.md](testing-strategy.md), [environment-provisioning.md](../environment-provisioning.md), [regional-account-minting.md](regional-account-minting.md), [kube-applier-architecture.md](kube-applier-architecture.md).

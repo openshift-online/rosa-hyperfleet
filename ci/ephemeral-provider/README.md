@@ -8,9 +8,9 @@ For local development usage via Make targets, see [Provisioning a Development En
 
 The `--creds-dir` directory (default: `/var/run/rosa-credentials/`) must contain:
 
-| File           | Purpose                              | Fallback               |
-| -------------- | ------------------------------------ | ---------------------- |
-| `github_token` | GitHub token for pushing CI branches | `GITHUB_TOKEN` env var |
+| File           | Purpose                              | Fallback                             |
+| -------------- | ------------------------------------ | ------------------------------------ |
+| `github_token` | GitHub token for pushing CI branches | `HYPERFLEET_CI_GITHUB_TOKEN` env var |
 
 The provider also expects AWS CLI profiles `rrp-central`, `rrp-rc`, and `rrp-mc` to be available via `AWS_CONFIG_FILE`. See the [AWS Profiles](../README.md#aws-profiles) section in the CI README for details.
 

@@ -216,6 +216,7 @@ BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 
 ephemeral-provision: ## Provision an ephemeral environment
 	@ID="$(ID)" REPO="$(REPO)" BRANCH="$(if $(filter command line,$(origin BRANCH)),$(BRANCH),)" \
+		GITHUB_CONNECTION_ARN="$(GITHUB_CONNECTION_ARN)" \
 		./scripts/dev/ephemeral-env.sh provision
 
 ephemeral-teardown: ## Tear down an ephemeral environment

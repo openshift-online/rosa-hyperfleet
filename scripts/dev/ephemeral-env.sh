@@ -194,11 +194,11 @@ setup_override_mount() {
 # Fetch GitHub token from Secrets Manager (unless already set).
 # Requires rrp-ephemeral-central profile to be available.
 fetch_github_token() {
-    if [[ -z "${GITHUB_TOKEN:-}" ]]; then
+    if [[ -z "${HYPERFLEET_CI_GITHUB_TOKEN:-}" ]]; then
         echo "Fetching GitHub token from SSM Parameter Store..."
         local ssm_err
         ssm_err=$(mktemp)
-        GITHUB_TOKEN=$(aws ssm get-parameter \
+        HYPERFLEET_CI_GITHUB_TOKEN=$(aws ssm get-parameter \
             --name "$GITHUB_TOKEN_SECRET" \
             --with-decryption \
             --profile rrp-ephemeral-central \
@@ -207,7 +207,7 @@ fetch_github_token() {
 $(cat "$ssm_err")"
         rm -f "$ssm_err"
     fi
-    export GITHUB_TOKEN
+    export HYPERFLEET_CI_GITHUB_TOKEN
 }
 
 # Create temporary AWS config with ephemeral profiles.
@@ -408,7 +408,8 @@ cmd_provision() {
     # shellcheck disable=SC2086
     $CONTAINER_ENGINE run --rm \
         $_CONTAINER_AWS_FLAGS \
-        -e "GITHUB_TOKEN=$GITHUB_TOKEN" \
+        -e "HYPERFLEET_CI_GITHUB_TOKEN=$HYPERFLEET_CI_GITHUB_TOKEN" \
+        -e "GITHUB_CONNECTION_ARN=${GITHUB_CONNECTION_ARN:-}" \
         $OVERRIDE_MOUNT \
         -v "${REPO_ROOT}:/workspace:ro,z" \
         -v "${tmpdir}:/output:z" \
@@ -522,7 +523,7 @@ cmd_teardown() {
     # shellcheck disable=SC2086
     $CONTAINER_ENGINE run --rm \
         $_CONTAINER_AWS_FLAGS \
-        -e "GITHUB_TOKEN=$GITHUB_TOKEN" \
+        -e "HYPERFLEET_CI_GITHUB_TOKEN=$HYPERFLEET_CI_GITHUB_TOKEN" \
         -v "${REPO_ROOT}:/workspace:ro,z" \
         -v "${artifacts_dir}:/artifacts:z" \
         -w /workspace \
@@ -587,7 +588,7 @@ cmd_resync() {
     # shellcheck disable=SC2086
     $CONTAINER_ENGINE run --rm \
         $_CONTAINER_AWS_FLAGS \
-        -e "GITHUB_TOKEN=$GITHUB_TOKEN" \
+        -e "HYPERFLEET_CI_GITHUB_TOKEN=$HYPERFLEET_CI_GITHUB_TOKEN" \
         $OVERRIDE_MOUNT \
         -v "${REPO_ROOT}:/workspace:ro,z" \
         -v "${artifacts_dir}:/artifacts:z" \
