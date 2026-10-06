@@ -91,6 +91,31 @@ append_field() {
         && mv "${ENVS_FILE}.tmp" "$ENVS_FILE"
 }
 
+# Require the outputs needed by the local ephemeral e2e workflow before marking
+# the environment ready. When ZOA is enabled, either endpoint being present
+# means both RC and MC endpoints are expected; when it is disabled, neither is
+# required for a non-ZOA ephemeral environment.
+validate_provision_outputs() {
+    local id="$1" api_url="$2" region="$3" rhobs_api_url="$4"
+    local zoa_rc_api_url="$5" zoa_mc_api_url="$6"
+    local missing=()
+
+    [[ -n "$api_url" ]] || missing+=(API_URL)
+    [[ -n "$region" ]] || missing+=(REGION)
+    [[ -n "$rhobs_api_url" ]] || missing+=(RHOBS_API_URL)
+    if [[ -n "$zoa_rc_api_url" || -n "$zoa_mc_api_url" ]]; then
+        [[ -n "$zoa_rc_api_url" ]] || missing+=(ZOA_RC_API_URL)
+        [[ -n "$zoa_mc_api_url" ]] || missing+=(ZOA_MC_API_URL)
+    fi
+
+    if (( ${#missing[@]} > 0 )); then
+        update_state "$id" "provisioning-failed"
+        echo "Fix the provisioning failure, then retry:"
+        echo "  make ephemeral-provision-resume ID=$id"
+        die "Provisioning completed but required outputs are missing for ID $id: ${missing[*]}"
+    fi
+}
+
 # Update one or more KEY=VALUE fields (update existing or append).
 # Usage: update_fields <id> KEY1=VAL1 [KEY2=VAL2 ...]
 update_fields() {
@@ -106,6 +131,26 @@ update_fields() {
     done
     rm -f "${ENVS_FILE}.tmp.bak"
     mv "${ENVS_FILE}.tmp" "$ENVS_FILE"
+}
+
+# Persist a successful provision as one metadata update. STATE=ready is only
+# written together with the outputs that were validated by the provider.
+record_ready_environment() {
+    local id="$1" region="$2" api_url="$3" rhobs_api_url="$4"
+    local zoa_rc_api_url="$5" zoa_mc_api_url="$6" eph_branch="$7"
+    local fields=("STATE=ready")
+
+    [[ -z "$region" ]] || fields+=("REGION=$region")
+    [[ -z "$api_url" ]] || fields+=("API_URL=$api_url")
+    [[ -z "$rhobs_api_url" ]] || fields+=("RHOBS_API_URL=$rhobs_api_url")
+    [[ -z "$zoa_rc_api_url" ]] || fields+=("ZOA_RC_API_URL=$zoa_rc_api_url")
+    [[ -z "$zoa_mc_api_url" ]] || fields+=("ZOA_MC_API_URL=$zoa_mc_api_url")
+    fields+=("EPH_BRANCH=$eph_branch")
+
+    if ! update_fields "$id" "${fields[@]}"; then
+        update_state "$id" "provisioning-failed" || true
+        die "Unable to persist successful provisioning metadata for ID $id"
+    fi
 }
 
 # Derive the ephemeral branch name from an env ID and branch name.
@@ -452,15 +497,15 @@ cmd_provision() {
             zoa_mc_api_url=$(jq -r '.zoa_api_function_url.value // empty' "$tmpdir/tf-outputs-mc.json" 2>/dev/null || true)
         fi
 
-        update_state "$ID" "ready"
-        [[ -z "$region" ]]  || append_field "$ID" "REGION" "$region"
-        [[ -z "$api_url" ]] || append_field "$ID" "API_URL" "$api_url"
-        [[ -z "$rhobs_api_url" ]] || append_field "$ID" "RHOBS_API_URL" "$rhobs_api_url"
-        [[ -z "$zoa_rc_api_url" ]] || append_field "$ID" "ZOA_RC_API_URL" "$zoa_rc_api_url"
-        [[ -z "$zoa_mc_api_url" ]] || append_field "$ID" "ZOA_MC_API_URL" "$zoa_mc_api_url"
+        validate_provision_outputs \
+            "$ID" "$api_url" "$region" "$rhobs_api_url" \
+            "$zoa_rc_api_url" "$zoa_mc_api_url"
 
         # Store ephemeral branch name so it survives branch swaps
-        append_field "$ID" "EPH_BRANCH" "$(derive_eph_branch "$ID" "$branch")"
+        record_ready_environment \
+            "$ID" "$region" "$api_url" "$rhobs_api_url" \
+            "$zoa_rc_api_url" "$zoa_mc_api_url" \
+            "$(derive_eph_branch "$ID" "$branch")"
 
         echo ""
         echo "Environment recorded in $ENVS_FILE."
@@ -480,6 +525,8 @@ cmd_provision() {
         update_state "$ID" "provisioning-failed"
         echo "Provisioning failed. State updated to provisioning-failed."
         echo "CodeBuild logs (if captured): $artifacts_dir"
+        echo "Fix the failure, then retry:"
+        echo "  make ephemeral-provision-resume ID=$ID"
         exit $rc
     fi
 }
@@ -586,18 +633,20 @@ cmd_provision_resume() {
             zoa_mc_api_url=$(jq -r '.zoa_api_function_url.value // empty' "$tmpdir/tf-outputs-mc.json" 2>/dev/null || true)
         fi
 
-        update_state "$BUILD_ID" "ready"
-        [[ -z "$region" ]] || append_field "$BUILD_ID" "REGION" "$region"
-        [[ -z "$api_url" ]] || append_field "$BUILD_ID" "API_URL" "$api_url"
-        [[ -z "$rhobs_api_url" ]] || append_field "$BUILD_ID" "RHOBS_API_URL" "$rhobs_api_url"
-        [[ -z "$zoa_rc_api_url" ]] || append_field "$BUILD_ID" "ZOA_RC_API_URL" "$zoa_rc_api_url"
-        [[ -z "$zoa_mc_api_url" ]] || append_field "$BUILD_ID" "ZOA_MC_API_URL" "$zoa_mc_api_url"
-        append_field "$BUILD_ID" "EPH_BRANCH" "$eph_branch"
+        validate_provision_outputs \
+            "$BUILD_ID" "$api_url" "$region" "$rhobs_api_url" \
+            "$zoa_rc_api_url" "$zoa_mc_api_url"
+
+        record_ready_environment \
+            "$BUILD_ID" "$region" "$api_url" "$rhobs_api_url" \
+            "$zoa_rc_api_url" "$zoa_mc_api_url" "$eph_branch"
         echo "Environment $BUILD_ID provisioning resumed successfully."
     else
         update_state "$BUILD_ID" "provisioning-failed"
         echo "Resume failed. State updated to provisioning-failed."
         echo "CodeBuild logs (if captured): $artifacts_dir"
+        echo "Fix the failure, then retry:"
+        echo "  make ephemeral-provision-resume ID=$BUILD_ID"
         exit $rc
     fi
 }

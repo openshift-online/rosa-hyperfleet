@@ -9,6 +9,37 @@ source scripts/pipeline-common/terraform-lib.sh
 preflight_check
 config_load regional
 
+DEPLOY_DIR=$(dirname "$DEPLOY_CONFIG_FILE")
+STATIC_TFVARS="${DEPLOY_DIR}/static.tfvars.json"
+_REPO_BRANCH="${REPOSITORY_BRANCH:-main}"
+
+require_nonempty_vars "RC core runtime" \
+    TARGET_ACCOUNT_ID TARGET_REGION REGIONAL_ID REPOSITORY_URL PLATFORM_IMAGE
+validate_aws_account_id "TARGET_ACCOUNT_ID" "${TARGET_ACCOUNT_ID}"
+tf_require_static_vars "${STATIC_TFVARS}" "RC core" \
+    regional_id environment deployment_name app_code service_phase cost_center
+tf_require_static_keys "${STATIC_TFVARS}" "RC" \
+    zoa_lambda_image_tag zoa_runner_image_tag \
+    zoa_lambda_source_image zoa_runner_source_image worker_node_ami_id eph_prefix
+
+_STATIC_REGIONAL_ID=$(jq -r '.regional_id // empty' "${STATIC_TFVARS}")
+_STATIC_ENVIRONMENT=$(jq -r '.environment // empty' "${STATIC_TFVARS}")
+if [[ "${_STATIC_REGIONAL_ID}" != "${REGIONAL_ID}" ]]; then
+    echo "ERROR: RC regional_id mismatch: static=${_STATIC_REGIONAL_ID}, runtime=${REGIONAL_ID}" >&2
+    exit 1
+fi
+if [[ "${_STATIC_ENVIRONMENT}" != "${ENVIRONMENT}" ]]; then
+    echo "ERROR: RC environment mismatch: static=${_STATIC_ENVIRONMENT}, runtime=${ENVIRONMENT}" >&2
+    exit 1
+fi
+
+_ZOA_LAMBDA_IMAGE_TAG=$(jq -r '.zoa_lambda_image_tag // empty' "$STATIC_TFVARS")
+if [[ -n "${_ZOA_LAMBDA_IMAGE_TAG}" ]]; then
+    tf_require_static_vars "${STATIC_TFVARS}" "RC ZOA" \
+        zoa_lambda_image_tag zoa_runner_image_tag \
+        zoa_lambda_source_image zoa_runner_source_image
+fi
+
 # Save central credentials as a named AWS profile so Terraform's aws.central
 # provider can access the central account after use_mc_account switches
 # ambient creds to the target account.
@@ -35,7 +66,6 @@ export TF_STATE_REGION="${TARGET_REGION}"
 # Set dynamic Terraform variables (static vars in static.tfvars.json)
 export TF_VAR_region="${TARGET_REGION}"
 
-_REPO_BRANCH="${REPOSITORY_BRANCH:-main}"
 export TF_VAR_repository_url="${REPOSITORY_URL}"
 export TF_VAR_repository_branch="${_REPO_BRANCH}"
 
@@ -51,17 +81,19 @@ if [[ "$_MC_INFO" != "[]" ]]; then
             _ACCT=$(aws ssm get-parameter --name "$_SSM_PARAM" --with-decryption \
                 --query 'Parameter.Value' --output text --region "${TARGET_REGION}" 2>/dev/null || true)
         fi
-        if [[ -n "$_ACCT" && -n "$_ID" ]]; then
-            _MC_PARTS+=("${_ID}:${_ACCT}")
+        if [[ -z "$_ID" || -z "$_ACCT" ]]; then
+            echo "ERROR: Invalid management_clusters_info entry: id='${_ID}', account_id='${_ACCT}'" >&2
+            exit 1
         fi
+        if [[ ! "$_ACCT" =~ ^[0-9]{12}$ ]]; then
+            echo "ERROR: Management cluster ${_ID} account_id must be a 12-digit AWS account ID, got '${_ACCT}'" >&2
+            exit 1
+        fi
+        _MC_PARTS+=("${_ID}:${_ACCT}")
     done
 fi
 export TF_VAR_management_clusters=$(IFS=,; echo "${_MC_PARTS[*]}")
 
-if [ -z "${PLATFORM_IMAGE:-}" ]; then
-    echo "ERROR: PLATFORM_IMAGE is not set" >&2
-    exit 1
-fi
 export TF_VAR_container_image="${PLATFORM_IMAGE}"
 
 # Static config vars (enable_bastion, hyperfleet_db_*, enable_cloudtrail, etc)
@@ -129,8 +161,20 @@ TERRAFORM_ACTION="apply"
 
 echo "RC ${REGIONAL_ID}: terraform ${TERRAFORM_ACTION} in ${TARGET_ACCOUNT_ID}/${TARGET_REGION}"
 
-# Deploy dir calculated by lib.sh as dirname of DEPLOY_CONFIG_FILE
-DEPLOY_DIR=$(dirname "$DEPLOY_CONFIG_FILE")
+print_provision_param_summary "RC" \
+    "regional_id" "static" "${_STATIC_REGIONAL_ID}" \
+    "REGIONAL_ID" "runtime" "${REGIONAL_ID}" \
+    "TARGET_ACCOUNT_ID" "runtime" "${TARGET_ACCOUNT_ID}" \
+    "TARGET_REGION" "runtime" "${TARGET_REGION}" \
+    "REPOSITORY_URL" "runtime" "${REPOSITORY_URL}" \
+    "REPOSITORY_BRANCH" "runtime" "${_REPO_BRANCH}" \
+    "PLATFORM_IMAGE" "runtime" "${PLATFORM_IMAGE}" \
+    "TF_VAR_management_clusters" "derived" "${TF_VAR_management_clusters}" \
+    "TF_VAR_region_ou_path" "SSM" "${TF_VAR_region_ou_path}" \
+    "zoa_lambda_image_tag" "static" "${_ZOA_LAMBDA_IMAGE_TAG}" \
+    "zoa_runner_image_tag" "static" "$(jq -r '.zoa_runner_image_tag // empty' "${STATIC_TFVARS}")" \
+    "TF_STATE_BUCKET" "runtime" "${TF_STATE_BUCKET}" \
+    "TF_STATE_KEY" "runtime" "${TF_STATE_KEY}"
 
 # Initialize backend
 tf_init_backend \
@@ -144,3 +188,36 @@ tf_apply_with_static_vars \
     terraform/config/regional-cluster \
     "${TERRAFORM_ACTION}" \
     "${DEPLOY_DIR}/static.tfvars.json"
+
+if [[ "${TERRAFORM_ACTION}" == "apply" ]]; then
+    _RC_REQUIRED_OUTPUTS=(
+        "cluster_name"
+        "cluster_endpoint|^https://"
+        "vpc_id|^vpc-"
+        "api_gateway_invoke_url|^https://"
+        "rhobs_api_url|^https://"
+    )
+    if [[ ${#_MC_PARTS[@]} -gt 0 ]]; then
+        _RC_REQUIRED_OUTPUTS+=(
+            "oidc_cloudfront_domain"
+            "oidc_bucket_name"
+            "oidc_bucket_arn|^arn:"
+            "oidc_bucket_region"
+        )
+    fi
+    if [[ -n "${_ZOA_LAMBDA_IMAGE_TAG}" ]]; then
+        _RC_REQUIRED_OUTPUTS+=(
+            "zoa_bucket_arn|^arn:"
+            "zoa_kms_key_arn|^arn:"
+            "zoa_table_name"
+            "zoa_table_arn|^arn:"
+            "zoa_audit_table_name"
+            "zoa_audit_table_arn|^arn:"
+            "zoa_uploader_role_arn|^arn:"
+            "zoa_data_access_role_arn|^arn:"
+            "zoa_lambda_ecr_url"
+            "zoa_api_function_url|^https://"
+        )
+    fi
+    tf_validate_outputs terraform/config/regional-cluster "RC" "${_RC_REQUIRED_OUTPUTS[@]}" || exit 1
+fi

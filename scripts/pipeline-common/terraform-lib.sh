@@ -114,6 +114,63 @@ tf_apply_with_static_vars() {
         -auto-approve
 }
 
+# Validate that a generated static tfvars file contains the named keys. This
+# catches stale/incomplete rendered config before dynamic runtime values are
+# layered on by the buildspec.
+tf_require_static_keys() {
+    local static_tfvars="$1"
+    local context="$2"
+    shift 2
+    local missing=()
+    local name
+
+    if [ ! -f "${static_tfvars}" ]; then
+        echo "ERROR: Static tfvars file not found for ${context}: ${static_tfvars}" >&2
+        return 1
+    fi
+
+    for name in "$@"; do
+        if ! jq -e --arg name "$name" \
+            'has($name) and .[$name] != null' "${static_tfvars}" >/dev/null; then
+            missing+=("$name")
+        fi
+    done
+
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo "ERROR: Missing ${context} static parameters in ${static_tfvars}: ${missing[*]}" >&2
+        return 1
+    fi
+}
+
+# Validate that the named static tfvars are present and non-empty. Booleans and
+# numbers are accepted as valid values; only empty strings are rejected.
+tf_require_static_vars() {
+    local static_tfvars="$1"
+    local context="$2"
+    shift 2
+    local missing=()
+    local name
+
+    if [ ! -f "${static_tfvars}" ]; then
+        echo "ERROR: Static tfvars file not found for ${context}: ${static_tfvars}" >&2
+        return 1
+    fi
+
+    for name in "$@"; do
+        if ! jq -e --arg name "$name" \
+            'has($name) and .[$name] != null and
+             (if (.[$name] | type) == "string" then (.[$name] | length) > 0 else true end)' \
+            "${static_tfvars}" >/dev/null; then
+            missing+=("$name")
+        fi
+    done
+
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo "ERROR: Missing required ${context} static parameters in ${static_tfvars}: ${missing[*]}" >&2
+        return 1
+    fi
+}
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Function: tf_wait_for_outputs
 # Poll terraform outputs until all required outputs are non-empty.
@@ -258,6 +315,39 @@ tf_read_output() {
     fi
 
     echo "${value}"
+}
+
+# Validate required Terraform outputs after apply. Each output spec is either
+# name or name|grep-pattern. Values are intentionally not printed because some
+# Terraform outputs may contain sensitive material.
+tf_validate_outputs() {
+    local tf_dir="$1"
+    local context="$2"
+    shift 2
+    local missing=()
+    local spec output_name pattern value
+
+    for spec in "$@"; do
+        output_name="${spec%%|*}"
+        pattern=""
+        [[ "$spec" == *"|"* ]] && pattern="${spec#*|}"
+
+        if [[ -n "$pattern" ]]; then
+            if ! value=$(tf_read_output "${tf_dir}" "${output_name}" "${pattern}"); then
+                missing+=("${output_name}")
+                continue
+            fi
+        elif ! value=$(tf_read_output "${tf_dir}" "${output_name}"); then
+            missing+=("${output_name}")
+            continue
+        fi
+        echo "  ✓ ${context} output: ${output_name}"
+    done
+
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo "ERROR: Required ${context} Terraform outputs are missing or invalid: ${missing[*]}" >&2
+        return 1
+    fi
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
