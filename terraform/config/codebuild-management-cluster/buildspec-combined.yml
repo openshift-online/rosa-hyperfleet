@@ -1,0 +1,24 @@
+version: 0.2
+
+env:
+  shell: bash
+  exported-variables:
+    - APPLIED
+    - APPLIED_SHA
+
+phases:
+  install:
+    on-failure: RETRY-1
+    commands:
+      - chmod +x ./scripts/bootstrap-argocd.sh
+
+  build:
+    on-failure: RETRY-1
+    commands:
+      # Wrapper sources check-queue.sh (skip if stale), then calls provision scripts.
+      # Accepts: management-cluster | MC | mc
+      # See docs/design/check-queue-skip-logic.md for flow details.
+      - ./scripts/buildspec/provision-cluster.sh management-cluster
+
+artifacts:
+  files: []

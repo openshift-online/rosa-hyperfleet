@@ -4,6 +4,7 @@
 .vscode
 *.tfvars
 *.tfvars.json
+!deploy/**/static.tfvars.json
 *.terraform.lock.hcl
 *_override.tf
 override.tf
@@ -49,3 +50,7 @@ ephemeral-logs*
 # Dashboard (generated locally by ./dashboard/fetch-data.sh)
 dashboard/data.json
 tmp/
+
+# Codex
+.agents/
+.codex/

@@ -4,6 +4,7 @@
 set -euo pipefail
 
 source scripts/pipeline-common/lib.sh
+source scripts/pipeline-common/terraform-lib.sh
 
 preflight_check
 config_load regional
@@ -17,16 +18,10 @@ aws configure set aws_session_token     "$_CENTRAL_AWS_SESSION_TOKEN"     --prof
 aws configure set region                "${TARGET_REGION}"                --profile central
 export TF_VAR_central_aws_profile="central"
 
-# Fetch PagerDuty config if enabled
+# Fetch PagerDuty token if enabled (config moved to static.tfvars.json)
 _RAW_PD=$(jq -r '.enable_pagerduty // false' "$DEPLOY_CONFIG_FILE")
 if [ "$_RAW_PD" == "true" ] || [ "$_RAW_PD" == "1" ]; then
-    export TF_VAR_enable_pagerduty="true"
-    export TF_VAR_pagerduty_escalation_policy_id=$(jq -r '.pagerduty_escalation_policy_id // ""' "$DEPLOY_CONFIG_FILE")
-    PAGERDUTY_TOKEN=$(aws secretsmanager get-secret-value \
-        --secret-id "pagerduty/service-account" \
-        --region us-east-1 \
-        --query SecretString \
-        --output text)
+    PAGERDUTY_TOKEN=$(secrets_manager_get "pagerduty/service-account" "us-east-1" required)
     export PAGERDUTY_TOKEN
 fi
 
@@ -37,13 +32,8 @@ export TF_STATE_BUCKET="terraform-state-${TARGET_ACCOUNT_ID}-${TARGET_REGION}"
 export TF_STATE_KEY="regional-cluster/${REGIONAL_ID}.tfstate"
 export TF_STATE_REGION="${TARGET_REGION}"
 
-# Set Terraform variables
+# Set dynamic Terraform variables (static vars in static.tfvars.json)
 export TF_VAR_region="${TARGET_REGION}"
-TF_VAR_deployment_name=$(jq -r '.deployment_name' "$DEPLOY_CONFIG_FILE")
-export TF_VAR_deployment_name
-export TF_VAR_app_code="${APP_CODE}"
-export TF_VAR_service_phase="${SERVICE_PHASE}"
-export TF_VAR_cost_center="${COST_CENTER}"
 
 _REPO_BRANCH="${REPOSITORY_BRANCH:-main}"
 export TF_VAR_repository_url="${REPOSITORY_URL}"
@@ -74,16 +64,10 @@ if [ -z "${PLATFORM_IMAGE:-}" ]; then
 fi
 export TF_VAR_container_image="${PLATFORM_IMAGE}"
 
-export TF_VAR_enable_bastion="${ENABLE_BASTION}"
-export TF_VAR_hyperfleet_db_deletion_protection=$(parseBool '.hyperfleet_db_deletion_protection' true "$DEPLOY_CONFIG_FILE")
-export TF_VAR_enable_cloudtrail=$(parseBool '.enable_cloudtrail' false "$DEPLOY_CONFIG_FILE")
-export TF_VAR_enable_api_custom_domain=$(parseBool '.enable_api_custom_domain' false "$DEPLOY_CONFIG_FILE")
-export TF_VAR_zone_shard_count=$(jq -r '.zone_shard_count // 1' "$DEPLOY_CONFIG_FILE")
-export TF_VAR_enable_sns_alerting=$(parseBool '.enable_sns_alerting' false "$DEPLOY_CONFIG_FILE")
-TF_VAR_enable_sre_tools_gateway=$(parseBool '.enable_sre_tools_gateway' false "$DEPLOY_CONFIG_FILE")
-export TF_VAR_enable_sre_tools_gateway
+# Static config vars (enable_bastion, hyperfleet_db_*, enable_cloudtrail, etc)
+# moved to static.tfvars.json
+
 TF_VAR_enable_sre_public_access=$(parseBool '.enable_sre_public_access' false "$DEPLOY_CONFIG_FILE")
-export TF_VAR_enable_sre_public_access
 # SRE UI ALB allowed source CIDRs from SSM (public mode only; not committed to the repo)
 if [ "$TF_VAR_enable_sre_public_access" = "true" ]; then
     TF_VAR_sre_allowed_source_cidrs=$(aws ssm get-parameter \
@@ -99,58 +83,25 @@ else
     TF_VAR_sre_allowed_source_cidrs=$(jq -c '.sre_allowed_source_cidrs // []' "$DEPLOY_CONFIG_FILE")
 fi
 export TF_VAR_sre_allowed_source_cidrs
+
+# SRE OIDC config (enable_sre_oidc_auth, sre_oidc_issuer_url, sre_*_oidc_client_id)
+# moved to static.tfvars.json; only secrets remain dynamic
 TF_VAR_enable_sre_oidc_auth=$(parseBool '.enable_sre_oidc_auth' false "$DEPLOY_CONFIG_FILE")
-export TF_VAR_enable_sre_oidc_auth
-TF_VAR_sre_oidc_issuer_url=$(jq -r '.sre_oidc_issuer_url // "https://auth.redhat.com/auth/realms/EmployeeIDP"' "$DEPLOY_CONFIG_FILE")
-export TF_VAR_sre_oidc_issuer_url
-
 if [ "$TF_VAR_enable_sre_oidc_auth" = "true" ]; then
-    TF_VAR_sre_grafana_oidc_client_id=$(jq -r '.sre_grafana_oidc_client_id // ""' "$DEPLOY_CONFIG_FILE")
-    export TF_VAR_sre_grafana_oidc_client_id
-    TF_VAR_sre_argocd_oidc_client_id=$(jq -r '.sre_argocd_oidc_client_id // ""' "$DEPLOY_CONFIG_FILE")
-    export TF_VAR_sre_argocd_oidc_client_id
-    TF_VAR_sre_prometheus_oidc_client_id=$(jq -r '.sre_prometheus_oidc_client_id // ""' "$DEPLOY_CONFIG_FILE")
-    export TF_VAR_sre_prometheus_oidc_client_id
-    TF_VAR_sre_thanos_oidc_client_id=$(jq -r '.sre_thanos_oidc_client_id // ""' "$DEPLOY_CONFIG_FILE")
-    export TF_VAR_sre_thanos_oidc_client_id
-
     for svc in grafana argocd prometheus thanos; do
-        secret=$(aws secretsmanager get-secret-value \
-            --secret-id "sre-ui-alb/${svc}/oidc-client-secret" \
-            --region "${TARGET_REGION}" \
-            --query SecretString \
-            --output text 2>/dev/null || true)
-        if [ -z "${secret}" ]; then
-            echo "ERROR: Secrets Manager secret 'sre-ui-alb/${svc}/oidc-client-secret' not found in account ${TARGET_ACCOUNT_ID} region ${TARGET_REGION}" >&2
-            exit 1
-        fi
+        secret=$(secrets_manager_get "sre-ui-alb/${svc}/oidc-client-secret" "${TARGET_REGION}" required)
         export "TF_VAR_sre_${svc}_oidc_client_secret=${secret}"
     done
 fi
 
 # MC OU path from SSM - backward-compatible: try new nested path first, fall back to legacy flat path
-TF_VAR_mc_ou_path=$(aws ssm get-parameter \
-    --name "/infra/${ENVIRONMENT}/${TARGET_REGION}/ou-path" \
-    --with-decryption \
-    --query 'Parameter.Value' \
-    --output text \
-    --region "${TARGET_REGION}" 2>/dev/null || true)
+TF_VAR_mc_ou_path=$(ssm_get_param_with_fallback \
+    "${TARGET_REGION}" \
+    "/infra/${ENVIRONMENT}/${TARGET_REGION}/ou-path" \
+    "/infra/region-ou-path")
 
 if [ -z "${TF_VAR_mc_ou_path}" ]; then
-    echo "INFO: New SSM path /infra/${ENVIRONMENT}/${TARGET_REGION}/ou-path not found, trying legacy path..." >&2
-    TF_VAR_mc_ou_path=$(aws ssm get-parameter \
-        --name "/infra/region-ou-path" \
-        --with-decryption \
-        --query 'Parameter.Value' \
-        --output text \
-        --region "${TARGET_REGION}" 2>/dev/null || true)
-    if [ -n "${TF_VAR_mc_ou_path}" ]; then
-        echo "INFO: Using legacy SSM path /infra/region-ou-path" >&2
-    fi
-fi
-
-if [ -z "${TF_VAR_mc_ou_path}" ]; then
-    echo "ERROR: SSM parameter not found at either /infra/${ENVIRONMENT}/${TARGET_REGION}/ou-path or /infra/region-ou-path in account ${TARGET_ACCOUNT_ID} region ${TARGET_REGION}" >&2
+    echo "ERROR: MC OU path not found in SSM" >&2
     echo "For stage: parameter is created by rosa-hyperfleet-internal/infra/modules/account-config" >&2
     echo "For ephemeral/integration: manually create at /infra/region-ou-path (legacy) or /infra/${ENVIRONMENT}/${TARGET_REGION}/ou-path (new)" >&2
     exit 1
@@ -165,16 +116,8 @@ if [ -n "${ENVIRONMENT_HOSTED_ZONE_ID:-}" ]; then
     export TF_VAR_environment_hosted_zone_id="${ENVIRONMENT_HOSTED_ZONE_ID}"
 fi
 
-export TF_VAR_regional_id=$(jq -r '.regional_id' "$DEPLOY_CONFIG_FILE")
-export TF_VAR_environment=$(jq -r '.environment' "$DEPLOY_CONFIG_FILE")
-
-# ZOA images — read from deploy config (config/defaults.yaml → terraform.json)
-export TF_VAR_zoa_lambda_image_tag=$(jq -r '.zoa_lambda_image_tag // ""' "$DEPLOY_CONFIG_FILE")
-export TF_VAR_zoa_runner_image_tag=$(jq -r '.zoa_runner_image_tag // ""' "$DEPLOY_CONFIG_FILE")
-export TF_VAR_zoa_lambda_source_image=$(jq -r '.zoa_lambda_source_image // ""' "$DEPLOY_CONFIG_FILE")
-export TF_VAR_zoa_runner_source_image=$(jq -r '.zoa_runner_source_image // ""' "$DEPLOY_CONFIG_FILE")
-export TF_VAR_worker_node_ami_id=$(jq -r '.worker_node_ami_id // ""' "$DEPLOY_CONFIG_FILE")
-export TF_VAR_eph_prefix=$(jq -r '.eph_prefix // ""' "$DEPLOY_CONFIG_FILE")
+# Static vars (regional_id, environment, zoa_*, worker_node_ami_id, eph_prefix)
+# moved to static.tfvars.json
 export ENVIRONMENT="${ENVIRONMENT:-staging}"
 
 # Determine terraform action
@@ -186,15 +129,18 @@ TERRAFORM_ACTION="apply"
 
 echo "RC ${REGIONAL_ID}: terraform ${TERRAFORM_ACTION} in ${TARGET_ACCOUNT_ID}/${TARGET_REGION}"
 
-cd terraform/config/regional-cluster
-terraform init -reconfigure \
-    -backend-config="bucket=${TF_STATE_BUCKET}" \
-    -backend-config="key=${TF_STATE_KEY}" \
-    -backend-config="region=${TF_STATE_REGION}" \
-    -backend-config="use_lockfile=true"
+# Deploy dir calculated by lib.sh as dirname of DEPLOY_CONFIG_FILE
+DEPLOY_DIR=$(dirname "$DEPLOY_CONFIG_FILE")
 
-if [ "${TERRAFORM_ACTION}" == "apply" ] && [ -f imports.sh ]; then
-    source imports.sh
-fi
+# Initialize backend
+tf_init_backend \
+    terraform/config/regional-cluster \
+    "${TF_STATE_BUCKET}" \
+    "${TF_STATE_KEY}" \
+    "${TF_STATE_REGION}"
 
-terraform "${TERRAFORM_ACTION}" -auto-approve
+# Apply or destroy
+tf_apply_with_static_vars \
+    terraform/config/regional-cluster \
+    "${TERRAFORM_ACTION}" \
+    "${DEPLOY_DIR}/static.tfvars.json"
