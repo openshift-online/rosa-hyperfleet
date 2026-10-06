@@ -333,7 +333,6 @@ applications:
 # @used-by regional_id codebuild-provisioner-inputs/regional-cluster.json.j2
 # @used-by regional_id codebuild-regional-cluster-inputs/static.tfvars.json.j2
 # @used-by regional_id codebuild-regional-cluster-inputs/terraform.json.j2
-# @used-by delete_codebuild codebuild-provisioner-inputs/regional-cluster.json.j2
 # @doc mc.management_id MC identifier, computed from cluster key + CI prefix.
 # @used-by mc.management_id codebuild-management-cluster-inputs/static.tfvars.json.j2
 # @used-by mc.management_id codebuild-management-cluster-inputs/terraform.json.j2
