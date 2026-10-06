@@ -91,19 +91,19 @@ append_field() {
         && mv "${ENVS_FILE}.tmp" "$ENVS_FILE"
 }
 
-# Require the outputs needed by the local ephemeral e2e workflow before marking
-# the environment ready. When ZOA is enabled, either endpoint being present
-# means both RC and MC endpoints are expected; when it is disabled, neither is
-# required for a non-ZOA ephemeral environment.
+# Require the outputs needed by the local ephemeral workflow before marking the
+# environment ready. The provider writes zoa-enabled from the rendered static
+# inputs, so ZOA cannot silently be treated as disabled when both URLs are
+# missing. The endpoint-presence fallback keeps older artifacts compatible.
 validate_provision_outputs() {
     local id="$1" api_url="$2" region="$3" rhobs_api_url="$4"
-    local zoa_rc_api_url="$5" zoa_mc_api_url="$6"
+    local zoa_rc_api_url="$5" zoa_mc_api_url="$6" zoa_enabled="${7:-false}"
     local missing=()
 
     [[ -n "$api_url" ]] || missing+=(API_URL)
     [[ -n "$region" ]] || missing+=(REGION)
     [[ -n "$rhobs_api_url" ]] || missing+=(RHOBS_API_URL)
-    if [[ -n "$zoa_rc_api_url" || -n "$zoa_mc_api_url" ]]; then
+    if [[ "$zoa_enabled" == "true" || -n "$zoa_rc_api_url" || -n "$zoa_mc_api_url" ]]; then
         [[ -n "$zoa_rc_api_url" ]] || missing+=(ZOA_RC_API_URL)
         [[ -n "$zoa_mc_api_url" ]] || missing+=(ZOA_MC_API_URL)
     fi
@@ -496,10 +496,12 @@ cmd_provision() {
         if [[ -f "$tmpdir/tf-outputs-mc.json" ]]; then
             zoa_mc_api_url=$(jq -r '.zoa_api_function_url.value // empty' "$tmpdir/tf-outputs-mc.json" 2>/dev/null || true)
         fi
+        local zoa_enabled="false"
+        [[ -f "$tmpdir/zoa-enabled" ]] && zoa_enabled=$(<"$tmpdir/zoa-enabled")
 
         validate_provision_outputs \
             "$ID" "$api_url" "$region" "$rhobs_api_url" \
-            "$zoa_rc_api_url" "$zoa_mc_api_url"
+            "$zoa_rc_api_url" "$zoa_mc_api_url" "$zoa_enabled"
 
         # Store ephemeral branch name so it survives branch swaps
         record_ready_environment \
@@ -563,8 +565,6 @@ cmd_provision_resume() {
     echo "  CONTAINER_ENGINE:  $CONTAINER_ENGINE"
     echo "  IMAGE:             $CI_IMAGE"
 
-    update_state "$BUILD_ID" "provisioning"
-
     local tmpdir artifacts_dir
     tmpdir=$(mktemp -d)
     artifacts_dir="${ARTIFACTS_DIR:-${ARTIFACT_DIR:-${REPO_ROOT}/.ephemeral-artifacts/${BUILD_ID}}}"
@@ -586,6 +586,9 @@ cmd_provision_resume() {
             die "RESYNC must be true or false (got: ${RESYNC})"
             ;;
     esac
+
+    update_state "$BUILD_ID" "provisioning"
+
     # shellcheck disable=SC2086
     $CONTAINER_ENGINE run --rm \
         $_CONTAINER_AWS_FLAGS \
@@ -632,10 +635,12 @@ cmd_provision_resume() {
         if [[ -f "$tmpdir/tf-outputs-mc.json" ]]; then
             zoa_mc_api_url=$(jq -r '.zoa_api_function_url.value // empty' "$tmpdir/tf-outputs-mc.json" 2>/dev/null || true)
         fi
+        local zoa_enabled="false"
+        [[ -f "$tmpdir/zoa-enabled" ]] && zoa_enabled=$(<"$tmpdir/zoa-enabled")
 
         validate_provision_outputs \
             "$BUILD_ID" "$api_url" "$region" "$rhobs_api_url" \
-            "$zoa_rc_api_url" "$zoa_mc_api_url"
+            "$zoa_rc_api_url" "$zoa_mc_api_url" "$zoa_enabled"
 
         record_ready_environment \
             "$BUILD_ID" "$region" "$api_url" "$rhobs_api_url" \
@@ -1284,17 +1289,11 @@ cmd_e2e() {
         "Select environment for e2e tests:" \
         "No ready environments found."
 
-    local api_url region zoa_rc_api_url zoa_mc_api_url
+    local api_url region
     api_url=$(get_field "$ENV_LINE" API_URL)
     region=$(get_field "$ENV_LINE" REGION)
-    zoa_rc_api_url=$(get_field "$ENV_LINE" ZOA_RC_API_URL)
-    zoa_mc_api_url=$(get_field "$ENV_LINE" ZOA_MC_API_URL)
     [[ -n "$api_url" ]] \
         || die "No API_URL found for ID $BUILD_ID. Was it captured during provision?"
-    [[ -n "$zoa_rc_api_url" ]] \
-        || die "No ZOA_RC_API_URL found for ID $BUILD_ID. Was it captured during provision?"
-    [[ -n "$zoa_mc_api_url" ]] \
-        || die "No ZOA_MC_API_URL found for ID $BUILD_ID. Was it captured during provision?"
 
     # Fetch credentials and write container config
     setup_aws_config
@@ -1310,8 +1309,6 @@ cmd_e2e() {
     echo "  ID:             $BUILD_ID"
     echo "  API_URL:        $api_url"
     echo "  RHOBS_API_URL:  $rhobs_api_url"
-    echo "  ZOA_RC_API_URL: $zoa_rc_api_url"
-    echo "  ZOA_MC_API_URL: $zoa_mc_api_url"
     echo "  REGION:         $region"
     echo "  E2E_REF:        $e2e_ref"
     echo "  E2E_REPO:       $e2e_repo"
@@ -1324,8 +1321,6 @@ cmd_e2e() {
         -e "BUILD_ID=$BUILD_ID" \
         -e "BASE_URL=$api_url" \
         -e "RHOBS_API_URL=$rhobs_api_url" \
-        -e "ZOA_RC_API_URL=$zoa_rc_api_url" \
-        -e "ZOA_MC_API_URL=$zoa_mc_api_url" \
         -e "AWS_DEFAULT_REGION=$region" \
         -e "AWS_REGION=$region" \
         -e "E2E_REF=$e2e_ref" \
@@ -1341,7 +1336,6 @@ cmd_e2e() {
         -e "E2E_SKIP_HCP=${E2E_SKIP_HCP:-}" \
         -e "E2E_SKIP_MONITORING=${E2E_SKIP_MONITORING:-}" \
         -e "E2E_SKIP_ROSA_CLI=${E2E_SKIP_ROSA_CLI:-}" \
-        -e "E2E_SKIP_ZOA=${E2E_SKIP_ZOA:-}" \
         "$CI_IMAGE" \
         bash ci/e2e-tests.sh
 }
@@ -1359,17 +1353,14 @@ cmd_zoa_e2e() {
         "Select environment for ZOA e2e tests:" \
         "No ready environments found."
 
-    local zoa_rc_api_url zoa_mc_api_url region rhobs_api_url
+    local zoa_rc_api_url zoa_mc_api_url region
     zoa_rc_api_url=$(get_field "$ENV_LINE" ZOA_RC_API_URL)
     zoa_mc_api_url=$(get_field "$ENV_LINE" ZOA_MC_API_URL)
     region=$(get_field "$ENV_LINE" REGION)
-    rhobs_api_url=$(get_field "$ENV_LINE" RHOBS_API_URL)
     [[ -n "$zoa_rc_api_url" ]] \
         || die "No ZOA_RC_API_URL found for ID $BUILD_ID. Was it captured during provision?"
     [[ -n "$zoa_mc_api_url" ]] \
         || die "No ZOA_MC_API_URL found for ID $BUILD_ID. Was it captured during provision?"
-    [[ -n "$rhobs_api_url" ]] \
-        || die "No RHOBS_API_URL found for ID $BUILD_ID. Was it captured during provision?"
 
     setup_aws_config
     write_eph_container_config
@@ -1378,7 +1369,6 @@ cmd_zoa_e2e() {
     echo "  ID:             $BUILD_ID"
     echo "  ZOA_RC_API_URL: $zoa_rc_api_url"
     echo "  ZOA_MC_API_URL: $zoa_mc_api_url"
-    echo "  RHOBS_API_URL:  $rhobs_api_url"
     echo "  REGION:         $region"
     echo "  ZOA_REF:        $zoa_ref"
     echo "  ZOA_REPO:       $zoa_repo"
@@ -1387,7 +1377,6 @@ cmd_zoa_e2e() {
         $_CONTAINER_AWS_FLAGS \
         -e "ZOA_RC_API_URL=$zoa_rc_api_url" \
         -e "ZOA_MC_API_URL=$zoa_mc_api_url" \
-        -e "RHOBS_API_URL=$rhobs_api_url" \
         -e "AWS_DEFAULT_REGION=$region" \
         -e "AWS_REGION=$region" \
         -e "ZOA_MAKE_TARGET=${ZOA_MAKE_TARGET:-test-e2e}" \

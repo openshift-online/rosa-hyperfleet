@@ -137,8 +137,29 @@ else
         if [[ -n "${_RC_CODEBUILD_BUILD_ID}" ]]; then
             build_json=$(jq -c '.builds[0] // empty' <<<"${builds_json}")
         else
+            # Ignore successful queue-skipped builds. They may be newer than
+            # the valid applied build but have APPLIED=false.
             build_json=$(jq -c --arg sha "${desired_sha}" '
-                [.builds[]? | select(.sourceVersion == $sha or .resolvedSourceVersion == $sha)]
+                [
+                    .builds[]?
+                    | select(.sourceVersion == $sha or .resolvedSourceVersion == $sha)
+                    | select(
+                        .buildStatus != "SUCCEEDED"
+                        or (
+                            (
+                                [.exportedEnvironmentVariables[]?
+                                 | select(.name == "APPLIED")
+                                 | .value] | last
+                            ) == "true"
+                            and
+                            (
+                                [.exportedEnvironmentVariables[]?
+                                 | select(.name == "APPLIED_SHA")
+                                 | .value] | last
+                            ) == $sha
+                        )
+                    )
+                ]
                 | sort_by(.startTime // "") | last // empty
             ' <<<"${builds_json}")
         fi

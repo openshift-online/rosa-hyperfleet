@@ -59,6 +59,13 @@ def make_eph_prefix(env_id: str, externally_set: bool) -> str:
     return f"eph-{short_id}"
 
 
+def write_provision_metadata(state_path: str, zoa_enabled: bool) -> None:
+    """Write metadata needed by the local ephemeral environment wrapper."""
+    metadata_path = Path(state_path).parent / "zoa-enabled"
+    metadata_path.parent.mkdir(parents=True, exist_ok=True)
+    metadata_path.write_text("true\n" if zoa_enabled else "false\n")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Ephemeral environment manager for ROSA HyperFleet")
     lifecycle_group = parser.add_mutually_exclusive_group()
@@ -218,6 +225,9 @@ def main():
             if args.save_regional_state:
                 region_file = Path(args.save_regional_state).parent / "region"
                 region_file.write_text(env.region)
+            metadata_state = args.save_regional_state or args.save_management_state
+            if metadata_state:
+                write_provision_metadata(metadata_state, env.zoa_enabled)
             log.info("")
             log.info("==========================================")
             log.info("Provisioning resume completed successfully!")
@@ -243,6 +253,9 @@ def main():
             if args.save_regional_state:
                 region_file = Path(args.save_regional_state).parent / "region"
                 region_file.write_text(region)
+            metadata_state = args.save_regional_state or args.save_management_state
+            if metadata_state:
+                write_provision_metadata(metadata_state, env.zoa_enabled)
             log.info("")
             log.info("==========================================")
             log.info("Provisioning completed successfully!")
@@ -259,7 +272,7 @@ def main():
             "teardown" if is_teardown else
             "provision"
         )
-        log.error("Ephemeral environment %s failed: %s", operation, exc)
+        log.exception("Ephemeral environment %s failed", operation)
         sys.exit(1)
 
 

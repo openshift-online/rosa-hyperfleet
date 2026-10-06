@@ -31,6 +31,9 @@ class StartBuildClient:
         self.request = request
         return {"build": {"id": "project:build-id"}}
 
+    def list_builds_for_project(self, **request):
+        raise AssertionError("build reuse should not be attempted")
+
 
 class FakeSession:
     def __init__(self, client):
@@ -63,6 +66,26 @@ class BuildMonitorTests(unittest.TestCase):
                 {"name": "RC_CODEBUILD_PROJECT", "value": "rc-project", "type": "PLAINTEXT"},
                 {"name": "RC_CODEBUILD_BUILD_ID", "value": "rc-project:build-id", "type": "PLAINTEXT"},
             ],
+        )
+
+    def test_start_or_reuse_starts_dedicated_build_for_dependency_overrides(self):
+        client = StartBuildClient()
+        monitor = BuildMonitor(FakeSession(client))
+
+        build_id = monitor.start_or_reuse_build(
+            "mc-project",
+            "a" * 40,
+            environment_overrides={
+                "RC_CODEBUILD_PROJECT": "rc-project",
+                "RC_CODEBUILD_BUILD_ID": "rc-project:build-id",
+            },
+        )
+
+        self.assertEqual(build_id, "project:build-id")
+        self.assertEqual(client.request["projectName"], "mc-project")
+        self.assertEqual(
+            client.request["environmentVariablesOverride"][1]["value"],
+            "rc-project:build-id",
         )
 
     def test_waits_for_resolved_source_version_while_build_is_active(self):

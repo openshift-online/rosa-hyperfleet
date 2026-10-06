@@ -130,7 +130,7 @@ fi
 TF_VAR_mc_ou_path=$(ssm_get_param_with_fallback \
     "${TARGET_REGION}" \
     "/infra/${ENVIRONMENT}/${TARGET_REGION}/ou-path" \
-    "/infra/region-ou-path")
+    "/infra/region-ou-path") || TF_VAR_mc_ou_path=""
 
 if [ -z "${TF_VAR_mc_ou_path}" ]; then
     echo "ERROR: MC OU path not found in SSM" >&2

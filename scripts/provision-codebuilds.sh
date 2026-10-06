@@ -368,7 +368,7 @@ generate_webhook_filters() {
                 [
                     {type: "EVENT", pattern: "PUSH"},
                     {type: "HEAD_REF", pattern: $branch_pattern},
-                    {type: "FILE_PATH", pattern: ("^deploy/" + $env + "/" + $region + "/codebuild-regional-cluster-inputs/terraform\\\\.json$")}
+                    {type: "FILE_PATH", pattern: ("^deploy/" + $env + "/" + $region + "/codebuild-regional-cluster-inputs/terraform\\.json$")}
                 ],
                 [
                     {type: "EVENT", pattern: "PUSH"},
@@ -393,7 +393,7 @@ generate_webhook_filters() {
                 [
                     {type: "EVENT", pattern: "PUSH"},
                     {type: "HEAD_REF", pattern: $branch_pattern},
-                    {type: "FILE_PATH", pattern: "^scripts/buildspec/build-zoa-lambda\\\\.sh$"}
+                    {type: "FILE_PATH", pattern: "^scripts/buildspec/build-zoa-lambda\\.sh$"}
                 ]
             ]'
     elif [ "$cluster_type" = "management" ]; then
@@ -407,7 +407,7 @@ generate_webhook_filters() {
                 [
                     {type: "EVENT", pattern: "PUSH"},
                     {type: "HEAD_REF", pattern: $branch_pattern},
-                    {type: "FILE_PATH", pattern: ("^deploy/" + $env + "/" + $region + "/codebuild-management-cluster-" + $mc_id + "-inputs/terraform\\\\.json$")}
+                    {type: "FILE_PATH", pattern: ("^deploy/" + $env + "/" + $region + "/codebuild-management-cluster-" + $mc_id + "-inputs/terraform\\.json$")}
                 ],
                 [
                     {type: "EVENT", pattern: "PUSH"},
@@ -430,6 +430,7 @@ upsert_project() {
     local service_role_arn="$3"
     local buildspec_path="$4"
     local timeout_minutes="$5"
+    local cluster_id="$6"
 
     echo "═══ Upserting CodeBuild project: $project_name ($cluster_type) ═══"
 
@@ -477,7 +478,7 @@ upsert_project() {
 
                     # Update webhook filter groups (idempotent)
                     local filter_groups
-                    filter_groups=$(generate_webhook_filters "$cluster_type" "$GITHUB_BRANCH" "$ENVIRONMENT" "$REGION_DEPLOYMENT" "${REGIONAL_ID:-${MANAGEMENT_ID:-}}")
+                    filter_groups=$(generate_webhook_filters "$cluster_type" "$GITHUB_BRANCH" "$ENVIRONMENT" "$REGION_DEPLOYMENT" "$cluster_id")
 
                     if retry_webhook_operation update-webhook --project-name "$project_name" --filter-groups "$filter_groups"; then
                         echo "✓ Webhook filters updated"
@@ -499,7 +500,7 @@ upsert_project() {
 
                 # Create webhook
                 local filter_groups
-                filter_groups=$(generate_webhook_filters "$cluster_type" "$GITHUB_BRANCH" "$ENVIRONMENT" "$REGION_DEPLOYMENT" "${REGIONAL_ID:-${MANAGEMENT_ID:-}}")
+                filter_groups=$(generate_webhook_filters "$cluster_type" "$GITHUB_BRANCH" "$ENVIRONMENT" "$REGION_DEPLOYMENT" "$cluster_id")
 
                 if retry_webhook_operation create-webhook --project-name "$project_name" --filter-groups "$filter_groups" --build-type BUILD; then
                     echo "✓ Webhook created"
@@ -702,7 +703,7 @@ for region_dir in deploy/${ENVIRONMENT}/*/; do
             delete_project "$REGIONAL_ID"
         else
             if ! upsert_project "regional" "$REGIONAL_ID" "$RC_CODEBUILD_ROLE_ARN" \
-                "terraform/config/codebuild-regional-cluster/buildspec-combined.yml" 90; then
+                "terraform/config/codebuild-regional-cluster/buildspec-combined.yml" 90 "$REGIONAL_ID"; then
                 echo "ERROR: Regional project upsert failed for ${REGIONAL_ID}" >&2
                 PROVISION_FAILURES=$((PROVISION_FAILURES + 1))
             fi
@@ -748,7 +749,7 @@ for region_dir in deploy/${ENVIRONMENT}/*/; do
                 delete_project "$MANAGEMENT_ID"
             else
                 if ! upsert_project "management" "$MANAGEMENT_ID" "$MC_CODEBUILD_ROLE_ARN" \
-                    "terraform/config/codebuild-management-cluster/buildspec-combined.yml" 180; then
+                    "terraform/config/codebuild-management-cluster/buildspec-combined.yml" 180 "$MANAGEMENT_ID"; then
                     echo "ERROR: Management project upsert failed for ${MANAGEMENT_ID}" >&2
                     PROVISION_FAILURES=$((PROVISION_FAILURES + 1))
                 fi

@@ -4,9 +4,6 @@
 # WITHOUT creating any actual infrastructure (mocked AWS/git calls)
 set -euo pipefail
 
-# Allow individual tests to fail without exiting the script
-set +e
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"  # scripts/test/ -> scripts/ -> repo root
 cd "$REPO_ROOT"
@@ -23,12 +20,12 @@ TESTS_FAILED=0
 # ── Test Utilities ────────────────────────────────────────────────────────────
 pass() {
     echo -e "${GREEN}✓${NC} $1"
-    ((TESTS_PASSED++))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
 }
 
 fail() {
     echo -e "${RED}✗${NC} $1"
-    ((TESTS_FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
 }
 
 test_section() {
@@ -121,10 +118,13 @@ test_wrapper_args "MC" "management-cluster"
 test_wrapper_args "mc" "management-cluster"
 
 # Test invalid argument
-set +e  # Allow this test to fail without exiting
-invalid_output=$(/tmp/test-provision-cluster/provision-cluster.sh "invalid" 2>&1)
-invalid_exit=$?
-set -e
+invalid_output=""
+invalid_exit=0
+if invalid_output=$(/tmp/test-provision-cluster/provision-cluster.sh "invalid" 2>&1); then
+    invalid_exit=0
+else
+    invalid_exit=$?
+fi
 
 if [ $invalid_exit -ne 0 ] && echo "$invalid_output" | grep -q "ERROR: Unknown cluster type"; then
     pass "provision-cluster.sh rejects invalid argument"
@@ -307,7 +307,12 @@ test_git_merge_base() {
     # Test 2: Simulate shallow clone (what CodeBuild does by default)
     # Clone the repo with depth 1 (only latest commit)
     cd /tmp
-    git clone -q --depth 1 "file://$TEST_DIR" "$TEST_DIR-shallow" 2>/dev/null
+    if ! git clone -q --depth 1 "file://$TEST_DIR" "$TEST_DIR-shallow" 2>/dev/null; then
+        fail "Shallow clone setup failed"
+        cd /
+        rm -rf "$TEST_DIR" "$TEST_DIR-shallow"
+        return
+    fi
     cd "$TEST_DIR-shallow"
 
     # In shallow clone, only COMMIT_C is available
@@ -365,6 +370,49 @@ test_buildnumber_fallback() {
 test_buildnumber_fallback "Self newest (buildNumber)" 103 "101 102" 103
 test_buildnumber_fallback "Self stale (buildNumber)" 101 "102 103" 103
 test_buildnumber_fallback "Only self (buildNumber)" 100 "" 100
+
+# Duplicate SHAs must retain separate build IDs so the older build is stopped.
+test_queue_duplicate_sha() {
+    local TEST_DIR="/tmp/test-queue-$$"
+    mkdir -p "$TEST_DIR"
+    cat > "$TEST_DIR/aws" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+    *"list-builds-for-project"*)
+        echo "project:self project:old project:new"
+        ;;
+    *"batch-get-builds"*)
+        echo '[["project:self","1","QUEUED","","same-sha"],["project:old","2","QUEUED","","same-sha"],["project:new","3","QUEUED","","same-sha"]]'
+        ;;
+    *"stop-build"*)
+        echo "$*" >> "$AWS_LOG"
+        ;;
+esac
+EOF
+    chmod +x "$TEST_DIR/aws"
+
+    local output
+    if output=$(PATH="$TEST_DIR:$PATH" AWS_LOG="$TEST_DIR/stops" \
+        CODEBUILD_BUILD_ID="project:self" \
+        CODEBUILD_RESOLVED_SOURCE_VERSION="same-sha" \
+        CODEBUILD_BUILD_NUMBER="1" \
+        bash "$REPO_ROOT/scripts/pipeline-common/check-queue.sh" 2>&1); then
+        if grep -q -- '--id project:old' "$TEST_DIR/stops" && \
+           ! grep -q -- '--id project:new' "$TEST_DIR/stops"; then
+            pass "Queue tracking preserves duplicate-SHA build IDs"
+        else
+            fail "Queue tracking stopped the wrong duplicate-SHA build"
+            echo "  Output: $output"
+        fi
+    else
+        fail "Queue duplicate-SHA scenario failed to execute"
+        echo "  Output: $output"
+    fi
+
+    rm -rf "$TEST_DIR"
+}
+
+test_queue_duplicate_sha
 
 # ── Test 5: Static tfvars Integration ────────────────────────────────────────
 test_section "Test 5: Static tfvars Integration"
@@ -491,14 +539,26 @@ else
     fail "Provision failures must suggest ephemeral-provision-resume"
 fi
 
-# Test 14: RC script uses secrets_manager_get
+# Test 14: Standard API e2e does not require or run ZOA tests
+if grep -q 'Standard flow: API tests + HCP + monitoring' \
+   "$REPO_ROOT/ci/e2e-tests.sh" && \
+   grep -q 'both ZOA_RC_API_URL and ZOA_MC_API_URL are required' \
+   "$REPO_ROOT/ci/e2e-tests.sh" && \
+   ! grep -q 'make -C "\${WORK_DIR}/zoa" test-e2e-smoke' \
+   "$REPO_ROOT/ci/e2e-tests.sh"; then
+    pass "Standard API e2e is independent of ZOA"
+else
+    fail "Standard API e2e must not require or run ZOA tests"
+fi
+
+# Test 15: RC script uses secrets_manager_get
 if grep -q 'secrets_manager_get' "$RC_SCRIPT"; then
     pass "RC script uses secrets_manager_get (Secrets Manager refactored)"
 else
     fail "RC script missing secrets_manager_get call"
 fi
 
-# Test 15: Unified timing report is persisted as a provisioning artifact
+# Test 16: Unified timing report is persisted as a provisioning artifact
 if grep -q 'provision-timing-summary\.txt' "$REPO_ROOT/ci/ephemeral-provider/orchestrator.py" && \
    grep -q '_write_provision_timing_artifact' "$REPO_ROOT/ci/ephemeral-provider/orchestrator.py"; then
     pass "Provisioning timing summary is written to artifacts"
@@ -506,7 +566,7 @@ else
     fail "Provisioning timing summary must be written to artifacts"
 fi
 
-# Test 16: Ready state is persisted only with validated output metadata
+# Test 17: Ready state is persisted only with validated output metadata
 if grep -q 'record_ready_environment' "$REPO_ROOT/scripts/dev/ephemeral-env.sh" && \
    grep -q 'local fields=("STATE=ready")' "$REPO_ROOT/scripts/dev/ephemeral-env.sh" && \
    ! grep -q 'update_state "\$ID" "ready"' "$REPO_ROOT/scripts/dev/ephemeral-env.sh" && \
@@ -514,6 +574,41 @@ if grep -q 'record_ready_environment' "$REPO_ROOT/scripts/dev/ephemeral-env.sh" 
     pass "Ready state is persisted with validated provisioning metadata"
 else
     fail "Ready state must only be persisted with validated provisioning metadata"
+fi
+
+# Test 18: Review fixes remain covered by source-level integration checks
+if grep -q 'log\.exception("Ephemeral environment %s failed"' \
+   "$REPO_ROOT/ci/ephemeral-provider/main.py"; then
+    pass "Ephemeral provider preserves top-level failure tracebacks"
+else
+    fail "Ephemeral provider must preserve top-level failure tracebacks"
+fi
+
+if grep -q 'TF_VAR_mc_ou_path=""' "$RC_SCRIPT"; then
+    pass "RC SSM lookup reaches the custom missing-parameter guidance"
+else
+    fail "RC SSM lookup can still exit before custom guidance"
+fi
+
+if grep -q 'zoa-enabled' "$REPO_ROOT/ci/ephemeral-provider/main.py" && \
+   grep -q 'zoa_enabled' "$REPO_ROOT/scripts/dev/ephemeral-env.sh"; then
+    pass "ZOA readiness validation uses the rendered enablement marker"
+else
+    fail "ZOA readiness validation must use rendered enablement metadata"
+fi
+
+if grep -Fq 'BUILD_MAP["$BUILD_ID"]' "$REPO_ROOT/scripts/pipeline-common/check-queue.sh" && \
+   grep -q 'NEWEST_BUILD_ID' "$REPO_ROOT/scripts/pipeline-common/check-queue.sh"; then
+    pass "Queue winner selection tracks build IDs independently of SHAs"
+else
+    fail "Queue winner selection must retain duplicate-SHA build IDs"
+fi
+
+if grep -Fq 'terraform\\.json' "$REPO_ROOT/scripts/provision-codebuilds.sh" && \
+   grep -q 'local cluster_id="\$6"' "$REPO_ROOT/scripts/provision-codebuilds.sh"; then
+    pass "Webhook filters use correct regex escaping and cluster IDs"
+else
+    fail "Webhook filters must use correct regex escaping and cluster IDs"
 fi
 
 # ── Test 7: Combined Buildspec Integration ───────────────────────────────────
@@ -556,10 +651,12 @@ else
 fi
 
 if grep -q 'on-failure: ABORT' \
-   "$REPO_ROOT/terraform/config/codebuild-management-cluster/buildspec-combined.yml"; then
-    pass "MC CodeBuild buildspec avoids whole-flow retries"
+   "$REPO_ROOT/terraform/config/codebuild-management-cluster/buildspec-combined.yml" && \
+   grep -q 'on-failure: ABORT' \
+   "$REPO_ROOT/terraform/config/codebuild-regional-cluster/buildspec-combined.yml"; then
+    pass "RC/MC CodeBuild buildspecs avoid whole-flow retries"
 else
-    fail "MC CodeBuild buildspec still retries the whole flow"
+    fail "RC/MC CodeBuild buildspecs must avoid whole-flow retries"
 fi
 
 
