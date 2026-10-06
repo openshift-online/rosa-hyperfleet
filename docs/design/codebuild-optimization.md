@@ -19,9 +19,9 @@ GitOps (`config/` → `scripts/render.py` → `deploy/` → git push) and terraf
 
 **Negative:**
 
-- **Stage isolation is gone.** Combined buildspec means a bootstrap failure retries the whole job (acceptable: terraform/ArgoCD/Register are idempotent; retry = no-op apply + failed step).
+- **Stage isolation is gone.** RC retains one phase retry for transient infrastructure failures. MC aborts after a phase failure so a registration/readiness failure does not rerun the entire apply; resume retries the idempotent flow after dependencies are ready.
 - **Migration cost.** Existing environments require recreation or one-time cutover (no in-place conversion of `CODEPIPELINE` artifacts).
-- **Combined timeout budget.** Phases share 90m (RC) / 120m (MC); a slow apply reduces time for bootstrap. Optional elapsed-time check prevents apply from consuming the full budget.
+- **Combined timeout budget.** Phases share 90m (RC) / 180m (MC); a slow apply reduces time for bootstrap. Optional elapsed-time check prevents apply from consuming the full budget.
 
 ## Context
 
@@ -258,9 +258,9 @@ sequenceDiagram
 | `build-platform-image`      | 1                      | yes        | 30m     | [scripts/build-platform-image.sh](../../scripts/build-platform-image.sh)                                                                                             |
 | `cluster-build-provisioner` | 1                      | no         | 60m     | `check-queue.sh` → SDK upsert/delete cluster projects; verify platform image tag exists                                                                              |
 | `{regional_id}` (RC)        | 1                      | no         | 90m     | `check-queue.sh` → [provision-infra-rc.sh](../../scripts/buildspec/provision-infra-rc.sh) → [bootstrap-argocd-rc.sh](../../scripts/buildspec/bootstrap-argocd-rc.sh) |
-| `{management_id}` (MC)      | 1                      | no         | 120m    | `check-queue.sh` → provision-infra-mc (CloudFront wait) → kube-applier-dynamodb → bootstrap-argocd-mc (`rhobs_api_url` wait) → register                              |
+| `{management_id}` (MC)      | 1                      | no         | 180m    | `check-queue.sh` → provision-infra-mc (CloudFront wait) → kube-applier-dynamodb → bootstrap-argocd-mc (`rhobs_api_url` wait) → register                              |
 
-Idempotency: terraform apply/destroy, ECS ArgoCD bootstrap, and Register POST are re-runnable from the start of the job. Combined specs keep today's phase-level `on-failure: RETRY-1` (already on every [buildspec](../../terraform/config/pipeline-regional-cluster/buildspec-provision-infra.yml)). Do **not** add project-level `retryLimit` that would start a new build of an already-skipped SHA.
+Idempotency: terraform apply/destroy, ECS ArgoCD bootstrap, and Register POST are re-runnable from the start of the job. RC keeps phase-level `on-failure: RETRY-1`; MC uses `on-failure: ABORT` to avoid rerunning the full flow after registration/readiness failure. The MC `register.sh` readiness and registration loops provide bounded retries, and resume retries the flow later. Do **not** add project-level `retryLimit` that would start a new build of an already-skipped SHA.
 
 Source type: CodeConnections / GitHub. Artifacts: `NO_ARTIFACTS` (drop pipeline artifact buckets). Destroy override: `StartBuild` environment `IS_DESTROY=true` (replaces CodePipeline variables).
 
@@ -310,22 +310,48 @@ Instance type and other terraform/config changes are **hash2**. Cluster projects
 
 `concurrentBuildLimit: 1` is **per project** (terraform lock for one cluster), not per account. `mc01` ∥ `mc02`; RC ∥ MC. Account quota (20–60, increasable) is a ceiling to alarm on, not a second mutex.
 
-[`check-queue.sh`](../../scripts/pipeline-common/check-queue.sh) is the first command of every combined buildspec. It `StopBuild`s older **QUEUED** builds and **exit 0** if a newer SHA is pending. Winner: `git merge-base --is-ancestor` on `sourceVersion` (unrelated SHAs → higher `buildNumber`). Never stop past `pre_build`. IAM: `ListBuildsForProject` / `BatchGetBuilds` / `StopBuild` **self ARN only**. EventBridge Slack: `FAILED` only.
+[`check-queue.sh`](../../scripts/pipeline-common/check-queue.sh) is the first provisioning action in the build phase of every combined buildspec. It `StopBuild`s older **QUEUED** builds and sets `CHECK_QUEUE_SKIPPED=true` if a newer SHA is pending. The wrapper returns before provisioning. Winner: `git merge-base --is-ancestor` on `sourceVersion` (unrelated SHAs → higher `buildNumber`). Never stop past `pre_build`. IAM: `ListBuildsForProject` / `BatchGetBuilds` / `StopBuild` **self ARN only**. EventBridge Slack: `FAILED` only.
 
 **Full implementation details:** See [check-queue-skip-logic.md](check-queue-skip-logic.md) for the complete algorithm, source vs. execute distinction, example timeline, and troubleshooting guide.
 
+### Build control flow, return semantics, and result contract
+
 ```mermaid
 flowchart TD
-  Start[Build starts pre_build] --> List[ListBuildsForProject and BatchGetBuilds]
-  List --> Select[Select build = newest git commit among self and QUEUED]
-  Select --> IsSelf{self is selected?}
-  IsSelf -->|no| CancelOthers[StopBuild other QUEUED]
-  CancelOthers --> Exit0["exit 0 skipped newer SHA pending"]
-  IsSelf -->|yes| CancelOld[StopBuild older QUEUED]
-  CancelOld --> Work[terraform apply or destroy then remaining stages]
+  Start[CodeBuild starts] --> Install[Install phase: chmod bootstrap script]
+  Install --> Buildspec[Build phase sources provision-cluster.sh]
+  Buildspec --> Init[Initialize APPLIED=false and APPLIED_SHA empty]
+  Init --> Queue[Source check-queue.sh]
+  Queue --> List[ListBuildsForProject and BatchGetBuilds]
+  List --> Select[Select newest commit among self and QUEUED builds]
+  Select --> Newer{Newer queued build exists?}
+
+  Newer -->|no| QueueContinue[check-queue.sh returns 0]
+  QueueContinue --> Provision[provision-cluster.sh continues]
+  Provision --> Work[Run Terraform and bootstrap or register phases]
+
+  Newer -->|yes| StopOlder[Stop older QUEUED builds]
+  StopOlder --> MarkSkip[Set CHECK_QUEUE_SKIPPED=true]
+  MarkSkip --> QueueSkip[check-queue.sh returns 0]
+  QueueSkip --> WrapperSkip[Wrapper sees the skip flag]
+  WrapperSkip --> Invocation{How was the wrapper invoked?}
+  Invocation -->|Sourced by buildspec| WrapperReturn[provision-cluster.sh returns 0]
+  Invocation -->|Executed directly| WrapperExit[provision-cluster.sh exits 0]
+  WrapperReturn --> SkipResult[Skip Terraform; APPLIED remains false]
+  WrapperExit --> SkipResult
+  SkipResult --> ProviderReject[CodeBuild may be SUCCEEDED, but provider rejects it as not applied]
+
+  Work --> Phases{All phases succeed?}
+  Phases -->|no| Failed[set -e propagates non-zero status]
+  Failed --> Retry[APPLIED remains false; RC retries once, MC aborts]
+  Phases -->|yes| Applied[Set APPLIED=true and APPLIED_SHA to resolved source SHA]
+  Applied --> Verify[Buildspec verifies APPLIED=true and exact SHA match]
+  Verify --> ProviderAccept[Provider accepts the build]
+
+  DirectQueue[If check-queue.sh is executed directly, terminal branches use exit 0] -.-> Queue
 ```
 
-CI waits for `SUCCEEDED && APPLIED==true && APPLIED_SHA==<desired>` (buildspec `exported-variables`). Ignore skip `SUCCEEDED` and `STOPPED`. Terraform/ECS/Register are re-runnable; unsafe is SIGKILL mid-apply (stale S3 lockfile). Recover `TIMED_OUT`/`FAULT` mid-apply with `terraform force-unlock` after no `IN_PROGRESS` build.
+CI waits for `SUCCEEDED && APPLIED==true && APPLIED_SHA==<desired>` (buildspec `exported-variables`). A skipped build has `APPLIED=false` and is not considered applied; the provider reports the missing success contract so the newer queued build can be handled explicitly. Terraform/ECS/Register are re-runnable; unsafe is SIGKILL mid-apply (stale S3 lockfile). Recover `TIMED_OUT`/`FAULT` mid-apply with `terraform force-unlock` after no `IN_PROGRESS` build.
 
 ## Implementation plan
 
@@ -335,10 +361,10 @@ CodePipeline V2 glob `file_paths` become CodeBuild regex webhook groups (`**` �
 
 1. **This ADR.** Spike notes replaced by this document. Banner on [pipeline-based-lifecycle.md](pipeline-based-lifecycle.md). Index in [docs/README.md](../README.md).
 2. **Trigger spike.** One CodeBuild project on the existing CodeStar connection: `NO_ARTIFACTS`, `concurrentBuildLimit: 1`, webhook `PUSH` + branch + `FILE_PATH`, two rapid commits, in-build `StopBuild` of the queued loser. Verify regex filter groups match the intended paths. If N webhooks fail GitHub quota, use a dispatcher.
-3. **`check-queue.sh` + combined buildspecs.** Add `scripts/pipeline-common/check-queue.sh`. One RC and one MC buildspec as in the table above. Timeouts 90m / 120m. Unprivileged. Shorten MC CloudFront wait; move `rhobs_api_url` wait to bootstrap.
+3. **`check-queue.sh` + combined buildspecs.** Add `scripts/pipeline-common/check-queue.sh`. One RC and one MC buildspec as in the table above. Timeouts 90m / 180m. Unprivileged. Shorten MC CloudFront wait; move `rhobs_api_url` wait to bootstrap.
 4. **SDK provisioner.** Replace terraform-of-pipelines in [scripts/provision-pipelines.sh](../../scripts/provision-pipelines.sh) with idempotent `CreateProject` / `UpdateProject` / `DeleteProject` from `deploy/` JSON plus a project spec. Keep DNS zone terraform and state-bucket bootstrap.
 5. **Central Terraform.** [terraform/modules/pipeline-provisioner](../../terraform/modules/pipeline-provisioner/): delete `aws_codepipeline`; CodeBuild source → CodeConnections; `concurrent_build_limit = 1`; webhook filters. [pipeline-notifications](../../terraform/modules/pipeline-notifications/): EventBridge `aws.codebuild` `FAILED` only.
-6. **Ephemeral CI.** [ci/ephemeral-provider/pipeline.py](../../ci/ephemeral-provider/pipeline.py) / [orchestrator.py](../../ci/ephemeral-provider/orchestrator.py): wait on CodeBuild for the **desired SHA**; ignore skip `SUCCEEDED` and `STOPPED`. Teardown: infra destroy then `DeleteProject`, then bootstrap terraform destroy.
+6. **Ephemeral CI.** [ci/ephemeral-provider/pipeline.py](../../ci/ephemeral-provider/pipeline.py) / [orchestrator.py](../../ci/ephemeral-provider/orchestrator.py): wait on CodeBuild for the **desired SHA**; treat skip `SUCCEEDED` and `STOPPED` builds as not applied and report them for explicit recovery. Teardown: infra destroy then `DeleteProject`, then bootstrap terraform destroy.
 7. **Docs, SOP, cutover.** [environment-provisioning.md](../environment-provisioning.md), [testing-strategy.md](testing-strategy.md), [rebuild-integration.md](../sop/rebuild-integration.md), [FAQ.md](../FAQ.md), [terraform/config/README.md](../../terraform/config/README.md). Recreate integration. `make pre-push`.
 
 ## Future optimizations

@@ -22,7 +22,7 @@ echo "Registering MC ${CLUSTER_ID} with RC API"
 # Read API Gateway URL and CloudFront domain from RC terraform state
 RESOLVED_REGIONAL_ACCOUNT_ID="${REGIONAL_AWS_ACCOUNT_ID}"
 
-RC_CONFIG_FILE="deploy/${ENVIRONMENT}/${TARGET_REGION}/pipeline-regional-cluster-inputs/terraform.json"
+RC_CONFIG_FILE=$(config_path_for_mode regional)
 if [ ! -f "$RC_CONFIG_FILE" ]; then
     echo "ERROR: RC config not found: $RC_CONFIG_FILE" >&2
     exit 1
@@ -64,14 +64,20 @@ if [ -z "$API_GATEWAY_URL" ]; then
     exit 1
 fi
 
-# Wait for API Gateway /live endpoint
+# Wait for API Gateway /live endpoint. RC ArgoCD can still be syncing after
+# Terraform and bootstrap complete, so allow up to 30 minutes by default.
 set +e
-MAX_RETRIES=10
-RETRY_DELAY=30
+LIVE_MAX_RETRIES="${MC_LIVE_MAX_RETRIES:-30}"
+LIVE_RETRY_DELAY="${MC_LIVE_RETRY_DELAY:-30}"
+if ! [[ "$LIVE_MAX_RETRIES" =~ ^[1-9][0-9]*$ ]] || \
+    ! [[ "$LIVE_RETRY_DELAY" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: MC_LIVE_MAX_RETRIES must be positive and MC_LIVE_RETRY_DELAY must be non-negative" >&2
+    exit 1
+fi
 RETRY_COUNT=0
 LIVE_OK=false
 
-while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+while [ $RETRY_COUNT -lt "$LIVE_MAX_RETRIES" ]; do
     RETRY_COUNT=$((RETRY_COUNT + 1))
 
     SECURITY_TOKEN_HEADER=()
@@ -91,13 +97,13 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
         LIVE_OK=true
         break
     fi
-    echo "/live returned $HTTP_CODE (attempt $RETRY_COUNT/$MAX_RETRIES), retrying in ${RETRY_DELAY}s..."
-    sleep $RETRY_DELAY
+    echo "/live returned $HTTP_CODE (attempt $RETRY_COUNT/$LIVE_MAX_RETRIES), retrying in ${LIVE_RETRY_DELAY}s..."
+    sleep "$LIVE_RETRY_DELAY"
 done
 set -e
 
 if [ "$LIVE_OK" != "true" ]; then
-    echo "ERROR: /live did not return 200 after $MAX_RETRIES attempts" >&2
+    echo "ERROR: /live did not return 200 after $LIVE_MAX_RETRIES attempts" >&2
     exit 1
 fi
 

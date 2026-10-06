@@ -146,11 +146,12 @@ test_provision_cluster_skip() {
     # Copy the REAL provision-cluster.sh
     cp "$REPO_ROOT/scripts/buildspec/provision-cluster.sh" "$TEST_DIR/scripts/buildspec/"
 
-    # Create mock check-queue.sh that EXITS (simulates stale SHA)
+    # Create mock check-queue.sh that marks the build stale and returns.
     cat > "$TEST_DIR/scripts/pipeline-common/check-queue.sh" <<'EOF'
 #!/usr/bin/env bash
 echo "CHECK-QUEUE: Detected stale SHA, skipping"
-exit 0  # Skip - newer SHA is queued
+CHECK_QUEUE_SKIPPED=true
+return 0  # Skip - newer SHA is queued
 EOF
 
     # Create mock provision scripts that log if they run
@@ -165,16 +166,16 @@ EOF
         chmod +x "$TEST_DIR/scripts/buildspec/$script"
     done
 
-    # Test 1: RC with check-queue exit should NOT run provision scripts
+    # Test 1: RC with check-queue skip should NOT run provision scripts
     cd "$TEST_DIR"
     local output_rc_skip
     output_rc_skip=$(./scripts/buildspec/provision-cluster.sh rc 2>&1 || true)
 
     if echo "$output_rc_skip" | grep -q "CHECK-QUEUE: Detected stale SHA"; then
         if ! echo "$output_rc_skip" | grep -q "provision-infra-rc.sh SHOULD NOT RUN"; then
-            pass "RC: provision-cluster.sh stops on check-queue exit (skip works)"
+            pass "RC: provision-cluster.sh stops on check-queue return (skip works)"
         else
-            fail "RC: provision-cluster.sh continued after check-queue exit (CRITICAL BUG)"
+            fail "RC: provision-cluster.sh continued after check-queue return (CRITICAL BUG)"
             echo "  Output: $output_rc_skip"
         fi
     else
@@ -182,19 +183,30 @@ EOF
         echo "  Output: $output_rc_skip"
     fi
 
-    # Test 2: MC with check-queue exit should NOT run provision scripts
+    # Test 2: MC with check-queue skip should NOT run provision scripts
     local output_mc_skip
     output_mc_skip=$(./scripts/buildspec/provision-cluster.sh mc 2>&1 || true)
 
     if echo "$output_mc_skip" | grep -q "CHECK-QUEUE: Detected stale SHA"; then
         if ! echo "$output_mc_skip" | grep -q "provision-infra-mc.sh SHOULD NOT RUN"; then
-            pass "MC: provision-cluster.sh stops on check-queue exit (skip works)"
+            pass "MC: provision-cluster.sh stops on check-queue return (skip works)"
         else
-            fail "MC: provision-cluster.sh continued after check-queue exit (CRITICAL BUG)"
+            fail "MC: provision-cluster.sh continued after check-queue return (CRITICAL BUG)"
             echo "  Output: $output_mc_skip"
         fi
     else
         fail "MC: check-queue.sh was not called"
+    fi
+
+    # Sourced wrapper must return to the CodeBuild shell with skip status intact.
+    local sourced_output
+    sourced_output=$(CODEBUILD_RESOLVED_SOURCE_VERSION=test-sha \
+        bash -c 'source ./scripts/buildspec/provision-cluster.sh rc; echo "AFTER_SOURCE APPLIED=${APPLIED} SKIPPED=${CHECK_QUEUE_SKIPPED}"')
+    if echo "$sourced_output" | grep -q "AFTER_SOURCE APPLIED=false SKIPPED=true"; then
+        pass "Sourced wrapper returns cleanly with skip status preserved"
+    else
+        fail "Sourced wrapper did not preserve skip status"
+        echo "  Output: $sourced_output"
     fi
 
     # Test 3: When check-queue continues, provision scripts SHOULD run
@@ -219,7 +231,8 @@ EOF
     chmod +x "$TEST_DIR/scripts/buildspec/bootstrap-argocd-rc.sh"
 
     local output_rc_continue
-    output_rc_continue=$(./scripts/buildspec/provision-cluster.sh rc 2>&1)
+    output_rc_continue=$(CODEBUILD_RESOLVED_SOURCE_VERSION=test-sha \
+        ./scripts/buildspec/provision-cluster.sh rc 2>&1)
 
     if echo "$output_rc_continue" | grep -q "PROVISION-RC: Running"; then
         pass "RC: provision-cluster.sh continues when check-queue doesn't exit"
@@ -429,19 +442,44 @@ test_section "Test 7: Combined Buildspec Integration"
 # Ensure we're in repo root
 cd "$REPO_ROOT"
 
-# Test that buildspecs call the wrapper (critical integration)
-if grep -q 'provision-cluster.sh regional-cluster' \
-   "$REPO_ROOT/terraform/config/pipeline-regional-cluster/buildspec-combined.yml"; then
-    pass "RC buildspec calls provision-cluster.sh wrapper"
+# Test that CodeBuild buildspecs source the wrapper (critical integration)
+if grep -q 'source ./scripts/buildspec/provision-cluster.sh regional-cluster' \
+   "$REPO_ROOT/terraform/config/codebuild-regional-cluster/buildspec-combined.yml"; then
+    pass "RC CodeBuild buildspec sources wrapper exports"
 else
-    fail "RC buildspec missing wrapper call (buildspec won't work)"
+    fail "RC CodeBuild buildspec must source wrapper exports"
 fi
 
-if grep -q 'provision-cluster.sh management-cluster' \
-   "$REPO_ROOT/terraform/config/pipeline-management-cluster/buildspec-combined.yml"; then
-    pass "MC buildspec calls provision-cluster.sh wrapper"
+if grep -q 'source ./scripts/buildspec/provision-cluster.sh management-cluster' \
+   "$REPO_ROOT/terraform/config/codebuild-management-cluster/buildspec-combined.yml"; then
+    pass "MC CodeBuild buildspec sources wrapper exports"
 else
-    fail "MC buildspec missing wrapper call (buildspec won't work)"
+    fail "MC CodeBuild buildspec must source wrapper exports"
+fi
+
+if grep -q 'test "${APPLIED:-}" = "true"' \
+   "$REPO_ROOT/terraform/config/codebuild-regional-cluster/buildspec-combined.yml" && \
+   grep -q 'test "${APPLIED_SHA:-}" = "${CODEBUILD_RESOLVED_SOURCE_VERSION}"' \
+   "$REPO_ROOT/terraform/config/codebuild-regional-cluster/buildspec-combined.yml"; then
+    pass "RC CodeBuild buildspec verifies applied SHA contract"
+else
+    fail "RC CodeBuild buildspec missing applied SHA contract"
+fi
+
+if grep -q 'test "${APPLIED:-}" = "true"' \
+   "$REPO_ROOT/terraform/config/codebuild-management-cluster/buildspec-combined.yml" && \
+   grep -q 'test "${APPLIED_SHA:-}" = "${CODEBUILD_RESOLVED_SOURCE_VERSION}"' \
+   "$REPO_ROOT/terraform/config/codebuild-management-cluster/buildspec-combined.yml"; then
+    pass "MC CodeBuild buildspec verifies applied SHA contract"
+else
+    fail "MC CodeBuild buildspec missing applied SHA contract"
+fi
+
+if grep -q 'on-failure: ABORT' \
+   "$REPO_ROOT/terraform/config/codebuild-management-cluster/buildspec-combined.yml"; then
+    pass "MC CodeBuild buildspec avoids whole-flow retries"
+else
+    fail "MC CodeBuild buildspec still retries the whole flow"
 fi
 
 

@@ -21,7 +21,7 @@ TERRAFORM_ACTION="apply"
 echo "MC ${MANAGEMENT_ID}: kube-applier-dynamodb terraform ${TERRAFORM_ACTION} in RC account ${RESOLVED_REGIONAL_ACCOUNT_ID}/${TARGET_REGION}"
 
 # Read RC regional_id from RC deploy config
-_RC_CONFIG_FILE="deploy/${ENVIRONMENT}/${TARGET_REGION}/pipeline-regional-cluster-inputs/terraform.json"
+_RC_CONFIG_FILE=$(config_path_for_mode regional)
 if [ ! -f "$_RC_CONFIG_FILE" ]; then
     echo "ERROR: RC config not found: $_RC_CONFIG_FILE" >&2
     exit 1

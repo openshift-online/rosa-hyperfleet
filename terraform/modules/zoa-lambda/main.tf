@@ -381,6 +381,8 @@ resource "aws_eks_access_policy_association" "lambda" {
   access_scope {
     type = "cluster"
   }
+
+  depends_on = [aws_eks_access_entry.lambda]
 }
 
 resource "aws_iam_role_policy" "lambda_eks" {

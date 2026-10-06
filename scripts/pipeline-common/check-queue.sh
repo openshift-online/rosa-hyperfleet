@@ -4,7 +4,7 @@
 #
 # ── Summary ───────────────────────────────────────────────────────────────────
 # When a build starts, check if a newer git commit is queued. If yes, stop older
-# queued builds and exit 0 (skip — newer SHA will apply). Only the newest queued
+# queued builds and mark the build skipped — newer SHA will apply. Only the newest queued
 # commit proceeds to terraform apply.
 #
 # Savings: 30-90 min per stale commit skipped. Rapid pushes (A→B→C) complete in
@@ -17,14 +17,15 @@
 #   - Source vs. execute distinction (why 'source' is critical)
 #   - Safety guarantees and troubleshooting
 #
-# ── CRITICAL: Must be sourced (not executed) ──────────────────────────────────
-# provision-cluster.sh does: source scripts/pipeline-common/check-queue.sh
-# When sourced, 'exit 0' kills the wrapper → buildspec sees exit 0 = skip.
-# If executed (./check-queue.sh), exit 0 only stops subprocess → provision runs.
+# ── CRITICAL: Must be sourced by provision-cluster.sh ──────────────────────────
+# Sourcing keeps CHECK_QUEUE_SKIPPED visible to the wrapper. The wrapper handles
+# returning/exiting after the flag is set, for both sourced and direct use.
 #
 # OPEN ITEM (spike validation): git merge-base may require full clone depth or
 # explicit fetch. Current implementation has buildNumber fallback (works either way).
 set -euo pipefail
+
+CHECK_QUEUE_SKIPPED=false
 
 # ── Self identity ─────────────────────────────────────────────────────────────
 SELF_BUILD_ID="${CODEBUILD_BUILD_ID:?CODEBUILD_BUILD_ID not set}"
@@ -46,7 +47,10 @@ BUILD_IDS=$(aws codebuild list-builds-for-project \
 if [ -z "$BUILD_IDS" ]; then
     echo "check-queue: no builds found for project ${PROJECT_NAME}"
     # Self is the only build; continue
-    return 0
+    if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+        return 0
+    fi
+    exit 0
 fi
 
 # ── Get build details ─────────────────────────────────────────────────────────
@@ -62,7 +66,10 @@ QUEUED_BUILDS=$(echo "$BUILDS_JSON" | jq -r '.[] | select(.[2] == "QUEUED") | @j
 
 if [ -z "$QUEUED_BUILDS" ]; then
     echo "check-queue: no queued builds; continuing"
-    return 0
+    if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+        return 0
+    fi
+    exit 0
 fi
 
 echo "check-queue: found $(echo "$QUEUED_BUILDS" | wc -l) queued build(s)"
@@ -147,12 +154,12 @@ if [ "$NEWEST_SHA" != "$SELF_SHA" ]; then
         fi
     done
 
-    # Exit 0 = skip this build (not an error — skipping is expected behavior)
-    # CRITICAL: This script MUST be sourced (not executed as subprocess) so
-    # 'exit 0' kills the parent shell and stops the entire buildspec phase.
-    # See header documentation for the source vs. execute difference.
-    # OPEN ITEM (spike validation): confirm exit 0 here short-circuits the
-    # combined buildspec when sourced in a multi-line block.
+    # Return 0 = skip this build (not an error — skipping is expected behavior).
+    # provision-cluster.sh sees the flag and returns/exits before provisioning.
+    CHECK_QUEUE_SKIPPED=true
+    if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+        return 0
+    fi
     exit 0
 fi
 

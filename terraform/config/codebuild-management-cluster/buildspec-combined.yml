@@ -13,12 +13,21 @@ phases:
       - chmod +x ./scripts/bootstrap-argocd.sh
 
   build:
-    on-failure: RETRY-1
+    # Do not rerun the entire MC apply after a registration/readiness failure.
+    # Resume retries the idempotent flow after the dependency is ready.
+    on-failure: ABORT
     commands:
-      # Wrapper sources check-queue.sh (skip if stale), then calls provision scripts.
+      # Source the wrapper so APPLIED/APPLIED_SHA exports reach CodeBuild.
+      # The wrapper marks stale builds and returns without provisioning.
       # Accepts: management-cluster | MC | mc
       # See docs/design/check-queue-skip-logic.md for flow details.
-      - ./scripts/buildspec/provision-cluster.sh management-cluster
+      - |
+        source ./scripts/buildspec/provision-cluster.sh management-cluster
+        if [[ "${CHECK_QUEUE_SKIPPED:-false}" != "true" ]]; then
+          test "${APPLIED:-}" = "true"
+          test "${APPLIED_SHA:-}" = "${CODEBUILD_RESOLVED_SOURCE_VERSION}"
+          echo "CodeBuild contract verified: APPLIED=true, APPLIED_SHA=${APPLIED_SHA}"
+        fi
 
 artifacts:
   files: []

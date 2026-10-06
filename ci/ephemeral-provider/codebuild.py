@@ -67,8 +67,11 @@ class BuildMonitor:
         builds = self.client.batch_get_builds(ids=build_ids).get("builds", [])
         for build in builds:
             if (
-                build.get("resolvedSourceVersion") == source_version
-                and build.get("buildStatus") in ("QUEUED", "IN_PROGRESS")
+                build.get("buildStatus") in ("QUEUED", "IN_PROGRESS")
+                and (
+                    build.get("resolvedSourceVersion") == source_version
+                    or build.get("sourceVersion") == source_version
+                )
             ):
                 return build["id"]
         return None
@@ -124,11 +127,13 @@ class BuildMonitor:
         """Wait for a CodeBuild build to complete and verify the success contract.
 
         Gates on: buildStatus=SUCCEEDED && APPLIED=="true" && APPLIED_SHA==desired_sha.
-        Ignores: skip builds (APPLIED!="true") and STOPPED builds (superseded).
+        Rejects skip builds (APPLIED!="true") and STOPPED builds because the
+        requested SHA was not applied by that build.
 
         Args:
             build_id: CodeBuild build ID (returned by start_build).
-            desired_sha: Expected git SHA (must match resolvedSourceVersion and APPLIED_SHA).
+            desired_sha: Expected git SHA (must match sourceVersion, resolvedSourceVersion,
+                and APPLIED_SHA when those values are available).
             timeout: Max seconds to wait.
 
         Raises:
@@ -151,37 +156,59 @@ class BuildMonitor:
 
                 build = builds[0]
                 status = build.get("buildStatus")
+                source_sha = build.get("sourceVersion", "")
                 resolved_sha = build.get("resolvedSourceVersion", "")
 
-                # Sanity check: resolved SHA must match desired SHA
-                if resolved_sha and resolved_sha != desired_sha:
+                # sourceVersion is the requested version and is available before the
+                # source download. It lets us reject an unexpected build early without
+                # requiring resolvedSourceVersion, which CodeBuild only populates after
+                # DOWNLOAD_SOURCE.
+                if self._is_full_commit_sha(source_sha) and source_sha.lower() != desired_sha.lower():
                     raise RuntimeError(
-                        f"Build {build_id} resolved to SHA {resolved_sha[:7]}, "
-                        f"expected {desired_sha[:7]}. This should not happen when "
-                        "StartBuild is pinned to the pushed SHA."
+                        f"Build {build_id} was requested for SHA {source_sha[:7]}, "
+                        f"expected {desired_sha[:7]}."
                     )
 
                 if status in ("IN_PROGRESS", "QUEUED"):
-                    # Still running
+                    # resolvedSourceVersion is not available until DOWNLOAD_SOURCE
+                    # completes, so an empty value here is expected.
                     time.sleep(POLL_INTERVAL)
                     continue
 
                 # Terminal statuses
                 if status == "SUCCEEDED":
-                    # Check the success contract: APPLIED=="true" && APPLIED_SHA==desired_sha
+                    # For GitHub/CodeConnections, the resolved commit is available
+                    # once the build reaches a terminal state.
+                    if not resolved_sha:
+                        raise RuntimeError(
+                            f"Build {build_id} succeeded without resolvedSourceVersion; "
+                            "cannot verify the requested SHA."
+                        )
+
+                    if resolved_sha != desired_sha:
+                        raise RuntimeError(
+                            f"Build {build_id} resolved to SHA {resolved_sha[:7]}, "
+                            f"expected {desired_sha[:7]}. This should not happen when "
+                            "StartBuild is pinned to the pushed SHA."
+                        )
+
+                    # Check the success contract: APPLIED=="true" && APPLIED_SHA==desired_sha.
+                    # A skipped build is not a successful provisioning result.
                     applied = self._exported_var(build, "APPLIED")
                     applied_sha = self._exported_var(build, "APPLIED_SHA")
 
                     if applied != "true":
                         raise RuntimeError(
-                            f"Build {build_id} succeeded but APPLIED={applied} (not 'true'). "
-                            "This indicates a skip build (check-queue.sh exit-0) — should "
-                            "not happen when we StartBuild the newest SHA."
+                            f"Build {build_id} succeeded but APPLIED={applied!r} (not 'true'). "
+                            "The CodeBuild success contract was not satisfied; the build "
+                            "may have been skipped by check-queue.sh or failed to export "
+                            "its status variables."
                         )
 
                     if applied_sha != desired_sha:
+                        applied_sha_display = (applied_sha or "")[:7]
                         raise RuntimeError(
-                            f"Build {build_id} succeeded but APPLIED_SHA={applied_sha[:7]}, "
+                            f"Build {build_id} succeeded but APPLIED_SHA={applied_sha_display!r}, "
                             f"expected {desired_sha[:7]}. State mismatch."
                         )
 
@@ -245,6 +272,11 @@ class BuildMonitor:
             log.info("  Project deleted: %s", project_name)
         except self.client.exceptions.ResourceNotFoundException:
             log.info("  Project already deleted or does not exist")
+
+    @staticmethod
+    def _is_full_commit_sha(value: str) -> bool:
+        """Return whether a source version is a full hexadecimal commit SHA."""
+        return len(value) == 40 and all(char in "0123456789abcdefABCDEF" for char in value)
 
     @staticmethod
     def _exported_var(build: dict, name: str) -> str | None:

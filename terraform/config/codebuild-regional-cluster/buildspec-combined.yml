@@ -15,10 +15,17 @@ phases:
   build:
     on-failure: RETRY-1
     commands:
-      # Wrapper sources check-queue.sh (skip if stale), then calls provision scripts.
+      # Source the wrapper so APPLIED/APPLIED_SHA exports reach CodeBuild.
+      # The wrapper marks stale builds and returns without provisioning.
       # Accepts: regional-cluster | RC | rc
       # See docs/design/check-queue-skip-logic.md for flow details.
-      - ./scripts/buildspec/provision-cluster.sh regional-cluster
+      - |
+        source ./scripts/buildspec/provision-cluster.sh regional-cluster
+        if [[ "${CHECK_QUEUE_SKIPPED:-false}" != "true" ]]; then
+          test "${APPLIED:-}" = "true"
+          test "${APPLIED_SHA:-}" = "${CODEBUILD_RESOLVED_SOURCE_VERSION}"
+          echo "CodeBuild contract verified: APPLIED=true, APPLIED_SHA=${APPLIED_SHA}"
+        fi
 
 artifacts:
   files: []

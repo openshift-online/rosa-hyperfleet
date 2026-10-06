@@ -8,7 +8,7 @@ source scripts/pipeline-common/lib.sh
 preflight_check
 
 ENVIRONMENT="${ENVIRONMENT:-staging}"
-RC_CONFIG_FILE="deploy/${ENVIRONMENT}/${TARGET_REGION}/pipeline-regional-cluster-inputs/terraform.json"
+RC_CONFIG_FILE=$(config_path_for_mode regional)
 if [ ! -f "$RC_CONFIG_FILE" ]; then
     echo "ERROR: Config file not found: $RC_CONFIG_FILE" >&2
     exit 1

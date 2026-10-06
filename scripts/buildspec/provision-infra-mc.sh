@@ -38,7 +38,8 @@ else
         --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
         --output text)
 
-    _RC_REGIONAL_ID=$(jq -r '.regional_id // "regional"' "deploy/${ENVIRONMENT}/${TARGET_REGION}/pipeline-regional-cluster-inputs/terraform.json" 2>/dev/null || echo "regional")
+    _RC_CONFIG_FILE=$(config_path_for_mode regional)
+    _RC_REGIONAL_ID=$(jq -r '.regional_id // "regional"' "$_RC_CONFIG_FILE" 2>/dev/null || echo "regional")
     export DNS_ZONE_OPERATOR_ROLE_ARN="arn:aws:iam::${RESOLVED_REGIONAL_ACCOUNT_ID}:role/${_RC_REGIONAL_ID}-dns-zone-operator"
     export OIDC_WRITER_ROLE_ARN="arn:aws:iam::${RESOLVED_REGIONAL_ACCOUNT_ID}:role/${_RC_REGIONAL_ID}-oidc-writer"
     export OIDC_KEY_READER_ROLE_ARN="arn:aws:iam::${RESOLVED_REGIONAL_ACCOUNT_ID}:role/${_RC_REGIONAL_ID}-oidc-key-reader"
@@ -167,4 +168,3 @@ tf_apply_with_static_vars \
     terraform/config/management-cluster \
     "${TERRAFORM_ACTION}" \
     "${DEPLOY_DIR}/static.tfvars.json"
-

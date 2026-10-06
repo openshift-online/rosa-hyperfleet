@@ -1,11 +1,11 @@
 # Check Queue Skip Logic
 
 **Parent ADR:** [codebuild-optimization.md](codebuild-optimization.md) (step 3: check-queue.sh)  
-**Last Updated:** 2026-09-28
+**Last Updated:** 2026-10-02
 
 ## Summary
 
-The `check-queue.sh` script prevents stale commits from running expensive terraform applies when newer commits are queued. When a build starts, it checks if a newer git commit is queued for the same project. If yes, it stops older queued builds and exits cleanly (skip), letting only the newest commit proceed to terraform apply.
+The `check-queue.sh` script prevents stale commits from running expensive terraform applies when newer commits are queued. When a build starts, it checks if a newer git commit is queued for the same project. If yes, it stops older queued builds, sets `CHECK_QUEUE_SKIPPED=true`, and returns cleanly. The wrapper then stops before Terraform, letting only the newest commit proceed.
 
 **Time savings:** 30-90 minutes per stale commit skipped.
 
@@ -41,8 +41,8 @@ flowchart TD
     E --> F{Self is winner?}
     F -->|Yes| G[Stop older QUEUED builds]
     G --> D
-    F -->|No| H[exit 0 - skip]
-    H --> I[Wrapper exits - provisions don't run]
+    F -->|No| H[Set CHECK_QUEUE_SKIPPED and return 0]
+    H --> I[Wrapper returns/exits - provisions don't run]
 ```
 
 ### Winner Selection Algorithm
@@ -80,23 +80,31 @@ fi
 
 **Why `source` instead of execute:**
 
-Buildspecs run each command in a **new shell**. If check-queue.sh is executed as `./check-queue.sh`, its `exit 0` only ends that subprocess — the buildspec continues to the next command.
+The wrapper must source `check-queue.sh` so the `CHECK_QUEUE_SKIPPED` flag is visible to the wrapper. The wrapper then returns when it is sourced by CodeBuild, or exits when it is executed directly. The CodeBuild buildspec also sources the wrapper so `APPLIED` and `APPLIED_SHA` remain in the shell whose environment CodeBuild exports.
 
 **Solution:**
 
 ```yaml
-# buildspec-combined.yml calls wrapper
+# buildspec-combined.yml sources wrapper and verifies the success contract
 commands:
-  - ./scripts/buildspec/provision-cluster.sh regional-cluster
+  - |
+    source ./scripts/buildspec/provision-cluster.sh regional-cluster
+    if [[ "${CHECK_QUEUE_SKIPPED:-false}" != "true" ]]; then
+      test "${APPLIED:-}" = "true"
+      test "${APPLIED_SHA:-}" = "${CODEBUILD_RESOLVED_SOURCE_VERSION}"
+    fi
 ```
 
 ```bash
 # provision-cluster.sh sources check-queue.sh
-source scripts/pipeline-common/check-queue.sh  # exit 0 kills THIS shell
-./scripts/buildspec/provision-infra-rc.sh      # never runs if check-queue exited
+source scripts/pipeline-common/check-queue.sh
+if [ "${CHECK_QUEUE_SKIPPED:-false}" = "true" ]; then
+    return 0  # or exit 0 when the wrapper is executed directly
+fi
+./scripts/buildspec/provision-infra-rc.sh      # never runs for a stale build
 ```
 
-When check-queue.sh does `exit 0`, it terminates the wrapper script, preventing provision scripts from running.
+When a build is stale, `check-queue.sh` returns after setting the skip flag. The wrapper handles the return and prevents provision scripts from running without terminating the parent CodeBuild shell.
 
 ## Safety Guarantees
 
@@ -109,8 +117,8 @@ When check-queue.sh does `exit 0`, it terminates the wrapper script, preventing 
 
 **Build keeps retrying stale SHA:**
 
-- Check buildspec `on-failure: RETRY-1` is set (not higher — CodeBuild would restart skipped build)
-- Verify check-queue.sh is sourced (not executed)
+- Verify the wrapper is sourced and the buildspec checks `CHECK_QUEUE_SKIPPED`.
+- RC may retry one failed build phase; MC uses `ABORT` so a registration/readiness failure does not rerun the entire MC apply.
 
 **All builds skipping:**
 
