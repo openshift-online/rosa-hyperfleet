@@ -430,18 +430,90 @@ else
     pass "MC script removed rhobs_api_url from wait list (bootstrap-only now)"
 fi
 
-# Test 7: RC script uses ssm_get_param_with_fallback
+# Test 7: MC waits for RC ZOA outputs before applying MC Terraform
+if grep -q '_RC_REQUIRED_OUTPUTS' "$MC_SCRIPT" && \
+   grep -q 'zoa_lambda_ecr_url' "$MC_SCRIPT" && \
+   grep -q 'tf_read_output.*zoa_lambda_ecr_url' "$MC_SCRIPT"; then
+    pass "MC waits for and validates the RC ZOA Lambda ECR output"
+else
+    fail "MC script must wait for the RC ZOA Lambda ECR output"
+fi
+
+# Test 8: RC script uses ssm_get_param_with_fallback
 if grep -q 'ssm_get_param_with_fallback' "$RC_SCRIPT"; then
     pass "RC script uses ssm_get_param_with_fallback (SSM refactored)"
 else
     fail "RC script missing ssm_get_param_with_fallback call"
 fi
 
-# Test 8: RC script uses secrets_manager_get
+# Test 9: Both Terraform flows validate core inputs and post-apply outputs
+if grep -q 'tf_require_static_vars' "$RC_SCRIPT" && \
+   grep -q 'tf_validate_outputs' "$RC_SCRIPT" && \
+   grep -q 'tf_require_static_vars' "$MC_SCRIPT" && \
+   grep -q 'tf_validate_outputs' "$MC_SCRIPT"; then
+    pass "RC/MC provisioning validates static inputs and core outputs"
+else
+    fail "RC/MC provisioning must validate static inputs and core outputs"
+fi
+
+# Test 10: MC validates the RC account and RC-derived dependency set
+if grep -q 'MC RC dependency' "$MC_SCRIPT" && \
+   grep -q 'MC ZOA RC dependency' "$MC_SCRIPT" && \
+   grep -q 'regional account mismatch' "$MC_SCRIPT"; then
+    pass "MC explicitly validates RC account and RC-derived dependencies"
+else
+    fail "MC must explicitly validate RC account and RC-derived dependencies"
+fi
+
+# Test 11: RC/MC provisioning emits a source-labelled parameter summary
+if grep -q 'print_provision_param_summary "RC"' "$RC_SCRIPT" && \
+   grep -q 'print_provision_param_summary "MC"' "$MC_SCRIPT"; then
+    pass "RC/MC provisioning emits parameter summaries"
+else
+    fail "RC/MC provisioning must emit parameter summaries"
+fi
+
+# Test 12: MC consumes RC outputs without waiting for final RC completion
+if grep -q 'RC_CODEBUILD_BUILD_ID' "$MC_SCRIPT" && \
+   grep -q 'batch-get-builds' "$MC_SCRIPT" && \
+   grep -q 'MC cannot continue' "$MC_SCRIPT" && \
+   grep -q 'MC will continue while RC finishes' "$MC_SCRIPT"; then
+    pass "MC consumes ready RC outputs while RC continues provisioning"
+else
+    fail "MC must consume RC outputs without waiting for final RC completion"
+fi
+
+# Test 13: Provision failures provide the resumable command
+if grep -q 'make ephemeral-provision-resume ID=' "$REPO_ROOT/scripts/dev/ephemeral-env.sh" && \
+   grep -q '_provision_resume_command' "$REPO_ROOT/ci/ephemeral-provider/orchestrator.py"; then
+    pass "Provision failures suggest ephemeral-provision-resume"
+else
+    fail "Provision failures must suggest ephemeral-provision-resume"
+fi
+
+# Test 14: RC script uses secrets_manager_get
 if grep -q 'secrets_manager_get' "$RC_SCRIPT"; then
     pass "RC script uses secrets_manager_get (Secrets Manager refactored)"
 else
     fail "RC script missing secrets_manager_get call"
+fi
+
+# Test 15: Unified timing report is persisted as a provisioning artifact
+if grep -q 'provision-timing-summary\.txt' "$REPO_ROOT/ci/ephemeral-provider/orchestrator.py" && \
+   grep -q '_write_provision_timing_artifact' "$REPO_ROOT/ci/ephemeral-provider/orchestrator.py"; then
+    pass "Provisioning timing summary is written to artifacts"
+else
+    fail "Provisioning timing summary must be written to artifacts"
+fi
+
+# Test 16: Ready state is persisted only with validated output metadata
+if grep -q 'record_ready_environment' "$REPO_ROOT/scripts/dev/ephemeral-env.sh" && \
+   grep -q 'local fields=("STATE=ready")' "$REPO_ROOT/scripts/dev/ephemeral-env.sh" && \
+   ! grep -q 'update_state "\$ID" "ready"' "$REPO_ROOT/scripts/dev/ephemeral-env.sh" && \
+   ! grep -q 'update_state "\$BUILD_ID" "ready"' "$REPO_ROOT/scripts/dev/ephemeral-env.sh"; then
+    pass "Ready state is persisted with validated provisioning metadata"
+else
+    fail "Ready state must only be persisted with validated provisioning metadata"
 fi
 
 # ── Test 7: Combined Buildspec Integration ───────────────────────────────────

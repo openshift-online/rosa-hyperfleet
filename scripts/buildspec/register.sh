@@ -8,6 +8,11 @@ source scripts/pipeline-common/lib.sh
 preflight_check
 config_load management
 
+require_nonempty_vars "MC registration core" \
+    TARGET_ACCOUNT_ID TARGET_REGION MANAGEMENT_ID REGIONAL_AWS_ACCOUNT_ID
+validate_aws_account_id "TARGET_ACCOUNT_ID" "${TARGET_ACCOUNT_ID}"
+validate_aws_account_id "REGIONAL_AWS_ACCOUNT_ID" "${REGIONAL_AWS_ACCOUNT_ID}"
+
 ENVIRONMENT="${ENVIRONMENT:-staging}"
 DELETE_FLAG=$(jq -r '.delete // false' "$DEPLOY_CONFIG_FILE")
 [ "${IS_DESTROY:-false}" == "true" ] && DELETE_FLAG="true"
@@ -109,7 +114,21 @@ if [ -z "$API_GATEWAY_URL" ]; then
     echo "ERROR: api_gateway_invoke_url not available after $((_REG_MAX_RETRIES * _REG_RETRY_DELAY / 60))+ minutes" >&2
     exit 1
 fi
+if [[ ! "$API_GATEWAY_URL" =~ ^https:// ]]; then
+    _log_step_failure 1
+    echo "ERROR: RC api_gateway_invoke_url is invalid: ${API_GATEWAY_URL}" >&2
+    exit 1
+fi
 _log_step_success
+
+print_provision_param_summary "MC registration" \
+    "MANAGEMENT_ID" "runtime" "${MANAGEMENT_ID}" \
+    "TARGET_ACCOUNT_ID" "runtime" "${TARGET_ACCOUNT_ID}" \
+    "REGIONAL_AWS_ACCOUNT_ID" "RC state" "${RESOLVED_REGIONAL_ACCOUNT_ID}" \
+    "RC_STATE_BUCKET" "RC state" "${RC_STATE_BUCKET}" \
+    "RC_STATE_KEY" "RC state" "${RC_STATE_KEY}" \
+    "API_GATEWAY_URL" "RC state" "${API_GATEWAY_URL}" \
+    "PLATFORM_API_LIVE_PATH" "runtime" "${PLATFORM_API_LIVE_PATH}"
 
 # Wait for API Gateway /live endpoint. RC ArgoCD can still be syncing after
 # Terraform and bootstrap complete, so allow up to 30 minutes by default.

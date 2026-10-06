@@ -8,6 +8,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -85,48 +86,120 @@ class EphemeralEnvOrchestrator:
         self.mc_projects: list[str] = []
         self._codebuild_logs_collected = False
         self._operation_started_at: float | None = None
+        self._operation_failed = False
+        self._timing_steps: list[dict[str, object]] = []
+        self._provision_builds: list[tuple[str, str]] = []
+        self._provision_results: dict[str, BuildResult] = {}
+        self._provision_artifact_path: Path | None = None
+
+    def _reset_provision_report(self) -> None:
+        self._operation_started_at = time.monotonic()
+        self._operation_failed = False
+        self._timing_steps = []
+        self._provision_builds = []
+        self._provision_results = {}
+        self._provision_artifact_path = None
+        self._codebuild_logs_collected = False
+
+    def _record_timing(self, label: str, duration: float, status: str) -> None:
+        self._timing_steps.append(
+            {
+                "scope": "ORCHESTRATOR",
+                "step": label,
+                "status": status,
+                "duration": duration,
+            }
+        )
+
+    @contextmanager
+    def _timed_step(self, label: str):
+        start = time.monotonic()
+        status = "SUCCEEDED"
+        try:
+            yield
+        except Exception:
+            status = "FAILED"
+            raise
+        finally:
+            self._record_timing(label, time.monotonic() - start, status)
 
     def provision(self, save_rc_state: str | None = None, save_mc_state: str | None = None):
+        self._reset_provision_report()
+        try:
+            self._provision_impl(save_rc_state, save_mc_state)
+        except Exception:
+            self._operation_failed = True
+            raise
+        finally:
+            self._log_provision_timing_summary()
+
+    def _provision_impl(
+        self, save_rc_state: str | None = None, save_mc_state: str | None = None
+    ):
         """Provision the ephemeral environment (setup + bootstrap + wait for pipelines).
 
         Args:
             save_rc_state: If set, save RC terraform outputs JSON to this path after provisioning.
             save_mc_state: If set, save MC terraform outputs JSON to this path after provisioning.
         """
-        self._operation_started_at = time.monotonic()
-        self._setup_aws()
+        with self._timed_step("AWS credential setup"):
+            self._setup_aws()
 
-        git = GitManager(self.creds_dir, self.repo, self.branch)
-        self.git = git
-        git.create_eph_branch(self.eph_prefix)
+        with self._timed_step("Ephemeral branch and config setup"):
+            git = GitManager(self.creds_dir, self.repo, self.branch)
+            self.git = git
+            git.create_eph_branch(self.eph_prefix)
 
-        # Inject ephemeral environment into config.yaml (not checked into the repo)
-        self._inject_ephemeral_config(git)
+            # Inject ephemeral environment into config.yaml (not checked into the repo)
+            self._inject_ephemeral_config(git)
 
-        # Apply provision override files (deep-merge YAML fragments into repo files)
-        self._apply_provision_overrides(git)
+            # Apply provision override files (deep-merge YAML fragments into repo files)
+            self._apply_provision_overrides(git)
 
-        desired_sha = git.render_and_push("ci: add ephemeral environment and render deploy files")
-        if not desired_sha:
-            raise RuntimeError("render_and_push returned no SHA — no changes committed")
+        with self._timed_step("Render and push deployment config"):
+            desired_sha = git.render_and_push("ci: add ephemeral environment and render deploy files")
+            if not desired_sha:
+                raise RuntimeError("render_and_push returned no SHA — no changes committed")
 
         # Bootstrap provisioner (terraform + provision-codebuilds.sh creates RC/MC projects)
-        self.central_monitor = BuildMonitor(self.aws.session)
-        self.target_monitor = BuildMonitor(self.aws.target_session)
-        self._bootstrap_provisioner(git)
+        with self._timed_step("Provisioner bootstrap"):
+            self.central_monitor = BuildMonitor(self.aws.session)
+            self.target_monitor = BuildMonitor(self.aws.target_session)
+            self._bootstrap_provisioner(git)
 
         # Read RC/MC project names from rendered config
-        self._read_project_names(git)
+        with self._timed_step("Discover RC/MC CodeBuild projects"):
+            self._read_project_names(git)
 
         # Wait for provisioning builds
         self._wait_for_provision(desired_sha)
 
         if save_rc_state:
-            self._save_terraform_outputs(git, save_rc_state)
+            with self._timed_step("Save and validate RC outputs"):
+                self._save_terraform_outputs(git, save_rc_state)
+                self._validate_saved_outputs(git, save_rc_state, "RC")
         if save_mc_state:
-            self._save_mc_terraform_outputs(git, save_mc_state)
+            with self._timed_step("Save and validate MC outputs"):
+                self._save_mc_terraform_outputs(git, save_mc_state)
+                if self.mc_projects:
+                    self._validate_saved_outputs(git, save_mc_state, "MC", self.mc_projects[0])
 
     def resume(
+        self,
+        save_rc_state: str | None = None,
+        save_mc_state: str | None = None,
+        resync_before_resume: bool = False,
+    ):
+        self._reset_provision_report()
+        try:
+            self._resume_impl(save_rc_state, save_mc_state, resync_before_resume)
+        except Exception:
+            self._operation_failed = True
+            raise
+        finally:
+            self._log_provision_timing_summary()
+
+    def _resume_impl(
         self,
         save_rc_state: str | None = None,
         save_mc_state: str | None = None,
@@ -140,62 +213,72 @@ class EphemeralEnvOrchestrator:
         configuration is re-injected, and the rendered result is force-pushed.
         Existing Terraform state and CodeBuild projects are reused.
         """
-        self._operation_started_at = time.monotonic()
-        git = GitManager(
-            self.creds_dir,
-            self.repo,
-            self.branch,
-            eph_branch_name=self.eph_branch_name,
-        )
-        self.git = git
-        git.checkout_eph_branch(self.eph_prefix)
+        with self._timed_step("Checkout ephemeral branch and discover region"):
+            git = GitManager(
+                self.creds_dir,
+                self.repo,
+                self.branch,
+                eph_branch_name=self.eph_branch_name,
+            )
+            self.git = git
+            git.checkout_eph_branch(self.eph_prefix)
 
-        env_config_dir = git.work_dir / "config" / TARGET_ENVIRONMENT
-        self.region = discover_region(env_config_dir)
-        log.info("Region (from ephemeral branch): %s", self.region)
+            env_config_dir = git.work_dir / "config" / TARGET_ENVIRONMENT
+            self.region = discover_region(env_config_dir)
+            log.info("Region (from ephemeral branch): %s", self.region)
 
-        self._setup_aws()
+        with self._timed_step("AWS credential setup"):
+            self._setup_aws()
         self.central_monitor = BuildMonitor(self.aws.session)
         self.target_monitor = BuildMonitor(self.aws.target_session)
 
         if resync_before_resume:
-            self._read_project_names(git)
-            project_names = [self.rc_project, *self.mc_projects]
-            project_names = [name for name in project_names if name]
-            active_builds = self.target_monitor.active_builds(project_names)
-            active_builds.extend(
-                self.central_monitor.active_builds(
-                    [f"{git.eph_prefix}-build-platform-image"]
+            with self._timed_step("Resync and render deployment config"):
+                self._read_project_names(git)
+                project_names = [self.rc_project, *self.mc_projects]
+                project_names = [name for name in project_names if name]
+                active_builds = self.target_monitor.active_builds(project_names)
+                active_builds.extend(
+                    self.central_monitor.active_builds(
+                        [f"{git.eph_prefix}-build-platform-image"]
+                    )
                 )
-            )
-            if active_builds:
-                raise RuntimeError(
-                    "Cannot automatically resync while CodeBuild builds are active: "
-                    f"{', '.join(active_builds)}. Wait for them to finish, or rerun "
-                    "with RESYNC=false to resume without force-pushing the branch."
-                )
+                if active_builds:
+                    raise RuntimeError(
+                        "Cannot automatically resync while CodeBuild builds are active: "
+                        f"{', '.join(active_builds)}. Wait for them to finish, or rerun "
+                        "with RESYNC=false to resume without force-pushing the branch."
+                    )
 
-            log.info("Resyncing ephemeral branch before resuming provisioning")
-            git.resync_eph_branch(self.eph_prefix)
-            self._inject_ephemeral_config(git)
-            desired_sha = git.render_and_push(
-                "ci: resync ephemeral environment config",
-                force=True,
-                force_push_if_clean=True,
-            )
+                log.info("Resyncing ephemeral branch before resuming provisioning")
+                git.resync_eph_branch(self.eph_prefix)
+                self._inject_ephemeral_config(git)
+                desired_sha = git.render_and_push(
+                    "ci: resync ephemeral environment config",
+                    force=True,
+                    force_push_if_clean=True,
+                )
         else:
-            desired_sha = git.current_sha()
+            with self._timed_step("Resolve resume commit"):
+                desired_sha = git.current_sha()
 
         log.info("Resuming provisioning at commit: %s", desired_sha)
 
-        self._bootstrap_provisioner(git)
-        self._read_project_names(git)
+        with self._timed_step("Provisioner bootstrap"):
+            self._bootstrap_provisioner(git)
+        with self._timed_step("Discover RC/MC CodeBuild projects"):
+            self._read_project_names(git)
         self._wait_for_provision(desired_sha)
 
         if save_rc_state:
-            self._save_terraform_outputs(git, save_rc_state)
+            with self._timed_step("Save and validate RC outputs"):
+                self._save_terraform_outputs(git, save_rc_state)
+                self._validate_saved_outputs(git, save_rc_state, "RC")
         if save_mc_state:
-            self._save_mc_terraform_outputs(git, save_mc_state)
+            with self._timed_step("Save and validate MC outputs"):
+                self._save_mc_terraform_outputs(git, save_mc_state)
+                if self.mc_projects:
+                    self._validate_saved_outputs(git, save_mc_state, "MC", self.mc_projects[0])
 
     def teardown(self, fire_and_forget: bool = False):
         """Tear down a previously provisioned ephemeral environment.
@@ -533,7 +616,6 @@ class EphemeralEnvOrchestrator:
         log.info("Provision: Starting Builds")
         log.info("==========================================")
 
-        operation_start = self._operation_started_at or time.monotonic()
         build_window_start = time.monotonic()
 
         # StartBuild RC + each MC, collecting (project_name, build_id) tuples
@@ -545,7 +627,14 @@ class EphemeralEnvOrchestrator:
 
         # Start MC builds
         for mc_project in self.mc_projects:
-            mc_build_id = self.target_monitor.start_or_reuse_build(mc_project, desired_sha)
+            mc_build_id = self.target_monitor.start_or_reuse_build(
+                mc_project,
+                desired_sha,
+                environment_overrides={
+                    "RC_CODEBUILD_PROJECT": self.rc_project,
+                    "RC_CODEBUILD_BUILD_ID": rc_build_id,
+                },
+            )
             builds.append((mc_project, mc_build_id))
 
         log.info("Started %d build(s) at SHA %s", len(builds), desired_sha[:7])
@@ -597,49 +686,98 @@ class EphemeralEnvOrchestrator:
                     failed.append(project_name)
 
         build_window_duration = time.monotonic() - build_window_start
+        self._record_timing(
+            "RC/MC CodeBuild window (overlap)",
+            build_window_duration,
+            "FAILED" if failed else "SUCCEEDED",
+        )
+
         artifact_path = None
         artifact_collection_start = time.monotonic()
+        artifact_collection_status = "SUCCEEDED"
         try:
             artifact_path = self.collect_codebuild_logs()
         except Exception:
+            artifact_collection_status = "FAILED"
             log.exception("Failed to collect CodeBuild logs")
         artifact_collection_duration = time.monotonic() - artifact_collection_start
-
-        self._log_provision_build_summary(
-            builds,
-            results,
-            artifact_path,
-            timing={
-                "pre_build": build_window_start - operation_start,
-                "build_window": build_window_duration,
-                "artifact_collection": artifact_collection_duration,
-                "total": time.monotonic() - operation_start,
-            },
+        self._record_timing(
+            "CodeBuild artifact collection",
+            artifact_collection_duration,
+            artifact_collection_status,
         )
+        self._provision_builds = builds
+        self._provision_results = results
+        self._provision_artifact_path = artifact_path
 
         if failed:
+            rc_failed = self.rc_project in failed
+            mc_failed = [project for project in failed if project != self.rc_project]
+            resume_command = self._provision_resume_command()
+            if rc_failed:
+                mc_detail = (
+                    f"; dependent MC build(s) also failed: "
+                    f"{self._format_failed_builds(mc_failed, results)}"
+                    if mc_failed
+                    else "; MC build(s) completed, but overall provisioning is failed because RC failed"
+                )
+                raise RuntimeError(
+                    f"RC provisioning failed: "
+                    f"{self._format_failed_builds([self.rc_project], results)}{mc_detail}. "
+                    f"Fix the RC failure and resume with: {resume_command}"
+                )
             raise RuntimeError(
-                f"{len(failed)} build(s) failed during provisioning: {', '.join(failed)}"
+                f"MC provisioning failed: {self._format_failed_builds(mc_failed, results)}. "
+                f"Fix the MC failure and resume with: {resume_command}"
             )
 
         log.info("All builds completed successfully.")
 
-    def _log_provision_build_summary(
-        self,
-        builds: list[tuple[str, str]],
-        results: dict[str, BuildResult],
-        artifact_path: Path | None,
-        timing: dict[str, float] | None = None,
-    ) -> None:
-        """Print one final, actionable report for every provisioning build."""
-        log.info("")
-        log.info("==========================================")
-        log.info("Provision: Build Summary")
-        log.info("==========================================")
+    def _provision_resume_command(self) -> str:
+        """Return the local command that retries this environment's provisioning."""
+        env_id = self.eph_prefix.removeprefix("eph-")
+        return f"make ephemeral-provision-resume ID={env_id}"
+
+    @staticmethod
+    def _format_failed_builds(
+        projects: list[str | None], results: dict[str, BuildResult]
+    ) -> str:
+        """Format concise terminal details for failed RC/MC builds."""
+        details = []
+        for project in projects:
+            result = results.get(project) if project else None
+            if result is None:
+                details.append(f"{project or '<unknown>'}: no result")
+                continue
+            detail = result.error or f"status={result.status}"
+            details.append(f"{project}: {' '.join(detail.split())[:300]}")
+        return "; ".join(details)
+
+    def _log_provision_timing_summary(self) -> None:
+        """Print one table covering orchestration and CodeBuild timings."""
+        operation_start = self._operation_started_at or time.monotonic()
+        total_duration = time.monotonic() - operation_start
+        format_duration = (
+            self.target_monitor._format_duration
+            if self.target_monitor
+            else BuildMonitor._format_duration
+        )
 
         rows = []
-        for project_name, build_id in builds:
-            result = results.get(
+        for timing in self._timing_steps:
+            rows.append(
+                (
+                    timing["scope"],
+                    timing["step"],
+                    timing["status"],
+                    timing["status"],
+                    format_duration(timing["duration"]),
+                    "",
+                )
+            )
+
+        for project_name, build_id in self._provision_builds:
+            result = self._provision_results.get(
                 project_name,
                 BuildResult(
                     build_id=build_id,
@@ -653,54 +791,94 @@ class EphemeralEnvOrchestrator:
             rows.append(
                 (
                     project_name,
+                    "CodeBuild total",
                     outcome,
                     result.status,
-                    self.target_monitor._format_duration(result.total_duration),
+                    format_duration(result.total_duration),
                     short_build_id,
                 )
             )
 
-        if timing:
-            log.info(
-                "Provision timing: pre-build=%s, CodeBuild window=%s, "
-                "artifact collection=%s, total=%s",
-                self.target_monitor._format_duration(timing["pre_build"]),
-                self.target_monitor._format_duration(timing["build_window"]),
-                self.target_monitor._format_duration(timing["artifact_collection"]),
-                self.target_monitor._format_duration(timing["total"]),
+            for phase in result.phases:
+                phase_status = phase["status"] or "UNKNOWN"
+                phase_outcome = (
+                    "SUCCEEDED"
+                    if phase_status == "SUCCEEDED"
+                    else "FAILED"
+                    if phase_status in {"FAILED", "FAULT", "STOPPED", "TIMED_OUT"}
+                    else phase_status
+                )
+                rows.append(
+                    (
+                        project_name,
+                        f"phase: {phase['name']}",
+                        phase_outcome,
+                        phase_status,
+                        format_duration(phase["duration"]),
+                        short_build_id,
+                    )
+                )
+
+        rows.append(
+            (
+                "ORCHESTRATOR",
+                "TOTAL operation",
+                "FAILED" if self._operation_failed else "SUCCEEDED",
+                "FAILED" if self._operation_failed else "SUCCEEDED",
+                format_duration(total_duration),
+                "",
             )
-
-        log.info("Build report table:")
-        log.info(
-            "%-32s %-8s %-10s %-10s %-8s",
-            "PROJECT",
-            "OUTCOME",
-            "STATUS",
-            "DURATION",
-            "BUILD",
         )
-        log.info(
-            "%-32s %-8s %-10s %-10s %-8s",
-            "-------",
-            "-------",
-            "------",
-            "--------",
-            "-----",
-        )
-        for row in rows:
-            log.info("%-32s %-8s %-10s %-10s %-8s", *row)
 
-        for project_name, build_id in builds:
-            result = results.get(project_name)
+        report_lines = [
+            "",
+            "==========================================",
+            "Provision: Timing and Build Summary",
+            "==========================================",
+            "Provision timing and build report:",
+            "%-32s %-42s %-10s %-10s %-10s %-8s" % (
+                "SCOPE", "STEP / PHASE", "OUTCOME", "STATUS", "DURATION", "BUILD"
+            ),
+            "%-32s %-42s %-10s %-10s %-10s %-8s" % (
+                "-----", "-----------", "-------", "------", "--------", "-----"
+            ),
+        ]
+        report_lines.extend(
+            "%-32s %-42s %-10s %-10s %-10s %-8s" % row for row in rows
+        )
+
+        for project_name, build_id in self._provision_builds:
+            result = self._provision_results.get(project_name)
             if result is None:
                 continue
             if result.log_url:
-                log.info("Build report: project=%s CloudWatch=%s", project_name, result.log_url)
+                report_lines.append(
+                    f"Build report: project={project_name} CloudWatch={result.log_url}"
+                )
 
-        if artifact_path:
-            log.info("Build report: artifacts=%s", artifact_path)
+        if self._provision_artifact_path:
+            report_lines.append(f"Build report: artifacts={self._provision_artifact_path}")
         else:
-            log.info("Build report: artifacts=unavailable (ARTIFACT_DIR is not set)")
+            report_lines.append("Build report: artifacts=unavailable (ARTIFACT_DIR is not set)")
+
+        report_text = "\n".join(report_lines) + "\n"
+        for line in report_lines:
+            log.info("%s", line)
+        self._write_provision_timing_artifact(report_text)
+
+    def _write_provision_timing_artifact(self, report_text: str) -> None:
+        """Write the unified provisioning report to the configured artifact directory."""
+        artifact_dir = os.environ.get("ARTIFACT_DIR")
+        if not artifact_dir:
+            return
+
+        report_path = Path(artifact_dir) / "provision-timing-summary.txt"
+        try:
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            report_path.write_text(report_text)
+            log.info("Build report: timing summary=%s", report_path)
+        except OSError as exc:
+            log.warning("Unable to write provisioning timing artifact %s: %s", report_path, exc)
 
     def _save_terraform_outputs(self, git: GitManager, dest: str):
         """Fetch RC terraform outputs and write them to a file.
@@ -838,6 +1016,89 @@ class EphemeralEnvOrchestrator:
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         dest_path.write_text(result.stdout)
         log.info("MC terraform outputs written to %s", dest)
+
+    def _validate_saved_outputs(
+        self,
+        git: GitManager,
+        output_path: str,
+        cluster_type: str,
+        cluster_id: str | None = None,
+    ):
+        """Validate and summarize the outputs exposed to downstream workflows.
+
+        CodeBuild success only proves that the build command exited zero. This
+        check makes the saved Terraform-output contract explicit, so a
+        successful provision cannot be recorded as ready with missing URLs or
+        missing RC-to-MC hand-off data.
+        """
+        deploy_dir = git.work_dir / "deploy" / TARGET_ENVIRONMENT / self.region
+        if cluster_type == "RC":
+            static_path = deploy_dir / "codebuild-regional-cluster-inputs" / "static.tfvars.json"
+        else:
+            static_path = None
+            for candidate in sorted(deploy_dir.glob("codebuild-management-cluster-*-inputs/static.tfvars.json")):
+                try:
+                    candidate_data = json.loads(candidate.read_text())
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if candidate_data.get("management_id") == cluster_id:
+                    static_path = candidate
+                    break
+            if static_path is None:
+                raise RuntimeError(
+                    f"Could not find rendered MC static tfvars for {cluster_id}"
+                )
+
+        try:
+            static_vars = json.loads(static_path.read_text())
+            outputs = json.loads(Path(output_path).read_text())
+        except (OSError, json.JSONDecodeError) as e:
+            raise RuntimeError(
+                f"Unable to validate {cluster_type} provisioning outputs at {output_path}: {e}"
+            ) from e
+
+        required = [
+            "cluster_name",
+            "cluster_endpoint",
+            "vpc_id",
+        ]
+        if cluster_type == "RC":
+            required.extend(["api_gateway_invoke_url", "rhobs_api_url"])
+        else:
+            required.extend(["oidc_bucket_name", "oidc_cloudfront_domain"])
+
+        zoa_enabled = bool(str(static_vars.get("zoa_lambda_image_tag", "")).strip())
+        if zoa_enabled:
+            required.append("zoa_api_function_url")
+
+        invalid = []
+        for name in required:
+            value = outputs.get(name, {}).get("value")
+            if value in (None, ""):
+                invalid.append(f"{name}=empty")
+                continue
+            if name.endswith("_endpoint") or name.endswith("_url"):
+                if not str(value).startswith("https://"):
+                    invalid.append(f"{name}=invalid-url")
+            if name == "vpc_id" and not str(value).startswith("vpc-"):
+                invalid.append(f"{name}=invalid-vpc-id")
+
+        log.info("")
+        log.info("==========================================")
+        log.info("Provision: %s Output Summary", cluster_type)
+        log.info("==========================================")
+        log.info("  source=%s", output_path)
+        log.info("  static=%s", static_path)
+        log.info("  ZOA enabled=%s", zoa_enabled)
+
+        if invalid:
+            raise RuntimeError(
+                f"Required {cluster_type} Terraform outputs are missing or invalid: "
+                f"{', '.join(invalid)}"
+            )
+
+        for name in required:
+            log.info("  ✓ %s", name)
 
     def _purge_clusters(self, git: GitManager):
         """Delete all clusters and resource bundles via Platform API before infra teardown.

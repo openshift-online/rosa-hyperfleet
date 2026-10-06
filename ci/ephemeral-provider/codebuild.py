@@ -54,7 +54,12 @@ class BuildMonitor:
         self.session = session
         self.client = session.client("codebuild")
 
-    def start_build(self, project_name: str, source_version: str) -> str:
+    def start_build(
+        self,
+        project_name: str,
+        source_version: str,
+        environment_overrides: dict[str, str] | None = None,
+    ) -> str:
         """Start a CodeBuild build for a project at a specific git SHA.
 
         Args:
@@ -65,11 +70,18 @@ class BuildMonitor:
             Build ID (e.g., "project-name:uuid").
         """
         log.info("Starting build: %s at SHA %s", project_name, source_version[:7])
+        request = {
+            "projectName": project_name,
+            "sourceVersion": source_version,
+        }
+        if environment_overrides:
+            request["environmentVariablesOverride"] = [
+                {"name": name, "value": value, "type": "PLAINTEXT"}
+                for name, value in environment_overrides.items()
+            ]
+
         try:
-            response = self.client.start_build(
-                projectName=project_name,
-                sourceVersion=source_version,
-            )
+            response = self.client.start_build(**request)
             build_id = response["build"]["id"]
             log.info("Build started: %s", build_id)
             return build_id
@@ -125,7 +137,12 @@ class BuildMonitor:
             )
         return active
 
-    def start_or_reuse_build(self, project_name: str, source_version: str) -> str:
+    def start_or_reuse_build(
+        self,
+        project_name: str,
+        source_version: str,
+        environment_overrides: dict[str, str] | None = None,
+    ) -> str:
         """Reuse a webhook build at the requested SHA or start one explicitly.
 
         Resync pushes can trigger the project's webhook immediately before the
@@ -141,7 +158,7 @@ class BuildMonitor:
             if attempt < WEBHOOK_DISCOVERY_ATTEMPTS - 1:
                 time.sleep(WEBHOOK_DISCOVERY_INTERVAL)
 
-        return self.start_build(project_name, source_version)
+        return self.start_build(project_name, source_version, environment_overrides)
 
     @staticmethod
     def _timestamp_seconds(value) -> float | None:

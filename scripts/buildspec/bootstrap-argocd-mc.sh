@@ -8,6 +8,11 @@ source scripts/pipeline-common/lib.sh
 preflight_check
 config_load management
 
+require_nonempty_vars "MC bootstrap core" \
+    TARGET_ACCOUNT_ID TARGET_REGION MANAGEMENT_ID REGIONAL_AWS_ACCOUNT_ID
+validate_aws_account_id "TARGET_ACCOUNT_ID" "${TARGET_ACCOUNT_ID}"
+validate_aws_account_id "REGIONAL_AWS_ACCOUNT_ID" "${REGIONAL_AWS_ACCOUNT_ID}"
+
 RESOLVED_REGIONAL_ACCOUNT_ID="${REGIONAL_AWS_ACCOUNT_ID}"
 
 DELETE_FLAG=$(jq -r '.delete // false' "$DEPLOY_CONFIG_FILE")
@@ -66,8 +71,23 @@ while [ -z "$RHOBS_API_URL" ]; do
     sleep 30
 done
 
+if [[ ! "$RHOBS_API_URL" =~ ^https:// ]]; then
+    echo "ERROR: RC rhobs_api_url is present but invalid: ${RHOBS_API_URL}" >&2
+    exit 1
+fi
+
 export DNS_ZONE_OPERATOR_ROLE_ARN="arn:aws:iam::${RESOLVED_REGIONAL_ACCOUNT_ID}:role/${_RC_REGIONAL_ID}-dns-zone-operator"
 export OIDC_KEY_READER_ROLE_ARN="arn:aws:iam::${RESOLVED_REGIONAL_ACCOUNT_ID}:role/${_RC_REGIONAL_ID}-oidc-key-reader"
+
+print_provision_param_summary "MC ArgoCD bootstrap" \
+    "MANAGEMENT_ID" "runtime" "${MANAGEMENT_ID}" \
+    "TARGET_ACCOUNT_ID" "runtime" "${TARGET_ACCOUNT_ID}" \
+    "REGIONAL_AWS_ACCOUNT_ID" "RC state" "${RESOLVED_REGIONAL_ACCOUNT_ID}" \
+    "RC_STATE_BUCKET" "RC state" "${_RC_STATE_BUCKET}" \
+    "RC_STATE_KEY" "RC state" "${_RC_STATE_KEY}" \
+    "RHOBS_API_URL" "RC state" "${RHOBS_API_URL}" \
+    "DNS_ZONE_OPERATOR_ROLE_ARN" "RC derived" "${DNS_ZONE_OPERATOR_ROLE_ARN}" \
+    "OIDC_KEY_READER_ROLE_ARN" "RC derived" "${OIDC_KEY_READER_ROLE_ARN}"
 
 use_mc_account
 terraform_init_backend management-cluster "${TARGET_REGION}" "${MANAGEMENT_ID}"

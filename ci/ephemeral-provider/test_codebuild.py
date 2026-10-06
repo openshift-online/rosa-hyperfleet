@@ -20,6 +20,18 @@ class FakeClient:
         return next(self.responses)
 
 
+class StartBuildClient:
+    class exceptions:
+        ResourceNotFoundException = ResourceNotFoundException
+
+    def __init__(self):
+        self.request = None
+
+    def start_build(self, **request):
+        self.request = request
+        return {"build": {"id": "project:build-id"}}
+
+
 class FakeSession:
     def __init__(self, client):
         self.client_instance = client
@@ -30,6 +42,29 @@ class FakeSession:
 
 
 class BuildMonitorTests(unittest.TestCase):
+    def test_start_build_passes_dependency_context_overrides(self):
+        client = StartBuildClient()
+        monitor = BuildMonitor(FakeSession(client))
+
+        monitor.start_build(
+            "mc-project",
+            "a" * 40,
+            environment_overrides={
+                "RC_CODEBUILD_PROJECT": "rc-project",
+                "RC_CODEBUILD_BUILD_ID": "rc-project:build-id",
+            },
+        )
+
+        self.assertEqual(client.request["projectName"], "mc-project")
+        self.assertEqual(client.request["sourceVersion"], "a" * 40)
+        self.assertEqual(
+            client.request["environmentVariablesOverride"],
+            [
+                {"name": "RC_CODEBUILD_PROJECT", "value": "rc-project", "type": "PLAINTEXT"},
+                {"name": "RC_CODEBUILD_BUILD_ID", "value": "rc-project:build-id", "type": "PLAINTEXT"},
+            ],
+        )
+
     def test_waits_for_resolved_source_version_while_build_is_active(self):
         desired_sha = "a" * 40
         build_id = "project:build-id"
