@@ -459,8 +459,19 @@ upsert_project() {
 
                 if aws codebuild update-project --cli-input-json "$spec" --no-cli-pager >/dev/null; then
                     # Tag with new hash
-                    aws codebuild batch-get-projects --names "$project_name" --query 'projects[0].arn' --output text --no-cli-pager | \
-                    xargs -I {} aws codebuild tag-resource --resource-arn {} --tags key=DefinitionHash,value="$desired_hash" --no-cli-pager >/dev/null
+                    local project_arn
+                    project_arn=$(aws codebuild batch-get-projects \
+                        --names "$project_name" \
+                        --query 'projects[0].arn' \
+                        --output text \
+                        --no-cli-pager)
+                    if ! aws resourcegroupstaggingapi tag-resources \
+                        --resource-arn-list "$project_arn" \
+                        --tags "DefinitionHash=$desired_hash" \
+                        --no-cli-pager >/dev/null; then
+                        echo "ERROR: Failed to tag CodeBuild project $project_name" >&2
+                        return 1
+                    fi
 
                     echo "✓ Project updated"
 

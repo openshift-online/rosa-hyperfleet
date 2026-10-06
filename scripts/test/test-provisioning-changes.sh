@@ -53,6 +53,7 @@ EOF
 
     # Mock the provision scripts
     for script in provision-infra-rc.sh bootstrap-argocd-rc.sh \
+                  wait-for-regional-api.sh \
                   provision-infra-mc.sh provision-kube-applier-dynamodb.sh \
                   bootstrap-argocd-mc.sh register.sh; do
         cat > /tmp/test-provision-cluster/$script <<EOF
@@ -156,6 +157,7 @@ EOF
 
     # Create mock provision scripts that log if they run
     for script in provision-infra-rc.sh bootstrap-argocd-rc.sh \
+                  wait-for-regional-api.sh \
                   provision-infra-mc.sh provision-kube-applier-dynamodb.sh \
                   bootstrap-argocd-mc.sh register.sh; do
         cat > "$TEST_DIR/scripts/buildspec/$script" <<EOF
@@ -229,6 +231,12 @@ EOF
 echo "BOOTSTRAP-RC: Running (expected)"
 EOF
     chmod +x "$TEST_DIR/scripts/buildspec/bootstrap-argocd-rc.sh"
+
+    cat > "$TEST_DIR/scripts/buildspec/wait-for-regional-api.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "WAIT-RC-API: Running (expected)"
+EOF
+    chmod +x "$TEST_DIR/scripts/buildspec/wait-for-regional-api.sh"
 
     local output_rc_continue
     output_rc_continue=$(CODEBUILD_RESOLVED_SOURCE_VERSION=test-sha \

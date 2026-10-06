@@ -16,7 +16,7 @@ import yaml
 
 from __init__ import TARGET_ENVIRONMENT
 from aws import AWSCredentials
-from codebuild import BuildMonitor
+from codebuild import BuildMonitor, BuildResult
 from codebuild_logs import download_codebuild_logs
 from git import GitManager
 from yaml_utils import deep_merge, load_and_merge
@@ -83,6 +83,8 @@ class EphemeralEnvOrchestrator:
         # CodeBuild project names (read from rendered config after bootstrap)
         self.rc_project: str | None = None
         self.mc_projects: list[str] = []
+        self._codebuild_logs_collected = False
+        self._operation_started_at: float | None = None
 
     def provision(self, save_rc_state: str | None = None, save_mc_state: str | None = None):
         """Provision the ephemeral environment (setup + bootstrap + wait for pipelines).
@@ -91,6 +93,7 @@ class EphemeralEnvOrchestrator:
             save_rc_state: If set, save RC terraform outputs JSON to this path after provisioning.
             save_mc_state: If set, save MC terraform outputs JSON to this path after provisioning.
         """
+        self._operation_started_at = time.monotonic()
         self._setup_aws()
 
         git = GitManager(self.creds_dir, self.repo, self.branch)
@@ -137,6 +140,7 @@ class EphemeralEnvOrchestrator:
         configuration is re-injected, and the rendered result is force-pushed.
         Existing Terraform state and CodeBuild projects are reused.
         """
+        self._operation_started_at = time.monotonic()
         git = GitManager(
             self.creds_dir,
             self.repo,
@@ -268,21 +272,44 @@ class EphemeralEnvOrchestrator:
             log.warning("ARTIFACT_DIR not set — skipping CodeBuild log collection")
             return
 
+        if self._codebuild_logs_collected:
+            artifact_path = Path(artifact_dir) / "codebuild-logs"
+            log.info("CodeBuild logs already collected: %s", artifact_path)
+            return artifact_path
+
         if not self.aws or not self.aws.session:
             log.warning("AWS session not available — skipping log collection")
             return
 
         artifact_path = Path(artifact_dir) / "codebuild-logs"
-        # Central region logs (pipeline-provisioner CodeBuild)
-        files = download_codebuild_logs(self.aws.session, self.eph_prefix, artifact_path)
-        # RC/MC builds live in the target account even when both sessions use the same region.
-        files.extend(download_codebuild_logs(self.aws.target_session, self.eph_prefix, artifact_path))
+        self._codebuild_logs_collected = True
+        # Both sessions use the central account in the current setup; they only
+        # differ by region. Avoid downloading the same account/region twice when
+        # the target region is also us-east-1.
+        files = []
+        seen_sessions = set()
+        for session in (self.aws.session, self.aws.target_session):
+            if session is None:
+                continue
+            session_key = (self.aws.central_account_id, session.region_name)
+            if session_key in seen_sessions:
+                log.info(
+                    "Skipping duplicate CodeBuild log session: account=%s region=%s",
+                    session_key[0],
+                    session_key[1],
+                )
+                continue
+            seen_sessions.add(session_key)
+            files.extend(download_codebuild_logs(session, self.eph_prefix, artifact_path))
 
         # Redact sensitive values (AWS keys, session tokens) from Prow artifacts
         for f in files:
             content = f.read_text()
             content = _redact_sensitive(content)
             f.write_text(content)
+
+        log.info("CodeBuild artifact directory: %s", artifact_path)
+        return artifact_path
 
     def _setup_aws(self):
         """Set up AWS credentials and trust policies."""
@@ -344,13 +371,6 @@ class EphemeralEnvOrchestrator:
             raise ValueError(
                 f"Region config {region_file.name} must define 'provision_mcs'. "
                 "Example:\n  provision_mcs:\n    mc01: {}"
-            )
-        mc_count = len(region_config["provision_mcs"])
-        if mc_count > 1:
-            raise ValueError(
-                f"Ephemeral environments support at most 1 management cluster "
-                f"(only 1 MC account available), but {mc_count} were defined in "
-                f"{region_file.name}: {list(region_config['provision_mcs'].keys())}"
             )
 
         # Reject lifecycle flags that are managed by the provisioner
@@ -513,6 +533,9 @@ class EphemeralEnvOrchestrator:
         log.info("Provision: Starting Builds")
         log.info("==========================================")
 
+        operation_start = self._operation_started_at or time.monotonic()
+        build_window_start = time.monotonic()
+
         # StartBuild RC + each MC, collecting (project_name, build_id) tuples
         builds = []
 
@@ -527,6 +550,9 @@ class EphemeralEnvOrchestrator:
 
         log.info("Started %d build(s) at SHA %s", len(builds), desired_sha[:7])
 
+        if not builds:
+            raise RuntimeError("No CodeBuild projects were selected for provisioning.")
+
         # Wait for all builds concurrently
         log.info("")
         log.info("==========================================")
@@ -534,6 +560,7 @@ class EphemeralEnvOrchestrator:
         log.info("==========================================")
 
         failed = []
+        results: dict[str, BuildResult] = {}
         with ThreadPoolExecutor(max_workers=len(builds)) as executor:
             # Submit all wait tasks
             future_to_build = {
@@ -544,23 +571,136 @@ class EphemeralEnvOrchestrator:
             # Process results as they complete
             for future in as_completed(future_to_build):
                 project_name = future_to_build[future]
+                build_id = next(
+                    build_id for name, build_id in builds if name == project_name
+                )
                 try:
-                    future.result()
-                    log.info("✓ Build succeeded: %s", project_name)
+                    result = future.result()
+                    results[project_name] = result
+                    log.info(
+                        "✓ Build completed: %s (status=%s, duration=%s)",
+                        project_name,
+                        result.status,
+                        self.target_monitor._format_duration(result.total_duration),
+                    )
                 except (RuntimeError, TimeoutError) as e:
+                    result = getattr(e, "result", None)
+                    if result is None:
+                        result = BuildResult(
+                            build_id=build_id,
+                            status="ERROR",
+                            total_duration=None,
+                            error=str(e),
+                        )
+                    results[project_name] = result
                     log.error("Build '%s' failed: %s", project_name, e)
                     failed.append(project_name)
 
+        build_window_duration = time.monotonic() - build_window_start
+        artifact_path = None
+        artifact_collection_start = time.monotonic()
+        try:
+            artifact_path = self.collect_codebuild_logs()
+        except Exception:
+            log.exception("Failed to collect CodeBuild logs")
+        artifact_collection_duration = time.monotonic() - artifact_collection_start
+
+        self._log_provision_build_summary(
+            builds,
+            results,
+            artifact_path,
+            timing={
+                "pre_build": build_window_start - operation_start,
+                "build_window": build_window_duration,
+                "artifact_collection": artifact_collection_duration,
+                "total": time.monotonic() - operation_start,
+            },
+        )
+
         if failed:
-            try:
-                self.collect_codebuild_logs()
-            except Exception:
-                log.exception("Failed to collect CodeBuild logs")
             raise RuntimeError(
                 f"{len(failed)} build(s) failed during provisioning: {', '.join(failed)}"
             )
 
         log.info("All builds completed successfully.")
+
+    def _log_provision_build_summary(
+        self,
+        builds: list[tuple[str, str]],
+        results: dict[str, BuildResult],
+        artifact_path: Path | None,
+        timing: dict[str, float] | None = None,
+    ) -> None:
+        """Print one final, actionable report for every provisioning build."""
+        log.info("")
+        log.info("==========================================")
+        log.info("Provision: Build Summary")
+        log.info("==========================================")
+
+        rows = []
+        for project_name, build_id in builds:
+            result = results.get(
+                project_name,
+                BuildResult(
+                    build_id=build_id,
+                    status="UNKNOWN",
+                    total_duration=None,
+                    error="No result was returned by the build monitor",
+                ),
+            )
+            outcome = "SUCCEEDED" if result.error is None else "FAILED"
+            short_build_id = result.build_id.rsplit(":", 1)[-1][:8]
+            rows.append(
+                (
+                    project_name,
+                    outcome,
+                    result.status,
+                    self.target_monitor._format_duration(result.total_duration),
+                    short_build_id,
+                )
+            )
+
+        if timing:
+            log.info(
+                "Provision timing: pre-build=%s, CodeBuild window=%s, "
+                "artifact collection=%s, total=%s",
+                self.target_monitor._format_duration(timing["pre_build"]),
+                self.target_monitor._format_duration(timing["build_window"]),
+                self.target_monitor._format_duration(timing["artifact_collection"]),
+                self.target_monitor._format_duration(timing["total"]),
+            )
+
+        log.info("Build report table:")
+        log.info(
+            "%-32s %-8s %-10s %-10s %-8s",
+            "PROJECT",
+            "OUTCOME",
+            "STATUS",
+            "DURATION",
+            "BUILD",
+        )
+        log.info(
+            "%-32s %-8s %-10s %-10s %-8s",
+            "-------",
+            "-------",
+            "------",
+            "--------",
+            "-----",
+        )
+        for row in rows:
+            log.info("%-32s %-8s %-10s %-10s %-8s", *row)
+
+        for project_name, build_id in builds:
+            result = results.get(project_name)
+            if result is None:
+                continue
+            if result.log_url:
+                log.info("Build report: project=%s CloudWatch=%s", project_name, result.log_url)
+
+        if artifact_path:
+            log.info("Build report: artifacts=%s", artifact_path)
+        else:
+            log.info("Build report: artifacts=unavailable (ARTIFACT_DIR is not set)")
 
     def _save_terraform_outputs(self, git: GitManager, dest: str):
         """Fetch RC terraform outputs and write them to a file.
@@ -638,8 +778,9 @@ class EphemeralEnvOrchestrator:
         management_account_id = self.aws.get_target_account_id("management")
         state_bucket = f"terraform-state-{management_account_id}-{self.region}"
 
-        # MC management_id follows the pattern: {eph_prefix}-{mc_key}
-        # Ephemeral envs support at most 1 MC, so we use the first key from provision_mcs.
+        # MC management_id follows the pattern: {eph_prefix}-{mc_key}.
+        # The current state-file interface stores one MC output file, so retain
+        # the default MC01 behavior until per-MC state output is introduced.
         region_file = git.work_dir / "config" / TARGET_ENVIRONMENT / f"{self.region}.yaml"
         with open(region_file) as f:
             region_config = yaml.safe_load(f) or {}

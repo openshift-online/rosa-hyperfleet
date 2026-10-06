@@ -48,8 +48,6 @@ ENVIRONMENT VARIABLES:
                              Opt-in: defaults to false. Set to true to enable.
     SLACK_WEBHOOK_SSM_PARAM  SSM Parameter Store path containing Slack webhook URL (only used when
                              notifications are enabled). Default: /rosa-regional/slack/webhook-url
-    ENABLE_SHARED_MC_ROLE    Create shared mc-codebuild-role for all MC CodeBuild projects (true|false).
-                             Opt-in: defaults to false. Set to true for stage environment only.
     AWS_PROFILE         AWS CLI profile to use
 
 EXAMPLES:
@@ -213,18 +211,6 @@ if [[ "$ENABLE_SLACK_NOTIFICATIONS" != "true" && "$ENABLE_SLACK_NOTIFICATIONS" !
     exit 1
 fi
 SLACK_NOTIFICATIONS_ENABLED="$ENABLE_SLACK_NOTIFICATIONS"
-
-# Determine whether to create a shared MC CodeBuild role.
-# Explicit feature flag, opt-in: shared role is disabled unless
-# ENABLE_SHARED_MC_ROLE=true is set (stage environment only).
-ENABLE_SHARED_MC_ROLE="${ENABLE_SHARED_MC_ROLE:-false}"
-
-# Normalize and validate the flag
-ENABLE_SHARED_MC_ROLE=$(printf '%s' "$ENABLE_SHARED_MC_ROLE" | tr '[:upper:]' '[:lower:]')
-if [[ "$ENABLE_SHARED_MC_ROLE" != "true" && "$ENABLE_SHARED_MC_ROLE" != "false" ]]; then
-    echo "ERROR: ENABLE_SHARED_MC_ROLE must be 'true' or 'false' (got: '$ENABLE_SHARED_MC_ROLE')"
-    exit 1
-fi
 
 if [[ "$SLACK_NOTIFICATIONS_ENABLED" == "true" ]]; then
     # Verify the SSM parameter exists (Lambda will fetch the actual value at runtime)
@@ -391,7 +377,6 @@ environment           = "${TARGET_ENVIRONMENT}"
 name_prefix           = "${NAME_PREFIX}"
 enable_slack_notifications = ${SLACK_NOTIFICATIONS_ENABLED}
 slack_webhook_ssm_param = "${SLACK_WEBHOOK_SSM_PARAM}"
-enable_shared_mc_role = ${ENABLE_SHARED_MC_ROLE}
 EOF
 
 echo "Terraform configuration created (terraform.tfvars)"

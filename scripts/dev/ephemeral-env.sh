@@ -356,6 +356,7 @@ preflight() {
 # =============================================================================
 
 cmd_provision() {
+    local command_start=$SECONDS
     local repo="${REPO:-openshift-online/rosa-hyperfleet}"
     local branch="${BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"
 
@@ -425,6 +426,9 @@ cmd_provision() {
             --save-management-state /output/tf-outputs-mc.json \
     || rc=$?
 
+    local command_elapsed=$((SECONDS - command_start))
+    echo "Total provisioning command duration: $((command_elapsed / 60))m $((command_elapsed % 60))s"
+
     # Record results
     if [[ $rc -eq 0 ]]; then
         local api_url="" region=""
@@ -481,6 +485,7 @@ cmd_provision() {
 }
 
 cmd_provision_resume() {
+    local command_start=$SECONDS
     select_env "STATE=provisioning-failed" \
         "Select failed environment to resume:" \
         "No failed provisioning environments found."
@@ -555,6 +560,9 @@ cmd_provision_resume() {
             --save-regional-state /output/tf-outputs.json \
             --save-management-state /output/tf-outputs-mc.json \
     || rc=$?
+
+    local command_elapsed=$((SECONDS - command_start))
+    echo "Total provisioning-resume command duration: $((command_elapsed / 60))m $((command_elapsed % 60))s"
 
     if [[ $rc -eq 0 ]]; then
         local api_url="" region=""

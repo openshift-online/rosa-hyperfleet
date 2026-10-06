@@ -94,7 +94,7 @@ This directory is gitignored — it only affects your local machine.
 ### Constraints
 
 - Exactly **one region file** (besides `defaults.yaml`) must exist — the ephemeral provisioner deploys to a single region.
-- The region file must define **`provision_mcs`** with at most **one management cluster** (only one MC account is available in the shared dev setup).
+- The region file must define **`provision_mcs`**. The default ephemeral topology contains one management cluster (`mc01`), while additional entries can be rendered when the corresponding account and runtime support are available.
 - AWS account IDs are injected automatically from credentials — do not set `aws.account_id` or `aws.management_cluster_account_id`.
 
 ### Examples

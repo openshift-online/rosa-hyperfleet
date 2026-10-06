@@ -1,7 +1,8 @@
 import unittest
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
-from codebuild import BuildMonitor
+from codebuild import BuildFailure, BuildMonitor
 
 
 class ResourceNotFoundException(Exception):
@@ -118,6 +119,128 @@ class BuildMonitorTests(unittest.TestCase):
 
         with patch("codebuild.time.sleep"):
             monitor.wait_for_build(build_id, desired_sha, timeout=1)
+
+    def test_logs_phase_progress_and_build_summary(self):
+        desired_sha = "a" * 40
+        build_id = "project:build-id"
+        start = datetime.now(timezone.utc)
+        client = FakeClient(
+            [
+                {
+                    "builds": [
+                        {
+                            "id": build_id,
+                            "buildStatus": "IN_PROGRESS",
+                            "currentPhase": "BUILD",
+                            "sourceVersion": desired_sha,
+                            "phases": [
+                                {
+                                    "phaseType": "INSTALL",
+                                    "phaseStatus": "SUCCEEDED",
+                                    "startTime": start,
+                                    "endTime": start + timedelta(seconds=2),
+                                },
+                                {
+                                    "phaseType": "BUILD",
+                                    "startTime": start + timedelta(seconds=2),
+                                },
+                            ],
+                        }
+                    ]
+                },
+                {
+                    "builds": [
+                        {
+                            "id": build_id,
+                            "buildStatus": "SUCCEEDED",
+                            "sourceVersion": desired_sha,
+                            "resolvedSourceVersion": desired_sha,
+                            "startTime": start,
+                            "endTime": start + timedelta(seconds=8),
+                            "phases": [
+                                {
+                                    "phaseType": "INSTALL",
+                                    "phaseStatus": "SUCCEEDED",
+                                    "startTime": start,
+                                    "endTime": start + timedelta(seconds=2),
+                                },
+                                {
+                                    "phaseType": "BUILD",
+                                    "phaseStatus": "SUCCEEDED",
+                                    "startTime": start + timedelta(seconds=2),
+                                    "endTime": start + timedelta(seconds=7),
+                                },
+                                {
+                                    "phaseType": "POST_BUILD",
+                                    "phaseStatus": "SUCCEEDED",
+                                    "startTime": start + timedelta(seconds=7),
+                                    "endTime": start + timedelta(seconds=8),
+                                },
+                            ],
+                            "exportedEnvironmentVariables": [
+                                {"name": "APPLIED", "value": "true"},
+                                {"name": "APPLIED_SHA", "value": desired_sha},
+                            ],
+                        }
+                    ]
+                },
+            ]
+        )
+        monitor = BuildMonitor(FakeSession(client))
+
+        with (
+            patch("codebuild.time.sleep"),
+            patch("codebuild.BUILD_PROGRESS_LOG_INTERVAL", 0),
+            self.assertLogs("codebuild", level="INFO") as captured,
+        ):
+            monitor.wait_for_build(build_id, desired_sha, timeout=1)
+
+        output = "\n".join(captured.output)
+        self.assertIn("phase INSTALL: SUCCEEDED", output)
+        self.assertIn("phase BUILD: IN_PROGRESS", output)
+        self.assertIn("still IN_PROGRESS: phase=BUILD", output)
+        self.assertIn("summary: status=SUCCEEDED, total duration=8s", output)
+        self.assertIn("summary: phase=BUILD, status=SUCCEEDED, duration=5s", output)
+
+    def test_reports_stopped_build_context_without_guessing_cause(self):
+        desired_sha = "a" * 40
+        build_id = "project:build-id"
+        client = FakeClient(
+            [
+                {
+                    "builds": [
+                        {
+                            "id": build_id,
+                            "buildStatus": "STOPPED",
+                            "currentPhase": "BUILD",
+                            "initiator": "codebuild/project",
+                            "sourceVersion": desired_sha,
+                            "phases": [
+                                {
+                                    "phaseType": "BUILD",
+                                    "phaseStatus": "STOPPED",
+                                    "contexts": [
+                                        {
+                                            "statusCode": "USER_INITIATED",
+                                            "message": "Build stopped by user",
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ]
+                }
+            ]
+        )
+        monitor = BuildMonitor(FakeSession(client))
+
+        with self.assertRaises(BuildFailure) as raised:
+            monitor.wait_for_build(build_id, desired_sha, timeout=1)
+
+        self.assertIn("status STOPPED", str(raised.exception))
+        self.assertIn("initiator=codebuild/project", str(raised.exception))
+        self.assertIn("Build stopped by user", str(raised.exception))
+        self.assertEqual(raised.exception.result.status, "STOPPED")
 
 
 if __name__ == "__main__":
