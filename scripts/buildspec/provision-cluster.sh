@@ -34,6 +34,23 @@ esac
 export APPLIED=false
 export APPLIED_SHA=""
 
+# CodeBuild reports the outer BUILD phase. These markers expose the actual
+# RC/MC operations performed inside that phase, including their durations.
+run_timed_step() {
+    local step_name="$1"
+    shift
+    local step_start=$SECONDS
+
+    echo "provision-step: START ${step_name}"
+    if "$@"; then
+        echo "provision-step: SUCCEEDED ${step_name} duration=$((SECONDS - step_start))s"
+    else
+        local exit_code=$?
+        echo "provision-step: FAILED ${step_name} duration=$((SECONDS - step_start))s exit_code=${exit_code}" >&2
+        return "$exit_code"
+    fi
+}
+
 # ── Phase 1: Check queue and skip stale commits ──────────────────────────────
 # Source check-queue so its skip flag is visible in this shell.
 source scripts/pipeline-common/check-queue.sh
@@ -53,16 +70,17 @@ echo "provision-cluster: proceeding with ${CLUSTER_TYPE} provisioning"
 case "$CLUSTER_TYPE" in
     regional-cluster)
         echo "provision-cluster: Regional Cluster (RC) pipeline"
-        ./scripts/buildspec/provision-infra-rc.sh
-        ./scripts/buildspec/bootstrap-argocd-rc.sh
+        run_timed_step "RC Terraform infrastructure" ./scripts/buildspec/provision-infra-rc.sh
+        run_timed_step "RC ArgoCD bootstrap" ./scripts/buildspec/bootstrap-argocd-rc.sh
+        run_timed_step "RC Platform API live readiness" ./scripts/buildspec/wait-for-regional-api.sh
         ;;
 
     management-cluster)
         echo "provision-cluster: Management Cluster (MC) pipeline"
-        ./scripts/buildspec/provision-infra-mc.sh
-        ./scripts/buildspec/provision-kube-applier-dynamodb.sh
-        ./scripts/buildspec/bootstrap-argocd-mc.sh
-        ./scripts/buildspec/register.sh
+        run_timed_step "MC Terraform infrastructure" ./scripts/buildspec/provision-infra-mc.sh
+        run_timed_step "MC kube-applier DynamoDB" ./scripts/buildspec/provision-kube-applier-dynamodb.sh
+        run_timed_step "MC ArgoCD bootstrap" ./scripts/buildspec/bootstrap-argocd-mc.sh
+        run_timed_step "MC API readiness and registration" ./scripts/buildspec/register.sh
         ;;
 
 esac

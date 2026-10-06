@@ -28,6 +28,10 @@ _CENTRAL_AWS_SECRET_ACCESS_KEY=""
 _CENTRAL_AWS_SESSION_TOKEN=""
 _RESOLVED_RC_ACCOUNT_ID=""
 
+# Shared API live endpoint. Override through the build environment when the
+# route changes; both RC and MC readiness checks use this value.
+export PLATFORM_API_LIVE_PATH="${PLATFORM_API_LIVE_PATH:-/api/v0/live}"
+
 # ── Validation ───────────────────────────────────────────────────────────────
 
 # Validate required pipeline env vars, derive CLUSTER_ID, and init credentials.
