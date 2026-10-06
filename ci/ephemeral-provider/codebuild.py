@@ -7,6 +7,9 @@ from __init__ import POLL_INTERVAL, BUILD_COMPLETION_TIMEOUT
 
 log = logging.getLogger(__name__)
 
+WEBHOOK_DISCOVERY_ATTEMPTS = 5
+WEBHOOK_DISCOVERY_INTERVAL = 2
+
 
 class BuildMonitor:
     """Monitor AWS CodeBuild builds.
@@ -50,6 +53,67 @@ class BuildMonitor:
                 f"CodeBuild project not found: {project_name}. "
                 "Ensure provision-codebuilds.sh ran successfully."
             )
+
+    def _find_active_build(self, project_name: str, source_version: str) -> str | None:
+        """Find an already-running webhook or manually-triggered build at a SHA."""
+        response = self.client.list_builds_for_project(
+            projectName=project_name,
+            sortOrder="DESCENDING",
+        )
+        build_ids = response.get("ids", [])
+        if not build_ids:
+            return None
+
+        builds = self.client.batch_get_builds(ids=build_ids).get("builds", [])
+        for build in builds:
+            if (
+                build.get("resolvedSourceVersion") == source_version
+                and build.get("buildStatus") in ("QUEUED", "IN_PROGRESS")
+            ):
+                return build["id"]
+        return None
+
+    def active_builds(self, project_names: list[str]) -> list[str]:
+        """Return IDs of queued or running builds for the given projects."""
+        active = []
+        for project_name in project_names:
+            try:
+                response = self.client.list_builds_for_project(
+                    projectName=project_name,
+                    sortOrder="DESCENDING",
+                )
+            except self.client.exceptions.ResourceNotFoundException:
+                continue
+
+            build_ids = response.get("ids", [])
+            if not build_ids:
+                continue
+
+            builds = self.client.batch_get_builds(ids=build_ids).get("builds", [])
+            active.extend(
+                build["id"]
+                for build in builds
+                if build.get("buildStatus") in ("QUEUED", "IN_PROGRESS")
+            )
+        return active
+
+    def start_or_reuse_build(self, project_name: str, source_version: str) -> str:
+        """Reuse a webhook build at the requested SHA or start one explicitly.
+
+        Resync pushes can trigger the project's webhook immediately before the
+        provider reaches this point. Reusing that build avoids starting a
+        duplicate build; the explicit StartBuild fallback preserves operation
+        when webhook delivery is delayed or unavailable.
+        """
+        for attempt in range(WEBHOOK_DISCOVERY_ATTEMPTS):
+            build_id = self._find_active_build(project_name, source_version)
+            if build_id:
+                log.info("Reusing active build at SHA %s: %s", source_version[:7], build_id)
+                return build_id
+            if attempt < WEBHOOK_DISCOVERY_ATTEMPTS - 1:
+                time.sleep(WEBHOOK_DISCOVERY_INTERVAL)
+
+        return self.start_build(project_name, source_version)
 
     def wait_for_build(
         self,

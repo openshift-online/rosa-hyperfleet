@@ -61,6 +61,20 @@ The region is derived from the environment config (see [Customizing Your Environ
 
 To view and interact with provisioned environments at a later point in time, see [List Environments](#list-environments).
 
+## Resume Failed Provisioning
+
+If provisioning fails after the ephemeral branch has been created, resync and resume the same environment without creating another branch or environment state record:
+
+```bash
+make ephemeral-provision-resume ID=6bd2d3d7
+```
+
+By default, resume first resets the ephemeral branch to the latest source branch, reapplies `.ephemeral-env/` overrides, renders, and force-pushes the result. It then reuses existing Terraform state and CodeBuild resources and retries bootstrap and infrastructure builds. Use `RESYNC=false` to resume from the existing remote branch without changing it:
+
+make ephemeral-provision-resume ID=6bd2d3d7 RESYNC=false
+
+Automatic resync stops before the force-push if the environment has queued or running CodeBuild builds, preventing concurrent infrastructure changes. Wait for those builds to finish and retry, or use `RESYNC=false` if the existing branch should be retained.
+
 ## Customizing Your Environment
 
 By default, ephemeral environments use the preset in `config/ephemeral/` (bastion enabled, single MC in `us-east-1`). You can replace this config entirely for your local development by creating a `.ephemeral-env/` directory in the repo root.

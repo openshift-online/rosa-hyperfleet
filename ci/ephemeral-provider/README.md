@@ -28,6 +28,12 @@ The provider also expects AWS CLI profiles `rrp-central`, `rrp-rc`, and `rrp-mc`
 # Teardown (same --id)
 ./ci/ephemeral-provider/main.py --teardown --id abc123 --repo owner/repo --branch my-feature --creds-dir /path/to/credentials
 
+# Resync and resume a failed provisioning run using the existing ephemeral branch
+./ci/ephemeral-provider/main.py --resume --resync-before-resume --id abc123 --repo owner/repo --branch my-feature --eph-branch eph-abc123-my-feature-ci --creds-dir /path/to/credentials
+
+# Resume without resyncing the existing ephemeral branch
+./ci/ephemeral-provider/main.py --resume --id abc123 --repo owner/repo --branch my-feature --eph-branch eph-abc123-my-feature-ci --creds-dir /path/to/credentials
+
 # Resync (rebase ephemeral branch onto latest source branch, same --id)
 ./ci/ephemeral-provider/main.py --resync --id abc123 --repo owner/repo --branch my-feature --creds-dir /path/to/credentials
 ```
@@ -66,8 +72,8 @@ Can be specified multiple times. Format is `<target-path>:<override-file>` where
 
 | Module              | Description                                                                  |
 | ------------------- | ---------------------------------------------------------------------------- |
-| `main.py`           | CLI entrypoint — parses args, runs provision, teardown, or resync            |
-| `orchestrator.py`   | Top-level orchestration logic for provision and teardown workflows           |
+| `main.py`           | CLI entrypoint — parses args, runs provision, resume, teardown, or resync    |
+| `orchestrator.py`   | Top-level orchestration logic for provision, resume, and teardown workflows  |
 | `aws.py`            | AWS credential management and session helpers                                |
 | `git.py`            | Git operations for ephemeral branch creation, rendering, and resync (rebase) |
 | `pipeline.py`       | CodeBuild pipeline monitoring (discovery, polling, status)                   |

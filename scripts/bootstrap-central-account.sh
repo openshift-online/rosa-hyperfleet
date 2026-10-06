@@ -50,8 +50,6 @@ ENVIRONMENT VARIABLES:
                              notifications are enabled). Default: /rosa-regional/slack/webhook-url
     ENABLE_SHARED_MC_ROLE    Create shared mc-codebuild-role for all MC CodeBuild projects (true|false).
                              Opt-in: defaults to false. Set to true for stage environment only.
-    GITHUB_CONNECTION_ARN    Existing CodeStar connection ARN to reuse. If unset, exactly one
-                             connection named 'rosa-regional-github-shared' must exist.
     AWS_PROFILE         AWS CLI profile to use
 
 EXAMPLES:
@@ -288,33 +286,29 @@ echo "==================================================="
 
 CODESTAR_CONNECTION_NAME="rosa-regional-github-shared"
 
-# Reuse the pre-existing shared connection. Do not create a connection here:
-# its GitHub App installation and repository permissions are managed centrally.
-if [[ -z "${GITHUB_CONNECTION_ARN:-}" ]]; then
-    EXISTING_ARNS_JSON=$(aws codestar-connections list-connections \
-        --provider-type-filter GitHub \
-        --query "Connections[?ConnectionName=='${CODESTAR_CONNECTION_NAME}'].ConnectionArn" \
-        --output json --no-cli-pager)
-    mapfile -t EXISTING_ARNS < <(jq -r '.[]' <<<"$EXISTING_ARNS_JSON")
+# Resolve the single centrally-managed connection. This bootstrap never creates
+# or accepts an externally supplied connection ARN.
+EXISTING_ARNS_JSON=$(aws codestar-connections list-connections \
+    --provider-type-filter GitHub \
+    --query "Connections[?ConnectionName=='${CODESTAR_CONNECTION_NAME}'].ConnectionArn" \
+    --output json --no-cli-pager)
+mapfile -t EXISTING_ARNS < <(jq -r '.[]' <<<"$EXISTING_ARNS_JSON")
 
-    if [[ "${#EXISTING_ARNS[@]}" -eq 0 ]]; then
-        echo "ERROR: No existing CodeStar connection named '${CODESTAR_CONNECTION_NAME}' was found." >&2
-        echo "   Bootstrap will not create a replacement connection." >&2
-        exit 1
-    fi
-
-    if [[ "${#EXISTING_ARNS[@]}" -gt 1 ]]; then
-        echo "ERROR: Multiple CodeStar connections named '${CODESTAR_CONNECTION_NAME}' were found:" >&2
-        printf '   %s\n' "${EXISTING_ARNS[@]}" >&2
-        echo "   Set GITHUB_CONNECTION_ARN to the intended existing ARN and retry." >&2
-        exit 1
-    fi
-
-    GITHUB_CONNECTION_ARN="${EXISTING_ARNS[0]}"
-    echo "Found existing CodeStar connection: $GITHUB_CONNECTION_ARN"
-else
-    echo "Reusing CodeStar connection from GITHUB_CONNECTION_ARN: $GITHUB_CONNECTION_ARN"
+if [[ "${#EXISTING_ARNS[@]}" -eq 0 ]]; then
+    echo "ERROR: No existing CodeStar connection named '${CODESTAR_CONNECTION_NAME}' was found." >&2
+    echo "   Bootstrap will not create a replacement connection." >&2
+    exit 1
 fi
+
+if [[ "${#EXISTING_ARNS[@]}" -gt 1 ]]; then
+    echo "ERROR: Multiple CodeStar connections named '${CODESTAR_CONNECTION_NAME}' were found:" >&2
+    printf '   %s\n' "${EXISTING_ARNS[@]}" >&2
+    echo "   Remove duplicate connections and retry." >&2
+    exit 1
+fi
+
+GITHUB_CONNECTION_ARN="${EXISTING_ARNS[0]}"
+echo "Found existing CodeStar connection: $GITHUB_CONNECTION_ARN"
 
 SELECTED_CONNECTION_NAME=$(aws codestar-connections get-connection \
     --connection-arn "$GITHUB_CONNECTION_ARN" \
