@@ -23,7 +23,8 @@ fi
 _resolve_rc_account
 RESOLVED_REGIONAL_ACCOUNT_ID="${_RESOLVED_RC_ACCOUNT_ID}"
 _RC_STATE_BUCKET="terraform-state-${RESOLVED_REGIONAL_ACCOUNT_ID}-${TARGET_REGION}"
-_RC_REGIONAL_ID=$(jq -r '.regional_id // "regional"' "deploy/${ENVIRONMENT}/${TARGET_REGION}/pipeline-regional-cluster-inputs/terraform.json" 2>/dev/null || echo "regional")
+_RC_CONFIG_FILE=$(config_path_for_mode regional)
+_RC_REGIONAL_ID=$(jq -r '.regional_id // "regional"' "$_RC_CONFIG_FILE" 2>/dev/null || echo "regional")
 _RC_STATE_KEY="regional-cluster/${_RC_REGIONAL_ID}.tfstate"
 _RC_TF_DIR="terraform/config/regional-cluster"
 

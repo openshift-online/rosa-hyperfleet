@@ -163,6 +163,42 @@ parseBool() {
     esac
 }
 
+# Resolve a rendered cluster config path.
+# CodeBuild renders codebuild-* directories; the pipeline fallback preserves
+# compatibility with environments that still have legacy rendered files.
+config_path_for_mode() {
+    local mode="$1"
+    local codebuild_path pipeline_path
+
+    if [[ "$mode" == "regional" ]]; then
+        codebuild_path="deploy/${ENVIRONMENT}/${TARGET_REGION}/codebuild-regional-cluster-inputs/terraform.json"
+        pipeline_path="deploy/${ENVIRONMENT}/${TARGET_REGION}/pipeline-regional-cluster-inputs/terraform.json"
+    elif [[ "$mode" == "management" ]]; then
+        codebuild_path="deploy/${ENVIRONMENT}/${TARGET_REGION}/codebuild-management-cluster-${MANAGEMENT_ID}-inputs/terraform.json"
+        pipeline_path="deploy/${ENVIRONMENT}/${TARGET_REGION}/pipeline-management-cluster-${MANAGEMENT_ID}-inputs/terraform.json"
+    else
+        echo "ERROR: config_path_for_mode: unknown mode '$mode'" >&2
+        return 1
+    fi
+
+    if [[ -f "$codebuild_path" ]]; then
+        echo "$codebuild_path"
+    else
+        echo "$pipeline_path"
+    fi
+}
+
+provisioner_config_path() {
+    local codebuild_path="deploy/${ENVIRONMENT}/${TARGET_REGION}/codebuild-provisioner-inputs/terraform.json"
+    local pipeline_path="deploy/${ENVIRONMENT}/${TARGET_REGION}/pipeline-provisioner-inputs/terraform.json"
+
+    if [[ -f "$codebuild_path" ]]; then
+        echo "$codebuild_path"
+    else
+        echo "$pipeline_path"
+    fi
+}
+
 # Load terraform variables from deploy/ JSON config files.
 # Usage: config_load regional   OR   config_load management
 # Exports: DEPLOY_CONFIG_FILE, APP_CODE, SERVICE_PHASE, COST_CENTER,
@@ -173,14 +209,7 @@ config_load() {
 
     ENVIRONMENT="${ENVIRONMENT:-staging}"
 
-    if [[ "$mode" == "regional" ]]; then
-        DEPLOY_CONFIG_FILE="deploy/${ENVIRONMENT}/${TARGET_REGION}/pipeline-regional-cluster-inputs/terraform.json"
-    elif [[ "$mode" == "management" ]]; then
-        DEPLOY_CONFIG_FILE="deploy/${ENVIRONMENT}/${TARGET_REGION}/pipeline-management-cluster-${MANAGEMENT_ID}-inputs/terraform.json"
-    else
-        echo "ERROR: config_load: unknown mode '$mode' (expected 'regional' or 'management')" >&2
-        exit 1
-    fi
+    DEPLOY_CONFIG_FILE=$(config_path_for_mode "$mode")
 
     if [ ! -f "$DEPLOY_CONFIG_FILE" ]; then
         echo "ERROR: Deploy config not found: $DEPLOY_CONFIG_FILE" >&2
@@ -192,7 +221,8 @@ config_load() {
     COST_CENTER=$(jq -r '.cost_center // "000"' "$DEPLOY_CONFIG_FILE")
     ENABLE_BASTION=$(parseBool '.enable_bastion' false "$DEPLOY_CONFIG_FILE")
 
-    local env_json="deploy/${ENVIRONMENT}/${TARGET_REGION}/pipeline-provisioner-inputs/terraform.json"
+    local env_json
+    env_json=$(provisioner_config_path)
     if [ -f "$env_json" ]; then
         ENVIRONMENT_DOMAIN=$(jq -r '.domain // empty' "$env_json")
     else

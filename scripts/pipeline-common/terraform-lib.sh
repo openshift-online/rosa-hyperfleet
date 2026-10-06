@@ -94,6 +94,11 @@ tf_apply_with_static_vars() {
         return 1
     fi
 
+    # Terraform resolves -var-file relative to the -chdir directory. Convert
+    # the repository-relative path to an absolute path before invoking it.
+    local static_tfvars_abs
+    static_tfvars_abs="$(cd "$(dirname "${static_tfvars}")" && pwd -P)/$(basename "${static_tfvars}")"
+
     echo "Running terraform ${action} in ${tf_dir}..."
     echo "  Static vars: ${static_tfvars}"
 
@@ -104,7 +109,7 @@ tf_apply_with_static_vars() {
     fi
 
     terraform -chdir="${tf_dir}" "${action}" \
-        -var-file="${static_tfvars}" \
+        -var-file="${static_tfvars_abs}" \
         "${extra_args[@]}" \
         -auto-approve
 }

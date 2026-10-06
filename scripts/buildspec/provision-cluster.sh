@@ -32,11 +32,19 @@ esac
 # 66718's CI gate reads SUCCEEDED && APPLIED==true && APPLIED_SHA==<desired> to
 # confirm the cluster reached its desired GitOps state (applied or destroyed).
 export APPLIED=false
+export APPLIED_SHA=""
 
 # ── Phase 1: Check queue and skip stale commits ──────────────────────────────
-# CRITICAL: Must 'source' (not execute) so check-queue's 'exit 0' kills THIS
-# wrapper script. The buildspec sees wrapper exit 0 = success (skip).
+# Source check-queue so its skip flag is visible in this shell.
 source scripts/pipeline-common/check-queue.sh
+
+if [ "${CHECK_QUEUE_SKIPPED:-false}" = "true" ]; then
+    echo "provision-cluster: stale build skipped; newer SHA is queued"
+    if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+        exit 0
+    fi
+    return 0
+fi
 
 # If we reach here, self is the newest commit — proceed to terraform apply.
 echo "provision-cluster: proceeding with ${CLUSTER_TYPE} provisioning"

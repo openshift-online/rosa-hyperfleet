@@ -737,7 +737,7 @@ for region_dir in deploy/${ENVIRONMENT}/*/; do
                 delete_project "$MANAGEMENT_ID"
             else
                 if ! upsert_project "management" "$MANAGEMENT_ID" "$MC_CODEBUILD_ROLE_ARN" \
-                    "terraform/config/codebuild-management-cluster/buildspec-combined.yml" 120; then
+                    "terraform/config/codebuild-management-cluster/buildspec-combined.yml" 180; then
                     echo "ERROR: Management project upsert failed for ${MANAGEMENT_ID}" >&2
                     PROVISION_FAILURES=$((PROVISION_FAILURES + 1))
                 fi

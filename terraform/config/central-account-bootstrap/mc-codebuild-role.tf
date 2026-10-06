@@ -93,10 +93,14 @@ resource "aws_iam_role_policy" "mc_codebuild_policy" {
       {
         # Cross-account assume role for child MC accounts. Account IDs are
         # runtime-resolved from SSM parameters and cannot be hardcoded here.
-        # This is intentionally scoped to the specific role name only.
-        Effect   = "Allow"
-        Action   = "sts:AssumeRole"
-        Resource = "arn:aws:iam::*:role/rosa-hyperfleet-account-admin"
+        # Support the ephemeral OrganizationAccountAccessRole and the scoped
+        # production role; both are constrained to exact role names.
+        Effect = "Allow"
+        Action = "sts:AssumeRole"
+        Resource = [
+          "arn:aws:iam::*:role/OrganizationAccountAccessRole",
+          "arn:aws:iam::*:role/rosa-hyperfleet-account-admin"
+        ]
       },
       # Permissions for same-account operations (when TARGET_ACCOUNT_ID == CENTRAL_ACCOUNT_ID)
       # In production, cross-account deployments should use OrganizationAccountAccessRole

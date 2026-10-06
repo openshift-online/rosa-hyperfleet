@@ -12,15 +12,15 @@ Provisioning scripts run in AWS CodeBuild (not locally), control expensive opera
 
 **Story:** ROSAENG-66716 - CodeBuild webhook validation + check-queue.sh + combined buildspecs
 
-**Coverage:** 29 functional tests focused on logic, behavior, and library integration
+**Coverage:** 33 functional tests focused on logic, behavior, and library integration
 
 1. **provision-cluster.sh wrapper** (7 tests) - Argument normalization (RC/rc/regional-cluster, MC/mc/management-cluster)
-2. **Skip mechanism** (3 tests) - provision-cluster.sh stops when check-queue.sh exits
+2. **Skip mechanism** (4 tests) - provision-cluster.sh preserves check-queue.sh skip behavior
 3. **Git merge-base** (5 tests) - Ancestry detection with full/shallow clones
 4. **BuildNumber fallback** (3 tests) - Winner selection when git ancestry unavailable
 5. **Static tfvars integration** (1 test) - render.py generates static.tfvars.json
 6. **terraform-lib.sh integration** (8 tests) - Library function usage validation
-7. **Combined buildspec integration** (2 tests) - Buildspecs call provision-cluster.sh wrapper
+7. **Combined buildspec integration** (5 tests) - CodeBuild buildspecs source the wrapper and verify the applied SHA contract
 
 **Run time:** ~3-5 seconds  
 **Requirements:** bash, git (no AWS credentials, terraform, or infrastructure)
@@ -33,7 +33,7 @@ Provisioning scripts run in AWS CodeBuild (not locally), control expensive opera
 
 # Expected output:
 # ════════════════════════════════════════════════════════════════
-# Test Results: 29 passed, 0 failed
+# Test Results: 33 passed, 0 failed
 # ════════════════════════════════════════════════════════════════
 # ✅ All tests passed!
 ```
@@ -41,6 +41,7 @@ Provisioning scripts run in AWS CodeBuild (not locally), control expensive opera
 **Exit codes:** 0 = all passed, 1 = one or more failed
 
 **CI Integration:**
+
 ```yaml
 - name: Test provisioning scripts
   run: ./scripts/test/test-provisioning-changes.sh
@@ -61,16 +62,16 @@ Provisioning scripts run in AWS CodeBuild (not locally), control expensive opera
 test_my_feature() {
     local TEST_DIR="/tmp/test-$$"
     mkdir -p "$TEST_DIR"
-    
+
     # Setup, execute, assert
     output=$(command_to_test 2>&1 || true)
-    
+
     if echo "$output" | grep -q "expected"; then
         pass "Test description"
     else
         fail "Test description"
     fi
-    
+
     rm -rf "$TEST_DIR"
 }
 
