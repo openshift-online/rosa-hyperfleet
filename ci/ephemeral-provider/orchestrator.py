@@ -91,6 +91,12 @@ class EphemeralEnvOrchestrator:
         self._provision_builds: list[tuple[str, str]] = []
         self._provision_results: dict[str, BuildResult] = {}
         self._provision_artifact_path: Path | None = None
+        self._zoa_enabled = False
+
+    @property
+    def zoa_enabled(self) -> bool:
+        """Whether the rendered provisioning inputs enabled ZOA."""
+        return self._zoa_enabled
 
     def _reset_provision_report(self) -> None:
         self._operation_started_at = time.monotonic()
@@ -100,6 +106,7 @@ class EphemeralEnvOrchestrator:
         self._provision_results = {}
         self._provision_artifact_path = None
         self._codebuild_logs_collected = False
+        self._zoa_enabled = False
 
     def _record_timing(self, label: str, duration: float, status: str) -> None:
         self._timing_steps.append(
@@ -1068,6 +1075,7 @@ class EphemeralEnvOrchestrator:
             required.extend(["oidc_bucket_name", "oidc_cloudfront_domain"])
 
         zoa_enabled = bool(str(static_vars.get("zoa_lambda_image_tag", "")).strip())
+        self._zoa_enabled = self._zoa_enabled or zoa_enabled
         if zoa_enabled:
             required.append("zoa_api_function_url")
 
@@ -1325,11 +1333,11 @@ class EphemeralEnvOrchestrator:
                     region_config["provision_mcs"][mc_name] = mc_config = {}
                 mc_config["delete"] = True
 
-        desired_sha = git.modify_config(TARGET_ENVIRONMENT, self.region, set_delete_flag)
-        if not desired_sha:
-            raise RuntimeError("modify_config returned no SHA — no changes committed")
-
         if fire_and_forget:
+            desired_sha = git.modify_config(TARGET_ENVIRONMENT, self.region, set_delete_flag)
+            if not desired_sha:
+                raise RuntimeError("modify_config returned no SHA — no changes committed")
+
             log.info(
                 "Fire-and-forget mode: pushed infrastructure delete flags (Phase 1) "
                 "and exiting. Phases 2 (delete projects) and 3 (terraform destroy) "
@@ -1337,45 +1345,39 @@ class EphemeralEnvOrchestrator:
             )
             return
 
-        # StartBuild MC(s) then RC (destroy order) and wait for completion
-        builds = []
+        # Use the existing branch revision without pushing delete flags. The
+        # IS_DESTROY override makes every build phase honor teardown semantics
+        # without triggering RC and MC webhooks for the same commit.
+        desired_sha = git.current_sha()
+        destroy_overrides = {"IS_DESTROY": "true"}
 
-        # Start MC destroy builds first
+        # Start and complete all MC destroys before touching the RC. MC teardown
+        # can still depend on resources owned by the RC account.
+        mc_builds = []
         for mc_project in self.mc_projects:
-            mc_build_id = self.target_monitor.start_build(mc_project, desired_sha)
-            builds.append((mc_project, mc_build_id))
-
-        # Start RC destroy build last
-        rc_build_id = self.target_monitor.start_build(self.rc_project, desired_sha)
-        builds.append((self.rc_project, rc_build_id))
-
-        log.info("Started %d teardown build(s) at SHA %s", len(builds), desired_sha[:7])
-
-        # Wait for all teardown builds concurrently
-        failed = []
-        with ThreadPoolExecutor(max_workers=len(builds)) as executor:
-            future_to_build = {
-                executor.submit(self.target_monitor.wait_for_build, build_id, desired_sha): project_name
-                for project_name, build_id in builds
-            }
-
-            for future in as_completed(future_to_build):
-                project_name = future_to_build[future]
-                try:
-                    future.result()
-                    log.info("✓ Teardown build succeeded: %s", project_name)
-                except (RuntimeError, TimeoutError) as e:
-                    log.error("Teardown build '%s' failed: %s", project_name, e)
-                    failed.append(project_name)
-
-        if failed:
-            try:
-                self.collect_codebuild_logs()
-            except Exception:
-                log.exception("Failed to collect teardown CodeBuild logs")
-            raise RuntimeError(
-                f"{len(failed)} teardown build(s) failed: {', '.join(failed)}"
+            mc_build_id = self.target_monitor.start_build(
+                mc_project,
+                desired_sha,
+                environment_overrides=destroy_overrides,
             )
+            mc_builds.append((mc_project, mc_build_id))
+
+        log.info("Started %d MC teardown build(s) at SHA %s", len(mc_builds), desired_sha[:7])
+        failed = self._wait_for_teardown_builds(mc_builds, desired_sha)
+        self._raise_teardown_failure(failed)
+
+        # Start RC destruction only after every MC teardown has succeeded.
+        rc_build_id = self.target_monitor.start_build(
+            self.rc_project,
+            desired_sha,
+            environment_overrides=destroy_overrides,
+        )
+        log.info("Started RC teardown build at SHA %s", desired_sha[:7])
+        failed = self._wait_for_teardown_builds(
+            [(self.rc_project, rc_build_id)],
+            desired_sha,
+        )
+        self._raise_teardown_failure(failed)
 
         # Phase 2: Delete CodeBuild projects
         log.info("")
@@ -1399,6 +1401,42 @@ class EphemeralEnvOrchestrator:
         self._destroy_provisioner(git)
 
         log.info("Teardown complete.")
+
+    def _wait_for_teardown_builds(
+        self,
+        builds: list[tuple[str, str]],
+        desired_sha: str,
+    ) -> list[str]:
+        """Wait for a teardown phase and return projects that failed."""
+        if not builds:
+            return []
+
+        failed = []
+        with ThreadPoolExecutor(max_workers=len(builds)) as executor:
+            future_to_build = {
+                executor.submit(self.target_monitor.wait_for_build, build_id, desired_sha): project_name
+                for project_name, build_id in builds
+            }
+
+            for future in as_completed(future_to_build):
+                project_name = future_to_build[future]
+                try:
+                    future.result()
+                    log.info("✓ Teardown build succeeded: %s", project_name)
+                except (RuntimeError, TimeoutError) as e:
+                    log.error("Teardown build '%s' failed: %s", project_name, e)
+                    failed.append(project_name)
+        return failed
+
+    def _raise_teardown_failure(self, failed: list[str]) -> None:
+        if failed:
+            try:
+                self.collect_codebuild_logs()
+            except Exception:
+                log.exception("Failed to collect teardown CodeBuild logs")
+            raise RuntimeError(
+                f"{len(failed)} teardown build(s) failed: {', '.join(failed)}"
+            )
 
     def _destroy_provisioner(self, git: GitManager):
         """Destroy bootstrap infrastructure via terraform destroy.

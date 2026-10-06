@@ -148,8 +148,17 @@ class BuildMonitor:
         Resync pushes can trigger the project's webhook immediately before the
         provider reaches this point. Reusing that build avoids starting a
         duplicate build; the explicit StartBuild fallback preserves operation
-        when webhook delivery is delayed or unavailable.
+        when webhook delivery is delayed or unavailable. Builds with
+        environment overrides always start explicitly because an active build
+        found by SHA alone may not contain the required overrides.
         """
+        if environment_overrides:
+            log.info(
+                "Starting dedicated build at SHA %s because environment overrides are set",
+                source_version[:7],
+            )
+            return self.start_build(project_name, source_version, environment_overrides)
+
         for attempt in range(WEBHOOK_DISCOVERY_ATTEMPTS):
             build_id = self._find_active_build(project_name, source_version)
             if build_id:

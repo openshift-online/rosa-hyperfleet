@@ -317,7 +317,7 @@ This skips both the cleanup-labeled ginkgo specs and the `DeferCleanup` safety n
 
 ZOA e2e tests live in [`rosa-hyperfleet-zoa`](https://github.com/openshift-online/rosa-hyperfleet-zoa); this repo clones and runs them — it does not duplicate test logic.
 
-- **`make ephemeral-e2e`** — runs platform e2e plus ZOA **smoke** (`ci/e2e-tests.sh` clones `rosa-hyperfleet-zoa@main` and runs `test-e2e-smoke` when RC/MC Lambda URLs are available).
+- **`make ephemeral-e2e`** — runs the platform API, HCP, ROSA CLI, and monitoring e2e tests. It does not require or run ZOA tests.
 - **`make ephemeral-zoa-e2e`** / **`make ephemeral-zoa-e2e-smoke`** — ZOA **full** or **smoke** only; same clone-by-ref pattern as API e2e (`ZOA_REF` / `ZOA_REPO`).
 
 ```bash

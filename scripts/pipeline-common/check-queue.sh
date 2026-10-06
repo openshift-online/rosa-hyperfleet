@@ -79,10 +79,10 @@ echo "check-queue: found $(echo "$QUEUED_BUILDS" | wc -l) queued build(s)"
 #   1. git merge-base --is-ancestor for ancestry (with fallback if shallow clone)
 #   2. Unrelated SHAs → higher buildNumber wins
 
-declare -A BUILD_MAP  # sha -> "buildId|buildNumber"
+declare -A BUILD_MAP  # buildId -> "sha|buildNumber"
 
 # Add self
-BUILD_MAP["$SELF_SHA"]="${SELF_BUILD_ID}|${SELF_BUILD_NUMBER}"
+BUILD_MAP["$SELF_BUILD_ID"]="${SELF_SHA}|${SELF_BUILD_NUMBER}"
 
 # Add queued builds
 while IFS= read -r build_json; do
@@ -94,7 +94,7 @@ while IFS= read -r build_json; do
         continue  # Skip self (already added)
     fi
 
-    BUILD_MAP["$SHA"]="${BUILD_ID}|${BUILD_NUM}"
+    BUILD_MAP["$BUILD_ID"]="${SHA}|${BUILD_NUM}"
     echo "check-queue: queued build ${BUILD_ID} buildNumber=${BUILD_NUM} sha=${SHA}"
 done <<< "$QUEUED_BUILDS"
 
@@ -102,13 +102,27 @@ done <<< "$QUEUED_BUILDS"
 # Winner = newest commit among self + queued builds (proceeds to terraform apply)
 NEWEST_SHA=""
 NEWEST_BUILD_NUM=0
+NEWEST_BUILD_ID=""
 
-for sha in "${!BUILD_MAP[@]}"; do
-    build_num=$(echo "${BUILD_MAP[$sha]}" | cut -d'|' -f2)
+for build_id in "${!BUILD_MAP[@]}"; do
+    build_record="${BUILD_MAP[$build_id]}"
+    sha="${build_record%%|*}"
+    build_num="${build_record##*|}"
 
     if [ -z "$NEWEST_SHA" ]; then
         NEWEST_SHA="$sha"
         NEWEST_BUILD_NUM="$build_num"
+        NEWEST_BUILD_ID="$build_id"
+        continue
+    fi
+
+    # Duplicate SHAs are distinct builds. Keep the newest build number so the
+    # older duplicate can still be stopped without overwriting its record.
+    if [ "$sha" == "$NEWEST_SHA" ]; then
+        if [ "$build_num" -gt "$NEWEST_BUILD_NUM" ]; then
+            NEWEST_BUILD_NUM="$build_num"
+            NEWEST_BUILD_ID="$build_id"
+        fi
         continue
     fi
 
@@ -130,24 +144,24 @@ for sha in "${!BUILD_MAP[@]}"; do
     if [ "$IS_NEWER" = true ]; then
         NEWEST_SHA="$sha"
         NEWEST_BUILD_NUM="$build_num"
+        NEWEST_BUILD_ID="$build_id"
     fi
 done
 
-echo "check-queue: newest commit is sha=${NEWEST_SHA} buildNumber=${NEWEST_BUILD_NUM}"
+echo "check-queue: newest commit is sha=${NEWEST_SHA} buildNumber=${NEWEST_BUILD_NUM} build=${NEWEST_BUILD_ID}"
 
 # ── Decide: continue or skip ─────────────────────────────────────────────────
-if [ "$NEWEST_SHA" != "$SELF_SHA" ]; then
+if [ "$NEWEST_BUILD_ID" != "$SELF_BUILD_ID" ]; then
     # Self is stale — a newer commit is queued. Skip this build to save time.
     echo "check-queue: self is NOT the newest commit; skipping (newer SHA ${NEWEST_SHA} pending)"
 
     # Stop other older queued builds (not the winner, not self)
     # Why stop older builds? They're also stale. No point letting them sit in queue.
-    for sha in "${!BUILD_MAP[@]}"; do
-        if [ "$sha" == "$NEWEST_SHA" ]; then
+    for build_id in "${!BUILD_MAP[@]}"; do
+        if [ "$build_id" == "$NEWEST_BUILD_ID" ]; then
             continue  # Don't stop the winner (it will apply the latest changes)
         fi
 
-        build_id=$(echo "${BUILD_MAP[$sha]}" | cut -d'|' -f1)
         if [ "$build_id" != "$SELF_BUILD_ID" ]; then
             echo "check-queue: stopping older queued build ${build_id}"
             aws codebuild stop-build --id "$build_id" >/dev/null 2>&1 || true
@@ -168,12 +182,11 @@ fi
 # Self is the newest — stop all other queued builds and continue
 echo "check-queue: self is the newest commit; stopping older queued builds and continuing"
 
-for sha in "${!BUILD_MAP[@]}"; do
-    if [ "$sha" == "$SELF_SHA" ]; then
+for build_id in "${!BUILD_MAP[@]}"; do
+    if [ "$build_id" == "$SELF_BUILD_ID" ]; then
         continue  # Don't stop self
     fi
 
-    build_id=$(echo "${BUILD_MAP[$sha]}" | cut -d'|' -f1)
     echo "check-queue: stopping older queued build ${build_id}"
     aws codebuild stop-build --id "$build_id" >/dev/null 2>&1 || true
 done

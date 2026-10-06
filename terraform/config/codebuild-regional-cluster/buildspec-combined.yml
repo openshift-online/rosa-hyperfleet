@@ -13,7 +13,8 @@ phases:
       - chmod +x ./scripts/bootstrap-argocd.sh
 
   build:
-    on-failure: RETRY-1
+    # Do not rerun a partial RC apply automatically; use resume after fixing the cause.
+    on-failure: ABORT
     commands:
       # Source the wrapper so APPLIED/APPLIED_SHA exports reach CodeBuild.
       # The wrapper marks stale builds and returns without provisioning.

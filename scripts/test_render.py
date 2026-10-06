@@ -33,6 +33,7 @@ from render import (
     scan_annotations,
     scan_template_variables,
     update_docs,
+    validate_cluster_topology,
     write_output,
 )
 
@@ -795,6 +796,24 @@ class TestBuildMcList:
         mc_list = build_mc_list(ctx, merged, "xg4y")
         assert mc_list[0]["management_id"] == "xg4y-mc01"
 
+    def test_shared_ids_do_not_duplicate_suffixes(self):
+        merged = {
+            "provision_mcs": {"mc01": {"account_id": "111"}},
+        }
+        ctx = build_context(merged, "staging", "us-east-1", "")
+        mc_list = build_mc_list(ctx, merged, "")
+
+        assert ctx["regional_id"] == "regional"
+        assert mc_list[0]["management_id"] == "mc01"
+
+    def test_ephemeral_ids_keep_prefix(self):
+        merged = {"provision_mcs": {"mc01": {"account_id": "111"}}}
+        ctx = build_context(merged, "ephemeral", "us-east-1", "beb87f69")
+        mc_list = build_mc_list(ctx, merged, "beb87f69")
+
+        assert ctx["regional_id"] == "beb87f69-regional"
+        assert mc_list[0]["management_id"] == "beb87f69-mc01"
+
     def test_default_account_id(self):
         merged = {
             "aws": {"management_cluster_account_id": "default-account"},
@@ -821,6 +840,32 @@ class TestBuildMcList:
         ctx = build_context(merged, "staging", "us-east-1", "")
         mc_list = build_mc_list(ctx, merged, "")
         assert mc_list[0]["account_id"] == "mc-mc01-us-east-1"
+
+
+class TestClusterTopologyValidation:
+    def test_rejects_duplicate_rc_and_mc_ids(self):
+        merged = {
+            "provision_mcs": {"mc01": {"account_id": "111"}},
+            "aws": {"management_cluster_account_id": "222"},
+            "codebuild_naming": {
+                "rc_pattern": "{prefix}-cluster",
+                "mc_pattern": "{prefix}-cluster",
+            },
+        }
+        ctx = build_context(merged, "integration", "us-east-1", "")
+        mc_list = build_mc_list(ctx, merged, "")
+
+        with pytest.raises(ValueError, match="used by both"):
+            validate_cluster_topology(merged, ctx, mc_list, "integration", "us-east-1")
+
+    def test_rejects_missing_mc_account(self):
+        merged = {"provision_mcs": {"mc01": {}}}
+        ctx = build_context(merged, "integration", "us-east-1", "")
+        mc_list = build_mc_list(ctx, merged, "")
+        mc_list[0].pop("account_id", None)
+
+        with pytest.raises(ValueError, match="no account_id"):
+            validate_cluster_topology(merged, ctx, mc_list, "integration", "us-east-1")
 
 
 # =============================================================================
@@ -881,9 +926,9 @@ class TestCleanupStaleFiles:
         deploy_dir = tmp_path / "deploy"
         region_dir = deploy_dir / "staging" / "us-east-1"
         # Valid MC dir
-        (region_dir / "pipeline-management-cluster-mc01-inputs").mkdir(parents=True)
+        (region_dir / "codebuild-management-cluster-mc01-inputs").mkdir(parents=True)
         # Stale MC dir
-        (region_dir / "pipeline-management-cluster-mc02-inputs").mkdir(parents=True)
+        (region_dir / "codebuild-management-cluster-mc02-inputs").mkdir(parents=True)
 
         cleanup_stale_files(
             valid_envs={"staging"},
@@ -893,15 +938,15 @@ class TestCleanupStaleFiles:
         )
 
         assert (
-            region_dir / "pipeline-management-cluster-mc01-inputs"
+            region_dir / "codebuild-management-cluster-mc01-inputs"
         ).exists()
         assert not (
-            region_dir / "pipeline-management-cluster-mc02-inputs"
+            region_dir / "codebuild-management-cluster-mc02-inputs"
         ).exists()
 
     def test_removes_stale_mc_provisioner_files(self, tmp_path):
         deploy_dir = tmp_path / "deploy"
-        prov_dir = deploy_dir / "staging" / "us-east-1" / "pipeline-provisioner-inputs"
+        prov_dir = deploy_dir / "staging" / "us-east-1" / "codebuild-provisioner-inputs"
         prov_dir.mkdir(parents=True)
         (prov_dir / "management-cluster-mc01.json").touch()
         (prov_dir / "management-cluster-mc02.json").touch()  # stale
@@ -1448,7 +1493,7 @@ class TestMainIntegration:
             deploy_dir
             / "staging"
             / "us-east-1"
-            / "pipeline-provisioner-inputs"
+            / "codebuild-provisioner-inputs"
             / "terraform.json"
         )
         assert tf_file.exists()
@@ -1473,7 +1518,7 @@ class TestMainIntegration:
             deploy_dir
             / "staging"
             / "us-east-1"
-            / "pipeline-provisioner-inputs"
+            / "codebuild-provisioner-inputs"
             / "regional-cluster.json"
         )
         assert rc_file.exists()
@@ -1507,7 +1552,7 @@ class TestMainIntegration:
             deploy_dir
             / "staging"
             / "us-east-1"
-            / "pipeline-provisioner-inputs"
+            / "codebuild-provisioner-inputs"
             / "management-cluster-mc01.json"
         )
         assert mc_file.exists()
@@ -1542,7 +1587,7 @@ class TestMainIntegration:
             deploy_dir
             / "staging"
             / "us-east-1"
-            / "pipeline-regional-cluster-inputs"
+            / "codebuild-regional-cluster-inputs"
             / "terraform.json"
         )
         assert tf_file.exists()
@@ -1586,7 +1631,7 @@ class TestMainIntegration:
             deploy_dir
             / "staging"
             / "us-east-1"
-            / "pipeline-management-cluster-mc01-inputs"
+            / "codebuild-management-cluster-mc01-inputs"
             / "terraform.json"
         )
         assert mc_tf_file.exists()
@@ -1627,7 +1672,7 @@ class TestMainIntegration:
             deploy_dir
             / "staging"
             / "us-east-1"
-            / "pipeline-regional-cluster-inputs"
+            / "codebuild-regional-cluster-inputs"
             / "terraform.json"
         )
         data = json.loads(tf_file.read_text())
@@ -1779,7 +1824,7 @@ class TestMainIntegration:
             deploy_dir
             / "staging"
             / "us-east-1"
-            / "pipeline-provisioner-inputs"
+            / "codebuild-provisioner-inputs"
             / "regional-cluster.json"
         )
         data = json.loads(rc_file.read_text())
@@ -1811,7 +1856,7 @@ class TestMainIntegration:
             deploy_dir
             / "staging"
             / "us-east-1"
-            / "pipeline-provisioner-inputs"
+            / "codebuild-provisioner-inputs"
             / "management-cluster-xg4y-mc01.json"
         )
         assert mc_file.exists()
@@ -1836,7 +1881,7 @@ class TestMainIntegration:
             deploy_dir
             / "integration"
             / "us-east-1"
-            / "pipeline-provisioner-inputs"
+            / "codebuild-provisioner-inputs"
             / "terraform.json"
         )
         data = json.loads(tf_file.read_text())
@@ -1882,7 +1927,7 @@ class TestMainIntegration:
             deploy_dir
             / "test"
             / "us-east-1"
-            / "pipeline-management-cluster-mc01-inputs"
+            / "codebuild-management-cluster-mc01-inputs"
             / "terraform.json"
         )
         mc_data = json.loads(mc_file.read_text())
@@ -1893,7 +1938,7 @@ class TestMainIntegration:
             deploy_dir
             / "test"
             / "us-east-1"
-            / "pipeline-regional-cluster-inputs"
+            / "codebuild-regional-cluster-inputs"
             / "terraform.json"
         )
         rc_data = json.loads(rc_file.read_text())

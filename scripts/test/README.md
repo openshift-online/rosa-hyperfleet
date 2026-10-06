@@ -12,14 +12,14 @@ Provisioning scripts run in AWS CodeBuild (not locally), control expensive opera
 
 **Story:** ROSAENG-66716 - CodeBuild webhook validation + check-queue.sh + combined buildspecs
 
-**Coverage:** 33 functional tests focused on logic, behavior, and library integration
+**Coverage:** 48 functional assertions focused on logic, behavior, and library integration
 
 1. **provision-cluster.sh wrapper** (7 tests) - Argument normalization (RC/rc/regional-cluster, MC/mc/management-cluster)
 2. **Skip mechanism** (4 tests) - provision-cluster.sh preserves check-queue.sh skip behavior
 3. **Git merge-base** (5 tests) - Ancestry detection with full/shallow clones
-4. **BuildNumber fallback** (3 tests) - Winner selection when git ancestry unavailable
+4. **BuildNumber fallback and queue identity** (4 tests) - Winner selection and duplicate-SHA handling
 5. **Static tfvars integration** (1 test) - render.py generates static.tfvars.json
-6. **terraform-lib.sh integration** (8 tests) - Library function usage validation
+6. **terraform-lib.sh and provisioning integration** (22 tests) - Library usage, dependencies, output validation, E2E separation, timing, readiness validation, and review regressions
 7. **Combined buildspec integration** (5 tests) - CodeBuild buildspecs source the wrapper and verify the applied SHA contract
 
 **Run time:** ~3-5 seconds  
@@ -33,7 +33,7 @@ Provisioning scripts run in AWS CodeBuild (not locally), control expensive opera
 
 # Expected output:
 # ════════════════════════════════════════════════════════════════
-# Test Results: 33 passed, 0 failed
+# Test Results: 48 passed, 0 failed
 # ════════════════════════════════════════════════════════════════
 # ✅ All tests passed!
 ```
