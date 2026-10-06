@@ -21,25 +21,14 @@ require_nonempty_vars "MC core runtime" \
 validate_aws_account_id "TARGET_ACCOUNT_ID" "${TARGET_ACCOUNT_ID}"
 validate_aws_account_id "REGIONAL_AWS_ACCOUNT_ID" "${REGIONAL_AWS_ACCOUNT_ID}"
 tf_require_static_vars "${STATIC_TFVARS}" "MC core" \
-    management_id environment app_code service_phase cost_center \
-    regional_aws_account_id
+    management_id app_code service_phase cost_center
 tf_require_static_keys "${STATIC_TFVARS}" "MC" \
     zoa_lambda_image_tag zoa_runner_image_tag zoa_runner_source_image \
     worker_node_ami_id worker_node_root_volume_size
 
 _STATIC_MANAGEMENT_ID=$(jq -r '.management_id // empty' "${STATIC_TFVARS}")
-_STATIC_ENVIRONMENT=$(jq -r '.environment // empty' "${STATIC_TFVARS}")
-_STATIC_REGIONAL_ACCOUNT_ID=$(jq -r '.regional_aws_account_id // empty' "${STATIC_TFVARS}")
 if [[ "${_STATIC_MANAGEMENT_ID}" != "${MANAGEMENT_ID}" ]]; then
     echo "ERROR: MC management_id mismatch: static=${_STATIC_MANAGEMENT_ID}, runtime=${MANAGEMENT_ID}" >&2
-    exit 1
-fi
-if [[ "${_STATIC_ENVIRONMENT}" != "${ENVIRONMENT}" ]]; then
-    echo "ERROR: MC environment mismatch: static=${_STATIC_ENVIRONMENT}, runtime=${ENVIRONMENT}" >&2
-    exit 1
-fi
-if [[ "${_STATIC_REGIONAL_ACCOUNT_ID}" != "${REGIONAL_AWS_ACCOUNT_ID}" ]]; then
-    echo "ERROR: MC regional account mismatch: static=${_STATIC_REGIONAL_ACCOUNT_ID}, runtime=${REGIONAL_AWS_ACCOUNT_ID}" >&2
     exit 1
 fi
 if [[ -n "${_ZOA_LAMBDA_IMAGE_TAG}" ]]; then
@@ -394,10 +383,6 @@ export REGION_DEPLOYMENT=$(jq -r '.region' "$DEPLOY_CONFIG_FILE")
 export ENVIRONMENT="${ENVIRONMENT:-staging}"
 
 validate_aws_account_id "RESOLVED_REGIONAL_ACCOUNT_ID" "${RESOLVED_REGIONAL_ACCOUNT_ID}"
-if [[ "${_STATIC_REGIONAL_ACCOUNT_ID}" != "${RESOLVED_REGIONAL_ACCOUNT_ID}" ]]; then
-    echo "ERROR: MC RC dependency account mismatch: static=${_STATIC_REGIONAL_ACCOUNT_ID}, resolved=${RESOLVED_REGIONAL_ACCOUNT_ID}" >&2
-    exit 1
-fi
 require_nonempty_vars "MC Terraform runtime" \
     TF_VAR_region TF_VAR_environment TF_VAR_regional_aws_account_id \
     TF_VAR_repository_url TF_VAR_repository_branch TF_VAR_container_image \

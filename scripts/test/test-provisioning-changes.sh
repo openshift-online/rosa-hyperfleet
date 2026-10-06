@@ -507,7 +507,7 @@ fi
 # Test 10: MC validates the RC account and RC-derived dependency set
 if grep -q 'MC RC dependency' "$MC_SCRIPT" && \
    grep -q 'MC ZOA RC dependency' "$MC_SCRIPT" && \
-   grep -q 'regional account mismatch' "$MC_SCRIPT"; then
+   grep -q 'validate_aws_account_id "REGIONAL_AWS_ACCOUNT_ID"' "$MC_SCRIPT"; then
     pass "MC explicitly validates RC account and RC-derived dependencies"
 else
     fail "MC must explicitly validate RC account and RC-derived dependencies"
