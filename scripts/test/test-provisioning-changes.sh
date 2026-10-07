@@ -521,14 +521,17 @@ else
     fail "RC/MC provisioning must emit parameter summaries"
 fi
 
-# Test 12: MC consumes RC outputs without waiting for final RC completion
-if grep -q 'RC_CODEBUILD_BUILD_ID' "$MC_SCRIPT" && \
-   grep -q 'batch-get-builds' "$MC_SCRIPT" && \
-   grep -q 'MC cannot continue' "$MC_SCRIPT" && \
+# Test 12: MC polls RC Terraform outputs while provisioning continues
+if grep -q 'wait_for_rc_outputs' "$MC_SCRIPT" && \
+   ! grep -q 'batch-get-builds' "$MC_SCRIPT" && \
+   ! grep -q 'list-builds-for-project' "$MC_SCRIPT" && \
+   ! grep -q 'rc_dependencies_ready' "$MC_SCRIPT" && \
+   ! grep -q 'TF_VAR_provisioning_attempt_id' "$RC_SCRIPT" && \
+   ! grep -q 'rc_dependencies_attempt_id' "$REPO_ROOT/terraform/config/regional-cluster/outputs.tf" && \
    grep -q 'MC will continue while RC finishes' "$MC_SCRIPT"; then
-    pass "MC consumes ready RC outputs while RC continues provisioning"
+    pass "MC polls required RC outputs while RC continues provisioning"
 else
-    fail "MC must consume RC outputs without waiting for final RC completion"
+    fail "MC must poll RC outputs while provisioning continues"
 fi
 
 # Test 13: Provision failures provide the resumable command

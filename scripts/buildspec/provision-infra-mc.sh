@@ -13,7 +13,6 @@ DEPLOY_DIR=$(dirname "$DEPLOY_CONFIG_FILE")
 STATIC_TFVARS="${DEPLOY_DIR}/static.tfvars.json"
 _REPO_BRANCH="${REPOSITORY_BRANCH:-main}"
 _ZOA_LAMBDA_IMAGE_TAG=$(jq -r '.zoa_lambda_image_tag // empty' "$STATIC_TFVARS")
-_RC_CODEBUILD_BUILD_ID="${RC_CODEBUILD_BUILD_ID:-}"
 
 require_nonempty_vars "MC core runtime" \
     TARGET_ACCOUNT_ID TARGET_REGION MANAGEMENT_ID REGIONAL_AWS_ACCOUNT_ID \
@@ -67,149 +66,19 @@ else
 
     _RC_CONFIG_FILE=$(config_path_for_mode regional)
     _RC_REGIONAL_ID=$(jq -r '.regional_id // "regional"' "$_RC_CONFIG_FILE" 2>/dev/null || echo "regional")
-    _RC_CODEBUILD_PROJECT="${RC_CODEBUILD_PROJECT:-${_RC_REGIONAL_ID}}"
-
-    _read_rc_builds() {
-        local build_ids_json
-        if [[ -n "${_RC_CODEBUILD_BUILD_ID}" ]]; then
-            AWS_ACCESS_KEY_ID="${_CENTRAL_AWS_ACCESS_KEY_ID}" \
-            AWS_SECRET_ACCESS_KEY="${_CENTRAL_AWS_SECRET_ACCESS_KEY}" \
-            AWS_SESSION_TOKEN="${_CENTRAL_AWS_SESSION_TOKEN}" \
-            AWS_DEFAULT_REGION="${TARGET_REGION}" \
-            AWS_REGION="${TARGET_REGION}" \
-                aws codebuild batch-get-builds \
-                    --ids "${_RC_CODEBUILD_BUILD_ID}" --output json --no-cli-pager
-            return
-        fi
-
-        if ! build_ids_json=$(
-            AWS_ACCESS_KEY_ID="${_CENTRAL_AWS_ACCESS_KEY_ID}" \
-            AWS_SECRET_ACCESS_KEY="${_CENTRAL_AWS_SECRET_ACCESS_KEY}" \
-            AWS_SESSION_TOKEN="${_CENTRAL_AWS_SESSION_TOKEN}" \
-            AWS_DEFAULT_REGION="${TARGET_REGION}" \
-            AWS_REGION="${TARGET_REGION}" \
-                aws codebuild list-builds-for-project \
-                    --project-name "${_RC_CODEBUILD_PROJECT}" \
-                    --sort-order DESCENDING --output json --no-cli-pager
-        ); then
-            echo "ERROR: Unable to inspect RC CodeBuild project ${_RC_CODEBUILD_PROJECT}" >&2
-            return 1
-        fi
-
-        local build_ids=()
-        mapfile -t build_ids < <(jq -r '.ids[:20][]?' <<<"${build_ids_json}")
-        if [[ ${#build_ids[@]} -eq 0 ]]; then
-            return 2
-        fi
-
-        AWS_ACCESS_KEY_ID="${_CENTRAL_AWS_ACCESS_KEY_ID}" \
-        AWS_SECRET_ACCESS_KEY="${_CENTRAL_AWS_SECRET_ACCESS_KEY}" \
-        AWS_SESSION_TOKEN="${_CENTRAL_AWS_SESSION_TOKEN}" \
-        AWS_DEFAULT_REGION="${TARGET_REGION}" \
-        AWS_REGION="${TARGET_REGION}" \
-            aws codebuild batch-get-builds \
-                --ids "${build_ids[@]}" --output json --no-cli-pager
-    }
-
-    check_rc_build_status() {
-        local builds_json build_json status applied applied_sha desired_sha
-        local read_status=0
-        builds_json=$(_read_rc_builds) || read_status=$?
-        if [[ ${read_status} -eq 1 ]]; then
-            return 1
-        fi
-        if [[ ${read_status} -eq 2 ]]; then
-            return 2
-        fi
-
-        desired_sha="${CODEBUILD_RESOLVED_SOURCE_VERSION:-}"
-        if [[ -n "${_RC_CODEBUILD_BUILD_ID}" ]]; then
-            build_json=$(jq -c '.builds[0] // empty' <<<"${builds_json}")
-        else
-            # Ignore successful queue-skipped builds. They may be newer than
-            # the valid applied build but have APPLIED=false.
-            build_json=$(jq -c --arg sha "${desired_sha}" '
-                [
-                    .builds[]?
-                    | select(.sourceVersion == $sha or .resolvedSourceVersion == $sha)
-                    | select(
-                        .buildStatus != "SUCCEEDED"
-                        or (
-                            (
-                                [.exportedEnvironmentVariables[]?
-                                 | select(.name == "APPLIED")
-                                 | .value] | last
-                            ) == "true"
-                            and
-                            (
-                                [.exportedEnvironmentVariables[]?
-                                 | select(.name == "APPLIED_SHA")
-                                 | .value] | last
-                            ) == $sha
-                        )
-                    )
-                ]
-                | sort_by(.startTime // "") | last // empty
-            ' <<<"${builds_json}")
-        fi
-        if [[ -z "${build_json}" ]]; then
-            return 2
-        fi
-
-        status=$(jq -r '.buildStatus // "UNKNOWN"' <<<"${build_json}")
-        case "${status}" in
-            QUEUED|IN_PROGRESS)
-                echo "MC dependency: RC build ${_RC_CODEBUILD_BUILD_ID:-${_RC_CODEBUILD_PROJECT}} is ${status}; waiting for RC completion"
-                return 2
-                ;;
-            SUCCEEDED)
-                applied=$(jq -r '(.exportedEnvironmentVariables // [])[] | select(.name == "APPLIED") | .value' <<<"${build_json}" | tail -n 1)
-                applied_sha=$(jq -r '(.exportedEnvironmentVariables // [])[] | select(.name == "APPLIED_SHA") | .value' <<<"${build_json}" | tail -n 1)
-                if [[ "${applied}" != "true" || -z "${desired_sha}" || "${applied_sha}" != "${desired_sha}" ]]; then
-                    echo "ERROR: RC build ${_RC_CODEBUILD_BUILD_ID:-${_RC_CODEBUILD_PROJECT}} succeeded without APPLIED=true and the expected APPLIED_SHA; MC cannot continue." >&2
-                    return 1
-                fi
-                return 0
-                ;;
-            FAILED|FAULT|STOPPED|TIMED_OUT)
-                echo "ERROR: RC build ${_RC_CODEBUILD_BUILD_ID:-${_RC_CODEBUILD_PROJECT}} failed with status ${status}; MC cannot continue." >&2
-                return 1
-                ;;
-            *)
-                echo "ERROR: RC build ${_RC_CODEBUILD_BUILD_ID:-${_RC_CODEBUILD_PROJECT}} has unknown status ${status}; MC cannot continue." >&2
-                return 1
-                ;;
-        esac
-    }
-
     wait_for_rc_outputs() {
         local tf_dir="$1" max_attempts="$2" retry_delay="$3"
         shift 3
         local output_names=("$@")
-        local attempt rc_status rc_complete
+        local attempt
 
         echo "Waiting for ${#output_names[@]} required RC Terraform outputs..."
-        echo "  RC CodeBuild project: ${_RC_CODEBUILD_PROJECT}"
-        echo "  RC CodeBuild build: ${_RC_CODEBUILD_BUILD_ID:-discover by SHA}"
         echo "  Max wait: $((max_attempts * retry_delay / 60)) minutes (${max_attempts} attempts * ${retry_delay}s)"
 
         for ((attempt = 1; attempt <= max_attempts; attempt++)); do
-            rc_complete=false
-            if check_rc_build_status; then
-                rc_complete=true
-            else
-                rc_status=$?
-                [[ ${rc_status} -eq 1 ]] && return 1
-            fi
-
             if tf_wait_for_outputs "${tf_dir}" 1 0 "${output_names[@]}"; then
                 echo "✓ Required RC outputs are ready; MC will continue while RC finishes"
                 return 0
-            fi
-
-            if [[ "${rc_complete}" == "true" ]]; then
-                echo "ERROR: RC build succeeded but required RC outputs are missing; MC cannot continue" >&2
-                return 1
             fi
 
             if [[ ${attempt} -lt ${max_attempts} ]]; then
@@ -274,7 +143,8 @@ else
     # Wait up to 45 minutes (90 attempts * 30s) for all required RC outputs.
     # MC starts consuming them as soon as they are available; RC may continue
     # with its remaining bootstrap/readiness steps in parallel. If RC fails
-    # before the outputs are ready, the MC build fails explicitly.
+    # before the outputs are ready, the output wait expires and the MC build
+    # reports the missing outputs.
     wait_for_rc_outputs \
         "$_RC_TF_DIR" \
         90 \

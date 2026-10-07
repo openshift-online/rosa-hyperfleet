@@ -229,9 +229,13 @@ tf_wait_for_outputs() {
         attempt=$((attempt + 1))
         local all_present=true
         local missing_outputs=()
+        local outputs_json
+
+        outputs_json=$(terraform -chdir="${tf_dir}" output -json 2>/dev/null || true)
 
         for output_name in "${output_names[@]}"; do
-            local value=$(terraform -chdir="${tf_dir}" output -raw "${output_name}" 2>/dev/null || true)
+            local value
+            value=$(jq -r --arg name "${output_name}" '.[$name].value // empty' <<<"${outputs_json}" 2>/dev/null || true)
 
             if [ -z "${value}" ]; then
                 all_present=false
@@ -257,12 +261,15 @@ tf_wait_for_outputs() {
     echo "  Terraform directory: ${tf_dir}" >&2
     echo "  Expected outputs: ${output_names[*]}" >&2
 
+    local outputs_json
+    outputs_json=$(terraform -chdir="${tf_dir}" output -json 2>/dev/null || true)
     for output_name in "${output_names[@]}"; do
-        local value=$(terraform -chdir="${tf_dir}" output -raw "${output_name}" 2>/dev/null || true)
+        local value
+        value=$(jq -r --arg name "${output_name}" '.[$name].value // empty' <<<"${outputs_json}" 2>/dev/null || true)
         if [ -z "${value}" ]; then
             echo "    ✗ ${output_name}: NOT FOUND" >&2
         else
-            echo "    ✓ ${output_name}: ${value}" >&2
+            echo "    ✓ ${output_name}: available" >&2
         fi
     done
 
@@ -300,7 +307,10 @@ tf_read_output() {
         return 1
     fi
 
-    local value=$(terraform -chdir="${tf_dir}" output -raw "${output_name}" 2>/dev/null || true)
+    local outputs_json
+    outputs_json=$(terraform -chdir="${tf_dir}" output -json 2>/dev/null || true)
+    local value
+    value=$(jq -r --arg name "${output_name}" '.[$name].value // empty' <<<"${outputs_json}" 2>/dev/null || true)
 
     if [ -z "${value}" ]; then
         return 1  # Output not found, return empty (not an error - caller decides)
@@ -309,7 +319,7 @@ tf_read_output() {
     # Optional pattern validation (e.g., validate ARN format)
     if [ -n "${grep_pattern}" ]; then
         if ! echo "${value}" | grep -qE "${grep_pattern}"; then
-            echo "WARN: Output '${output_name}' does not match pattern '${grep_pattern}': ${value}" >&2
+            echo "WARN: Output '${output_name}' does not match pattern '${grep_pattern}'" >&2
             return 1
         fi
     fi
