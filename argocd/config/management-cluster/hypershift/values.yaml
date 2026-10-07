@@ -15,8 +15,8 @@ hypershift:
 
   # Hypershift configuration
   hypershift:
-    # Self-built image on top of hypershift main adding:
-    # - managed ingress DNS zone creation (RFE-9235)
-    # Branch: https://github.com/typeid/hypershift/tree/managed_ingress
-    # Requires --tech-preview-no-upgrade in 05-job.yaml for AWSManagedDNS feature gate
-    image: quay.io/cbusse_openshift/hypershift-operator:managed-ingress-dns-da40a26258
+    # Self-built HyperShift operator for managed ingress DNS (RFE-9235).
+    # Built from local openshift/hypershift managed_ingress (commit 014872538a).
+    # Public image (the Konflux HO build is private and not cluster-pullable).
+    # Requires --tech-preview-no-upgrade in 05-job.yaml for AWSManagedDNS feature gate.
+    image: quay.io/cbusse_openshift/hypershift-operator:managed-ingress-dns-014872538a

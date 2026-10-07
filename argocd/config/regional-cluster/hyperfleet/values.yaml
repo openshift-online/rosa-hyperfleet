@@ -20,8 +20,13 @@ hyperfleet:
   helmValues:
     image:
       repository: quay.io/cbusse_openshift/hyperfleet-operator
-      tag: "managed-ingress-dns-1159b86"
+      tag: "managed-ingress-dns-25de57a"
       pullPolicy: Always
+
+    # Operator-level control-plane-operator (CPO) override. The operator stamps
+    # this image onto every HostedCluster it provisions via CONTROL_PLANE_OPERATOR_IMAGE.
+    # Built from local openshift/hypershift managed_ingress (commit 014872538a).
+    controlPlaneOperatorImage: quay.io/cbusse_openshift/control-plane-operator:managed-ingress-dns-014872538a
 
     replicaCount: 2
 
