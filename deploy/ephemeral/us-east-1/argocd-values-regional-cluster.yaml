@@ -15,6 +15,8 @@ eksNodePool:
   rootVolumeSize: 50Gi
 baseDomain: us-east-1.dev0.rosa.devshift.net
 platformApi:
+  authz:
+    config: "formatVersion: 1\n\nregisteredAccounts: [\"@@AWS_ACCOUNT_ID@@\"]\npolicies: []\nattachments: []\n\nserviceOperatorPolicies:\n  - id: provision-management-clusters\n    ownerAccountID: \"@@AWS_ACCOUNT_ID@@\"\n    content: |\n      permit(principal, action in [HyperFleet::Action::\"CreateManagementCluster\", HyperFleet::Action::\"ListManagementClusters\", HyperFleet::Action::\"DescribeManagementCluster\"], resource);\nserviceOperatorAttachments:\n  - id: regional-provisioner\n    policyID: provision-management-clusters\n    principalARN: arn:aws:iam::@@AWS_ACCOUNT_ID@@:role/OrganizationAccountAccessRole\n    scope: regional\n    region: \"us-east-1\""
   app:
     args:
       defaultClusterExpiration: ''

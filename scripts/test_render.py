@@ -10,8 +10,11 @@
 # ///
 """Unit tests for render.py"""
 
+import copy
+import hashlib
 import json
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -2388,6 +2391,471 @@ class TestUpdateDocs:
         update_docs(config, tpl)
         content = (config / "defaults.yaml").read_text()
         assert "My custom description" in content
+
+
+AUTHZ_BUNDLE = '''formatVersion: 1
+registeredAccounts: ["012345678901"]
+policies:
+  - id: read-clusters
+    ownerAccountID: "012345678901"
+    content: |
+      permit(principal, action in HyperFleet::Action::"ReadOnly", resource)
+      when { context.region == "us-east-1" && context.accountId == "012345678901" };
+attachments:
+  - id: readers
+    policyID: read-clusters
+    principalARN: arn:aws:iam::012345678901:role/platform/readers
+    scope: regional
+    region: us-east-1
+'''
+AUTHZ_EXAMPLE = PROJECT_ROOT / "docs" / "examples" / "authz-dev"
+PLATFORM_CHART = REAL_ARGOCD_CONFIG_DIR / "regional-cluster" / "platform-api"
+
+
+def _authz_values(tmp_path, env, overrides=None, eph_prefix="", region="us-east-1"):
+    defaults = load_yaml(PROJECT_ROOT / "config" / "defaults.yaml")
+    env_defaults = load_yaml(PROJECT_ROOT / "config" / env / "defaults.yaml")
+    deploy = TestMainIntegration()._run_main(
+        tmp_path,
+        defaults,
+        {env: {
+            "defaults": deep_merge(env_defaults, overrides or {}),
+            "regions": {region: {"provision_mcs": {"mc01": {}}}},
+        }},
+        eph_prefix,
+    )
+    return load_yaml(deploy / env / region / "argocd-values-regional-cluster.yaml")
+
+
+def _helm_platform(tmp_path, overrides):
+    helm = shutil.which("helm")
+    assert helm, "Helm is required for authz delivery checks. Use the CI-pinned CLI."
+    values = tmp_path / "helm-values.yaml"
+    overrides = copy.deepcopy(overrides)
+    overrides.setdefault("global", {}).setdefault("aws_region", "us-east-1")
+    # Quote strings explicitly: PyYAML treats 012345678901 as a string while
+    # Helm's YAML decoder may coerce an unquoted decimal containing 8 or 9.
+    values.write_text(yaml.safe_dump(overrides, default_style='"'))
+    rendered = subprocess.run(
+        [helm, "template", "authz-test", str(PLATFORM_CHART), "-f", str(values)],
+        check=True, capture_output=True, text=True,
+    ).stdout
+    resources = list(yaml.safe_load_all(rendered))
+    return resources, rendered
+
+
+def _resource(resources, kind, name):
+    return next(r for r in resources if r["kind"] == kind and r["metadata"]["name"] == name)
+
+
+def _assert_operator_grants(bundle, account, role, region):
+    assert set(bundle) == {
+        "formatVersion", "registeredAccounts", "policies", "attachments",
+        "serviceOperatorPolicies", "serviceOperatorAttachments",
+    }
+    assert bundle["formatVersion"] == 1
+    assert bundle["serviceOperatorPolicies"] == [{
+        "id": "provision-management-clusters", "ownerAccountID": account,
+        "content": 'permit(principal, action in [HyperFleet::Action::"CreateManagementCluster", HyperFleet::Action::"ListManagementClusters", HyperFleet::Action::"DescribeManagementCluster"], resource);\n',
+    }]
+    assert bundle["serviceOperatorAttachments"] == [{
+        "id": "regional-provisioner", "policyID": "provision-management-clusters",
+        "principalARN": f"arn:aws:iam::{account}:role/{role}",
+        "scope": "regional", "region": region,
+    }]
+
+
+class TestAuthzDelivery:
+    def test_operating_metrics_docs(self):
+        # Keep the operator contract searchable across Markdown line wrapping.
+        doc = " ".join((PROJECT_ROOT / "docs" / "platform-api-authorization.md").read_text().split())
+        for contract in (
+            "| `authz_requests_total` | Counter | requests | `operation`, `outcome` |",
+            "| `authz_duration_seconds` | Histogram | seconds | `operation`, `outcome` |",
+            "| `authz_failures_total` | Counter | failed requests | `operation`, `stage` |",
+            "`operation` is a bounded concrete action name",
+            "`CreateManagementCluster`, `ListManagementClusters`, and `DescribeManagementCluster`",
+            "`global.aws_account_id`", "ROSAENG-67493",
+            "`outcome` is only `allow`, `deny`, or `error`",
+            "`resolution`, `parsing`, `binding`, `entity_validation`, `evaluation`, or `resource_loading`",
+            "`0.001`, `0.005`, `0.01`, `0.025`, `0.05`, `0.1`, `0.25`, `0.5`, and `1`",
+            "automatic `+Inf` bucket",
+            "50 ms bucket is not a latency SLO",
+            "`sum by (operation) (authz_requests_total)`",
+            "includes resolution, parsing, binding, entity construction and validation, evaluation, and required account-scoped FleetDB reads",
+            "excludes identity and enrollment admission, rate limiting, response conversion and serialization, and socket delivery",
+            "A successful filtered list records one `allow`",
+            "A missing or foreign Cluster returns 404 and records one `deny`",
+            "A late item failure aborts the whole list and records one `error`",
+            "A storage-read failure preserves its API error and records one `error` at `resource_loading`",
+            "A response-write failure after authorization does not revise an `allow`",
+            "Unmapped routes produce no authorization samples",
+            "`X-Amz-Account-Id` and `X-Amz-Caller-Arn`",
+            "raw API port 8000 through a ClusterIP Service",
+            "Gateway-only access is a required prerequisite and remains unproven",
+            "Local-only loopback proof is not permission for shared rollout",
+        ):
+            assert contract in doc, f"Missing authorization operating contract: {contract}"
+
+    @pytest.mark.parametrize("env,ci,eph_prefix", [
+        ("integration", False, ""), ("stage", False, ""),
+        ("ephemeral", False, ""), ("ephemeral", False, "authz-test"),
+        ("ephemeral", True, ""),
+    ])
+    def test_safe_source_defaults(self, tmp_path, monkeypatch, env, ci, eph_prefix):
+        monkeypatch.setenv("BUILD_ID", "test-ci" if ci else "")
+        values = _authz_values(tmp_path, env, eph_prefix=eph_prefix)
+        authz = values["platformApi"]["authz"]
+        assert set(authz) == {"config"}
+        bundle = yaml.safe_load(authz["config"])
+        assert bundle["registeredAccounts"] == ["@@AWS_ACCOUNT_ID@@"]
+        assert bundle["policies"] == bundle["attachments"] == []
+        _assert_operator_grants(
+            bundle, "@@AWS_ACCOUNT_ID@@",
+            "rosa-hyperfleet-account-admin" if env == "stage" else "OrganizationAccountAccessRole",
+            "us-east-1" if env == "ephemeral" else "@@AWS_REGION@@",
+        )
+
+    @pytest.mark.parametrize("ci,account_id,source_accounts", [
+        (False, "987654321098", ["987654321098"]),
+        (True, "987654321098", ["720644165472", "313828097858", "987654321098"]),
+        (True, "720644165472", ["720644165472", "313828097858"]),
+        (True, "313828097858", ["720644165472", "313828097858"]),
+    ])
+    def test_runtime_rc_enrollment(self, tmp_path, monkeypatch, ci, account_id, source_accounts):
+        monkeypatch.setenv("BUILD_ID", "test-ci" if ci else "")
+        overrides = {"aws": {"account_id": account_id}}
+        values = _authz_values(tmp_path, "ephemeral", overrides, eph_prefix="authz-test")
+        values["global"] = {"aws_account_id": account_id, "aws_region": "us-east-1"}
+        resources, _ = _helm_platform(tmp_path, values)
+        config = _resource(resources, "ConfigMap", "authz-config")["data"]["config.yaml"]
+        assert config == values["platformApi"]["authz"]["config"] + "\n"
+        bundle = yaml.safe_load(config)
+        _assert_operator_grants(bundle, account_id, "OrganizationAccountAccessRole", "us-east-1")
+        assert bundle["registeredAccounts"] == source_accounts
+        if not ci:
+            assert bundle["policies"] == bundle["attachments"] == []
+            return
+        assert len(bundle["policies"]) == 2
+        assert len(bundle["attachments"]) == 4
+        for account, user, attachment in zip(
+            ["720644165472", "313828097858"], ["e2e", "rrp-hcp-customer"],
+            bundle["attachments"][2:], strict=True,
+        ):
+            assert attachment == {
+                "id": f"ci-e2e-{account}", "policyID": f"ci-read-clusters-{account}",
+                "principalARN": f"arn:aws:iam::{account}:user/{user}",
+                "scope": "regional", "region": "us-east-1",
+            }
+        for account, policy, attachment in zip(
+            ["720644165472", "313828097858"], bundle["policies"], bundle["attachments"][:2], strict=True,
+        ):
+            assert policy == {
+                "id": f"ci-read-clusters-{account}", "ownerAccountID": account,
+                "content": 'permit(principal, action in HyperFleet::Action::"AllActions", resource)\n'
+                           f'when {{ context.accountId == "{account}" && context.region == "us-east-1" }};\n',
+            }
+            assert attachment == {
+                "id": f"ci-readers-{account}", "policyID": policy["id"],
+                "principalARN": f"arn:aws:iam::{account}:role/OrganizationAccountAccessRole",
+                "scope": "regional", "region": "us-east-1",
+            }
+
+    @pytest.mark.parametrize("principal,scope", [
+        ("role", "regional"), ("session", "global"),
+        ("deny-all", "regional"),
+    ])
+    def test_bundle_passes_through(self, tmp_path, monkeypatch, principal, scope):
+        monkeypatch.setenv("BUILD_ID", "test-ci")
+        content = AUTHZ_BUNDLE
+        if principal == "deny-all":
+            content = "formatVersion: 1\nregisteredAccounts: []\npolicies: []\nattachments: []\n"
+        if scope == "global":
+            content = content.replace("scope: regional\n    region: us-east-1", "scope: global")
+            content = content.replace("iam::012345678901:role/platform/readers",
+                                      "sts::012345678901:assumed-role/readers/session-a")
+        bundle = yaml.safe_load(content)
+        overrides = {"applications": {"regional-cluster": {"platformApi": {
+            "authz": {"config": content},
+        }}}}
+        overrides["aws"] = {"account_id": "987654321098"}
+        values = _authz_values(tmp_path, "ephemeral", overrides, eph_prefix="authz-test")
+        assert values["platformApi"]["authz"] == {"config": content.removesuffix("\n")}
+        resources, _ = _helm_platform(tmp_path, values)
+        config = _resource(resources, "ConfigMap", "authz-config")["data"]["config.yaml"]
+        assert config == content
+        assert yaml.safe_load(config) == bundle
+        assert yaml.safe_load(config)["registeredAccounts"] == ([] if principal == "deny-all" else ["012345678901"])
+
+    def test_dev_override(self, tmp_path):
+        overrides = load_yaml(AUTHZ_EXAMPLE / "defaults.yaml")
+        assert load_yaml(AUTHZ_EXAMPLE / "us-east-1.yaml") == {"provision_mcs": {"mc01": {}}}
+        values = _authz_values(tmp_path, "ephemeral", overrides)
+        values["global"] = {"aws_account_id": "599476212575", "aws_region": "us-east-1"}
+        resources, _ = _helm_platform(tmp_path, values)
+        config = _resource(resources, "ConfigMap", "authz-config")["data"]["config.yaml"]
+        assert config == values["platformApi"]["authz"]["config"] + "\n"
+        bundle = yaml.safe_load(config)
+        _assert_operator_grants(bundle, "599476212575", "OrganizationAccountAccessRole", "us-east-1")
+        assert bundle["registeredAccounts"] == ["599476212575", "114594328247"]
+        assert len(bundle["policies"]) == len(bundle["attachments"]) == 2
+        for account, policy, attachment in zip(
+            bundle["registeredAccounts"], bundle["policies"], bundle["attachments"], strict=True,
+        ):
+            assert policy == {
+                "id": f"read-clusters-{account}", "ownerAccountID": account,
+                "content": 'permit(principal, action in HyperFleet::Action::"AllActions", resource)\n'
+                           f'when {{ context.accountId == "{account}" && context.region == "us-east-1" }};\n',
+            }
+            assert attachment == {
+                "id": f"dev-readers-{account}", "policyID": policy["id"],
+                "principalARN": f"arn:aws:iam::{account}:role/OrganizationAccountAccessRole",
+                "scope": "regional", "region": "us-east-1",
+            }
+
+    @pytest.mark.parametrize("rate_enabled", [False, True])
+    def test_mount_inputs_metrics(self, tmp_path, rate_enabled):
+        resources, rendered = _helm_platform(tmp_path, {"platformApi": {
+            "rateLimit": {"enabled": rate_enabled},
+        }})
+        bundle = _resource(resources, "ConfigMap", "authz-config")
+        mounted = yaml.safe_load(bundle["data"]["config.yaml"])
+        assert mounted == {
+            "formatVersion": 1, "registeredAccounts": [], "policies": [], "attachments": [],
+        }
+        deployment = _resource(resources, "Deployment", "platform-api")
+        pod = deployment["spec"]["template"]
+        app = next(c for c in pod["spec"]["containers"] if c["name"] == "platform-api")
+        env = {e["name"]: e.get("value") for e in app["env"]}
+        assert "AUTHZ_RESOLVER" not in env
+        assert env["AUTHZ_CONFIG_FILE"] == "/etc/platform-api/authz/config.yaml"
+        mounts = {m["name"]: m for m in app["volumeMounts"]}
+        assert mounts["authz-config"] == {
+            "name": "authz-config", "mountPath": "/etc/platform-api/authz", "readOnly": True,
+        }
+        volumes = {v["name"]: v for v in pod["spec"]["volumes"]}
+        assert volumes["authz-config"]["configMap"] == {"name": "authz-config", "defaultMode": 0o644}
+        assert "defaultMode: 0644" in rendered
+        config_text = next(part.split("\n", 1)[1] for part in rendered.split("---\n")
+                           if part.startswith("# Source:") and "/authz-configmap.yaml\n" in part)
+        annotations = pod["metadata"]["annotations"]
+        # Helm trims the terminal indented blank line from printed manifests, not include.
+        assert annotations["checksum/authz-config"] == hashlib.sha256((config_text + "    \n").encode()).hexdigest()
+        assert ("rate-limits" in mounts) == ("rate-limits" in volumes) == rate_enabled
+        assert ("checksum/rate-limits" in annotations) == rate_enabled
+        assert ("RATE_LIMIT_CONFIG_FILE" in env) == rate_enabled
+        if rate_enabled:
+            assert mounts["rate-limits"]["readOnly"] is True
+            assert mounts["rate-limits"]["mountPath"] == "/etc/platform-api/rate-limits"
+            assert env["RATE_LIMIT_CONFIG_FILE"] == "/etc/platform-api/rate-limits/limits.yaml"
+            assert _resource(resources, "ConfigMap", "rate-limits")["data"]["limits.yaml"]
+        assert "envoy-config" in volumes
+        service = _resource(resources, "Service", "platform-api")
+        monitor = _resource(resources, "ServiceMonitor", "platform-api")
+        port = next(p for p in app["ports"] if p["name"] == "metrics")
+        service_port = next(p for p in service["spec"]["ports"] if p["name"] == "metrics")
+        assert port["containerPort"] == service_port["port"] == 9090
+        assert service_port["targetPort"] == monitor["spec"]["endpoints"][0]["port"] == "metrics"
+        assert monitor["spec"]["endpoints"][0].get("path", "/metrics") == "/metrics"
+        assert monitor["spec"]["selector"]["matchLabels"] == service["metadata"]["labels"]
+        assert monitor["spec"]["namespaceSelector"]["matchNames"] == [service["metadata"]["namespace"]]
+
+    @pytest.mark.parametrize("change", ["registeredAccounts", "policies", "attachments", "namespace"])
+    def test_complete_checksum(self, tmp_path, change):
+        values = {"platformApi": {"authz": {"config": AUTHZ_BUNDLE}}}
+        before, _ = _helm_platform(tmp_path, values)
+        changed = copy.deepcopy(values)
+        if change == "namespace":
+            changed["platformApi"]["namespace"] = "other-platform-api"
+        else:
+            if change == "registeredAccounts":
+                content = AUTHZ_BUNDLE.replace('["012345678901"]', '["012345678901", "999999999999"]')
+            elif change == "policies":
+                content = AUTHZ_BUNDLE.replace('context.region == "us-east-1"', 'context.region == "us-west-2"')
+            else:
+                content = AUTHZ_BUNDLE.replace("role/platform/readers", "role/platform/others")
+            changed["platformApi"]["authz"]["config"] = content
+        after, _ = _helm_platform(tmp_path, changed)
+        def annotations(resources):
+            return _resource(resources, "Deployment", "platform-api")["spec"]["template"]["metadata"]["annotations"]
+        assert annotations(before)["checksum/authz-config"] != annotations(after)["checksum/authz-config"]
+        if change == "namespace":
+            assert annotations(before)["checksum/rate-limits"] != annotations(after)["checksum/rate-limits"]
+        else:
+            assert annotations(before)["checksum/rate-limits"] == annotations(after)["checksum/rate-limits"]
+
+    def test_mandatory_inputs(self, tmp_path):
+        with pytest.raises(subprocess.CalledProcessError) as failure:
+            _helm_platform(tmp_path, {"platformApi": {"authz": {"config": ""}}})
+        assert "platformApi.authz.config is required" in failure.value.stderr
+
+
+class TestServiceOperatorDelivery:
+    def test_runtime_complete_operator_bundle(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("BUILD_ID", raising=False)
+        values = _authz_values(tmp_path, "ephemeral", {
+            "aws": {"account_id": "012345678901", "child_admin_role_name": "platform/Provisioner"},
+        }, eph_prefix="authz-test")
+        values["global"] = {"aws_account_id": "012345678901", "aws_region": "us-east-1"}
+        resources, _ = _helm_platform(tmp_path, values)
+        bundle = yaml.safe_load(_resource(resources, "ConfigMap", "authz-config")["data"]["config.yaml"])
+        assert bundle == {
+            "formatVersion": 1,
+            "registeredAccounts": ["012345678901"],
+            "policies": [],
+            "attachments": [],
+            "serviceOperatorPolicies": [{
+                "id": "provision-management-clusters", "ownerAccountID": "012345678901",
+                "content": 'permit(principal, action in [HyperFleet::Action::"CreateManagementCluster", HyperFleet::Action::"ListManagementClusters", HyperFleet::Action::"DescribeManagementCluster"], resource);\n',
+            }],
+            "serviceOperatorAttachments": [{
+                "id": "regional-provisioner", "policyID": "provision-management-clusters",
+                "principalARN": "arn:aws:iam::012345678901:role/platform/Provisioner",
+                "scope": "regional", "region": "us-east-1",
+            }],
+        }
+
+    @pytest.mark.parametrize("env,role", [
+        ("ephemeral", "OrganizationAccountAccessRole"),
+        ("integration", "OrganizationAccountAccessRole"),
+        ("stage", "rosa-hyperfleet-account-admin"),
+    ])
+    def test_runtime_operator_delivery(self, tmp_path, env, role):
+        values = _authz_values(tmp_path, env)
+        assert set(values["platformApi"]["authz"]) == {"config"}
+        assert "ssm:///" not in values["platformApi"]["authz"]["config"]
+        values["global"] = {"aws_account_id": "012345678901", "aws_region": "us-east-1"}
+        resources, _ = _helm_platform(tmp_path, values)
+        config = _resource(resources, "ConfigMap", "authz-config")["data"]["config.yaml"]
+        assert config == values["platformApi"]["authz"]["config"].replace(
+            "@@AWS_ACCOUNT_ID@@", "012345678901",
+        ).replace("@@AWS_REGION@@", "us-east-1") + "\n"
+        bundle = yaml.safe_load(config)
+        assert bundle["registeredAccounts"] == ["012345678901"]
+        assert bundle["policies"] == bundle["attachments"] == []
+        _assert_operator_grants(bundle, "012345678901", role, "us-east-1")
+
+    @pytest.mark.parametrize("ci", [False, True])
+    def test_custom_pool_operator_grants(self, tmp_path, monkeypatch, ci):
+        monkeypatch.setenv("BUILD_ID", "test-ci" if ci else "")
+        values = _authz_values(tmp_path, "ephemeral", {
+            "aws": {"account_id": "012345678901", "child_admin_role_name": "team/CustomProvisioner"},
+        }, eph_prefix="custom-pool", region="eu-west-2")
+        assert "@@AWS_ACCOUNT_ID@@" not in values["platformApi"]["authz"]["config"]
+        resources, _ = _helm_platform(tmp_path, values)
+        bundle = yaml.safe_load(_resource(resources, "ConfigMap", "authz-config")["data"]["config.yaml"])
+        _assert_operator_grants(bundle, "012345678901", "team/CustomProvisioner", "eu-west-2")
+        assert bundle["registeredAccounts"] == (
+            ["720644165472", "313828097858", "012345678901"] if ci else ["012345678901"]
+        )
+        assert len(bundle["policies"]) == (2 if ci else 0)
+        assert len(bundle["attachments"]) == (4 if ci else 0)
+        if ci:
+            assert bundle["attachments"][0]["principalARN"] == "arn:aws:iam::720644165472:role/team/CustomProvisioner"
+
+    @pytest.mark.parametrize("account", ["", "ssm:///account", "123", 123456789012, None])
+    def test_ci_needs_resolved_account(self, monkeypatch, account):
+        monkeypatch.setenv("BUILD_ID", "test-ci")
+        with pytest.raises(ValueError, match="CI ephemeral rendering requires a resolved 12-digit RC account"):
+            build_context({"aws": {"account_id": account}}, "ephemeral", "us-east-1", "preview")
+
+    @pytest.mark.parametrize("field,invalid", [
+        ("aws_account_id", ""), ("aws_account_id", None),
+        ("aws_account_id", "ssm:///account"), ("aws_account_id", "123"),
+        ("aws_account_id", "1234567890123"), ("aws_account_id", "１２３４５６７８９０１２"),
+        ("aws_account_id", "012345678901\n"), ("aws_account_id", 123456789012),
+        ("aws_account_id", True), ("aws_account_id", ["012345678901"]),
+        ("aws_region", ""), ("aws_region", None), ("aws_region", "bad"),
+        ("aws_region", "US-east-1"), ("aws_region", "us-east-1\n"),
+        ("aws_region", 123), ("aws_region", ["us-east-1"]),
+    ])
+    def test_invalid_identity_fails(self, tmp_path, field, invalid):
+        values = _authz_values(tmp_path, "stage")
+        values["global"] = {"aws_account_id": "012345678901", "aws_region": "us-east-1"}
+        values["global"][field] = invalid
+        with pytest.raises(subprocess.CalledProcessError) as failure:
+            _helm_platform(tmp_path, values)
+        assert f"global.{field} must be" in failure.value.stderr
+
+    @pytest.mark.parametrize("marker,globals,expected", [
+        ("@@AWS_ACCOUNT_ID@@", {"aws_account_id": "012345678901", "aws_region": "bad"}, "012345678901"),
+        ("@@AWS_REGION@@", {"aws_account_id": 123, "aws_region": "eu-west-2"}, "eu-west-2"),
+    ])
+    def test_only_used_identity_validated(self, tmp_path, marker, globals, expected):
+        resources, _ = _helm_platform(tmp_path, {
+            "global": globals, "platformApi": {"authz": {"config": f"# {marker}\n"}},
+        })
+        assert _resource(resources, "ConfigMap", "authz-config")["data"]["config.yaml"] == f"# {expected}\n"
+
+    @pytest.mark.parametrize("roles", [[], ["Operator"]])
+    def test_rejects_stale_role_option(self, tmp_path, roles):
+        with pytest.raises(subprocess.CalledProcessError) as failure:
+            _helm_platform(tmp_path, {"platformApi": {"authz": {"serviceOperatorRoleNames": roles}}})
+        assert "serviceOperatorRoleNames is no longer supported" in failure.value.stderr
+
+    def test_preserves_explicit_records(self, tmp_path):
+        bundle = yaml.safe_load(AUTHZ_BUNDLE)
+        bundle["serviceOperatorPolicies"] = [{"id": "explicit", "ownerAccountID": "012345678901", "content": 'permit(principal, action == HyperFleet::Action::"ListManagementClusters", resource);'}]
+        bundle["serviceOperatorAttachments"] = [{"id": "explicit-role", "policyID": "explicit", "principalARN": "arn:aws:iam::012345678901:role/Other", "scope": "regional", "region": "us-east-1"}]
+        content = yaml.safe_dump(bundle, default_style='"')
+        resources, _ = _helm_platform(tmp_path, {
+            "global": {"aws_account_id": "ssm:///account", "aws_region": "invalid"},
+            "platformApi": {"authz": {"config": content}},
+        })
+        actual = _resource(resources, "ConfigMap", "authz-config")["data"]["config.yaml"]
+        assert actual == content
+        assert yaml.safe_load(actual) == bundle
+
+    @pytest.mark.parametrize("change", ["duplicateAccounts", "duplicatePolicies", "duplicateAttachments", "missingPartner", "nullPolicies"])
+    def test_preserves_invalid_records(self, tmp_path, change):
+        bundle = yaml.safe_load(AUTHZ_BUNDLE)
+        if change == "duplicateAccounts":
+            bundle["registeredAccounts"] *= 2
+        elif change == "duplicatePolicies":
+            bundle["policies"] *= 2
+        elif change == "duplicateAttachments":
+            bundle["attachments"] *= 2
+        elif change == "missingPartner":
+            bundle["serviceOperatorPolicies"] = []
+        else:
+            bundle["policies"] = None
+        content = yaml.safe_dump(bundle, default_style='"')
+        resources, _ = _helm_platform(tmp_path, {"platformApi": {"authz": {"config": content}}})
+        assert _resource(resources, "ConfigMap", "authz-config")["data"]["config.yaml"] == content
+
+    @pytest.mark.parametrize("content", [
+        'formatVersion: 1\nregisteredAccounts: ["@@AWS_ACCOUNT_ID@@"]\nregisteredAccounts: []\n',
+        'formatVersion: 1\nserviceOperatorPolicies:\n  - id: first\n    id: second\n    ownerAccountID: "@@AWS_ACCOUNT_ID@@"\n',
+        'formatVersion: 1\npolicies: [\n# @@AWS_ACCOUNT_ID@@ @@AWS_REGION@@\n',
+        'formatVersion: 1\n# {{ .Values.global.aws_account_id }}\n# @@AWS_ACCOUNT_ID@@ @@AWS_REGION@@\n',
+    ])
+    def test_preserves_original_syntax(self, tmp_path, content):
+        resources, _ = _helm_platform(tmp_path, {
+            "global": {"aws_account_id": "012345678901", "aws_region": "us-east-1"},
+            "platformApi": {"authz": {"config": content}},
+        })
+        actual = _resource(resources, "ConfigMap", "authz-config")["data"]["config.yaml"]
+        assert actual == content.replace("@@AWS_ACCOUNT_ID@@", "012345678901").replace("@@AWS_REGION@@", "us-east-1")
+
+    @pytest.mark.parametrize("change", ["servicePolicy", "serviceAttachment", "account", "region"])
+    def test_operator_changes_checksum(self, tmp_path, change):
+        values = _authz_values(tmp_path, "stage")
+        values["global"] = {"aws_account_id": "012345678901", "aws_region": "us-east-1"}
+        before, _ = _helm_platform(tmp_path, values)
+        if change == "account":
+            values["global"]["aws_account_id"] = "987654321098"
+        elif change == "region":
+            values["global"]["aws_region"] = "us-west-2"
+        else:
+            original, replacement = (
+                ('HyperFleet::Action::"CreateManagementCluster", ', "") if change == "servicePolicy"
+                else ("role/rosa-hyperfleet-account-admin", "role/Other")
+            )
+            values["platformApi"]["authz"]["config"] = values["platformApi"]["authz"]["config"].replace(original, replacement)
+        after, _ = _helm_platform(tmp_path, values)
+        annotation = lambda resources: _resource(resources, "Deployment", "platform-api")["spec"]["template"]["metadata"]["annotations"]
+        assert annotation(before)["checksum/authz-config"] != annotation(after)["checksum/authz-config"]
+        assert annotation(before)["checksum/rate-limits"] == annotation(after)["checksum/rate-limits"]
 
 
 if __name__ == "__main__":

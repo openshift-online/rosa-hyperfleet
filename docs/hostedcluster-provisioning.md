@@ -32,24 +32,6 @@ make install
 command -v jq >/dev/null || echo "Need jq installed"
 ```
 
-### Account Allowlisting
-
-Your AWS account must be registered with the platform before you can create clusters. Ask `@rrp-team-ic` in `#team-rosa-hyperfleet` to allowlist your account — provide your **AWS account ID** and the target **environment** (e.g. integration). This is a one-time step per account per environment.
-
-<details>
-<summary>IC reference: allowlisting command</summary>
-
-Run from a platform API shell (`make int-shell` or `make ephemeral-shell`):
-
-```bash
-awscurl --service execute-api --region "$REGION" \
-  -X POST "$API_URL/api/v0/accounts" \
-  -H "Content-Type: application/json" \
-  -d '{"accountId": "<account-id>", "privileged": true}'
-```
-
-</details>
-
 ## Set Up
 
 ```bash
@@ -108,12 +90,6 @@ AWS ARN:                      arn:aws:iam::<account-id>:user/<username>
 AWS Account ID:               <account-id>
 AWS Default Region:           us-east-1
 V2 API:                       $API_URL
-
-./rosa list clusters
-E: Failed to list clusters: AUTH-004: Account is not provisioned for ROSA authorization. Contact your administrator.
-
-# Add your account to the platform API
-make ephemeral-post-account-shell ACCOUNT_ID=<account-id>
 
 ./rosa list clusters
 I: No clusters available

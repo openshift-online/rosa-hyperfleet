@@ -63,10 +63,11 @@ use_mc_account() {
     _assume_account "${TARGET_ACCOUNT_ID}" "mc-${CLUSTER_ID:-pipeline}"
 }
 
-# Assume OrganizationAccountAccessRole in REGIONAL_AWS_ACCOUNT_ID (SSM-aware).
+# Optional operator mode requires the configured role identity even in the
+# central account. Registration alone opts in; infrastructure keeps its shortcut.
 use_rc_account() {
     _resolve_rc_account
-    _assume_account "$_RESOLVED_RC_ACCOUNT_ID" "rc-${CLUSTER_ID:-pipeline}"
+    _assume_account "$_RESOLVED_RC_ACCOUNT_ID" "rc-${CLUSTER_ID:-pipeline}" "${1:-}"
 }
 
 # Restore central (CodeBuild) credentials.
@@ -107,8 +108,18 @@ _resolve_rc_account() {
 _assume_account() {
     local account_id="$1"
     local session_name="$2"
+    local identity_mode="${3:-}"
 
-    if [ "$account_id" = "$CENTRAL_ACCOUNT_ID" ]; then
+    if [[ -n "$identity_mode" && "$identity_mode" != "operator" ]]; then
+        echo "ERROR: Unknown role identity mode: $identity_mode" >&2
+        return 1
+    fi
+    if [[ "$identity_mode" == "operator" && -z "${CHILD_ADMIN_ROLE_NAME:-}" ]]; then
+        echo "ERROR: CHILD_ADMIN_ROLE_NAME is required for registration identity" >&2
+        return 1
+    fi
+
+    if [[ "$account_id" == "$CENTRAL_ACCOUNT_ID" && "$identity_mode" != "operator" ]]; then
         use_central_account
         return
     fi

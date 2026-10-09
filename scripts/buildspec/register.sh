@@ -29,7 +29,9 @@ if [ ! -f "$RC_CONFIG_FILE" ]; then
 fi
 RC_REGIONAL_ID=$(jq -r '.regional_id' "$RC_CONFIG_FILE")
 
-use_rc_account
+# Cedar grants are attached to this configured role, not the CodeBuild account.
+# Same-account registration must assume it too; trust failure is fatal.
+use_rc_account operator
 
 RC_STATE_BUCKET="terraform-state-${RESOLVED_REGIONAL_ACCOUNT_ID}-${TARGET_REGION}"
 RC_STATE_KEY="regional-cluster/${RC_REGIONAL_ID}.tfstate"
@@ -86,8 +88,9 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
         --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
         "${SECURITY_TOKEN_HEADER[@]}" \
         -X GET "$API_GATEWAY_URL/api/v0/live")
+    CURL_STATUS=$?
 
-    if [ "$HTTP_CODE" = "200" ]; then
+    if [ "$CURL_STATUS" = "0" ] && [ "$HTTP_CODE" = "200" ]; then
         LIVE_OK=true
         break
     fi
@@ -133,14 +136,11 @@ while [ $REG_RETRY_COUNT -lt $REG_MAX_RETRIES ]; do
         -X POST "$REGISTER_URL" \
         -H "Content-Type: application/json" \
         -d "$PAYLOAD")
+    CURL_STATUS=$?
 
-    # 201 = created, 409 = already exists
-    if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "409" ]; then
-        REG_OK=true
-        break
-    fi
-    # 502 may indicate "already exists" behind a gateway error — check response body
-    if [ "$HTTP_CODE" = "502" ] && grep -qi "already exists" /tmp/register-response.json 2>/dev/null; then
+    # Only transport success with actual 201 or typed 409 is idempotent success.
+    if [ "$CURL_STATUS" = "0" ] && { [ "$HTTP_CODE" = "201" ] || { [ "$HTTP_CODE" = "409" ] &&
+        jq -e '.kind == "Status" and .reason == "Conflict" and .code == 409 and (.message | startswith("MC-MGMT-CREATE-005:"))' /tmp/register-response.json >/dev/null 2>&1; }; }; then
         REG_OK=true
         break
     fi
