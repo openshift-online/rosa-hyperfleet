@@ -385,7 +385,7 @@ generate_pipeline_spec() {
         --arg project "$project_name" \
         --argjson file_paths "$file_paths" \
         --arg cluster_type "$cluster_type" \
-        '(
+        '{pipeline: (
           {
             name: $name,
             roleArn: $role,
@@ -444,7 +444,7 @@ generate_pipeline_spec() {
                     {name: "RC_CODEBUILD_BUILD_ID", defaultValue: "__unset__"}
                   ] else [] end))
             }
-        )'
+        )}'
 }
 
 upsert_pipeline() {
@@ -458,10 +458,16 @@ upsert_pipeline() {
     spec=$(generate_pipeline_spec "$cluster_type" "$pipeline_name" "$project_name" "$cluster_id" "$region_deployment")
 
     if aws codepipeline get-pipeline --name "$pipeline_name" --query 'pipeline.name' --output text --no-cli-pager 2>/dev/null | grep -qx "$pipeline_name"; then
-        aws codepipeline update-pipeline --cli-input-json "$spec" --no-cli-pager >/dev/null
+        if ! aws codepipeline update-pipeline --cli-input-json "$spec" --no-cli-pager >/dev/null; then
+            echo "ERROR: Failed to update CodePipeline $pipeline_name" >&2
+            return 1
+        fi
         echo "✓ CodePipeline updated: $pipeline_name"
     else
-        aws codepipeline create-pipeline --cli-input-json "$spec" --no-cli-pager >/dev/null
+        if ! aws codepipeline create-pipeline --cli-input-json "$spec" --no-cli-pager >/dev/null; then
+            echo "ERROR: Failed to create CodePipeline $pipeline_name" >&2
+            return 1
+        fi
         echo "✓ CodePipeline created: $pipeline_name"
     fi
 }
@@ -498,7 +504,7 @@ upsert_project() {
 
             if [ "$current_hash" = "$desired_hash" ]; then
                 echo "✓ No CodeBuild drift detected (hash1 matches)."
-                upsert_pipeline "$cluster_type" "$project_name" "$cluster_id" "$region_deployment"
+                upsert_pipeline "$cluster_type" "$project_name" "$cluster_id" "$region_deployment" || return 1
                 return 0
             else
                 echo "Drift detected (hash1 changed). Updating project..."
@@ -520,7 +526,7 @@ upsert_project() {
                     fi
 
                     echo "✓ Project updated"
-                    upsert_pipeline "$cluster_type" "$project_name" "$cluster_id" "$region_deployment"
+                    upsert_pipeline "$cluster_type" "$project_name" "$cluster_id" "$region_deployment" || return 1
                 else
                     echo "ERROR: Failed to update project $project_name" >&2
                     return 1
@@ -532,7 +538,7 @@ upsert_project() {
 
             if aws codebuild create-project --cli-input-json "$spec" --tags key=DefinitionHash,value="$desired_hash" --no-cli-pager >/dev/null; then
                 echo "✓ Project created"
-                upsert_pipeline "$cluster_type" "$project_name" "$cluster_id" "$region_deployment"
+                upsert_pipeline "$cluster_type" "$project_name" "$cluster_id" "$region_deployment" || return 1
 
                 # Day-1 first run: start a pipeline with the current git SHA.
                 # Gated by SKIP_DAY1_BUILD — ephemeral provider owns pipeline execution.
@@ -543,7 +549,7 @@ upsert_project() {
 
                     if aws codepipeline start-pipeline-execution \
                         --name "$(pipeline_name_for_project "$project_name")" \
-                        --source-revisions "actionName=Source,actionRevisionType=COMMIT_ID,actionRevision=$git_sha" \
+                        --source-revisions "actionName=Source,revisionType=COMMIT_ID,revisionValue=$git_sha" \
                         --no-cli-pager >/dev/null; then
                         echo "✓ Day-1 pipeline started"
                     else

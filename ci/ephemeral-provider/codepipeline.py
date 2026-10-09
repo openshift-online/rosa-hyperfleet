@@ -37,8 +37,8 @@ class PipelineMonitor:
             "sourceRevisions": [
                 {
                     "actionName": "Source",
-                    "actionRevisionType": "COMMIT_ID",
-                    "actionRevision": source_version,
+                    "revisionType": "COMMIT_ID",
+                    "revisionValue": source_version,
                 }
             ],
         }
