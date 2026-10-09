@@ -272,38 +272,27 @@ echo "==================================================="
 
 CODESTAR_CONNECTION_NAME="rosa-regional-github-shared"
 
-# Resolve the single centrally-managed connection. This bootstrap never creates
-# or accepts an externally supplied connection ARN.
-EXISTING_ARNS_JSON=$(aws codestar-connections list-connections \
+# Resolve the centrally-managed connection, creating it when it is missing.
+if ! EXISTING_ARN=$(aws codestar-connections list-connections \
     --provider-type-filter GitHub \
-    --query "Connections[?ConnectionName=='${CODESTAR_CONNECTION_NAME}'].ConnectionArn" \
-    --output json --no-cli-pager)
-mapfile -t EXISTING_ARNS < <(jq -r '.[]' <<<"$EXISTING_ARNS_JSON")
-
-if [[ "${#EXISTING_ARNS[@]}" -eq 0 ]]; then
-    echo "ERROR: No existing CodeStar connection named '${CODESTAR_CONNECTION_NAME}' was found." >&2
-    echo "   Bootstrap will not create a replacement connection." >&2
+    --query "Connections[?ConnectionName=='${CODESTAR_CONNECTION_NAME}'].ConnectionArn | [0]" \
+    --output text --no-cli-pager); then
+    echo "ERROR: Failed to list CodeStar connections." >&2
     exit 1
 fi
 
-if [[ "${#EXISTING_ARNS[@]}" -gt 1 ]]; then
-    echo "ERROR: Multiple CodeStar connections named '${CODESTAR_CONNECTION_NAME}' were found:" >&2
-    printf '   %s\n' "${EXISTING_ARNS[@]}" >&2
-    echo "   Remove duplicate connections and retry." >&2
-    exit 1
-fi
-
-GITHUB_CONNECTION_ARN="${EXISTING_ARNS[0]}"
-echo "Found existing CodeStar connection: $GITHUB_CONNECTION_ARN"
-
-SELECTED_CONNECTION_NAME=$(aws codestar-connections get-connection \
-    --connection-arn "$GITHUB_CONNECTION_ARN" \
-    --query "Connection.ConnectionName" \
-    --output text --no-cli-pager)
-
-if [[ "$SELECTED_CONNECTION_NAME" != "$CODESTAR_CONNECTION_NAME" ]]; then
-    echo "ERROR: CodeStar connection ARN resolves to '${SELECTED_CONNECTION_NAME}', expected '${CODESTAR_CONNECTION_NAME}'." >&2
-    exit 1
+if [[ -n "$EXISTING_ARN" && "$EXISTING_ARN" != "None" ]]; then
+    echo "Found existing CodeStar connection: $EXISTING_ARN"
+    GITHUB_CONNECTION_ARN="$EXISTING_ARN"
+else
+    echo "Creating CodeStar connection: ${CODESTAR_CONNECTION_NAME}"
+    GITHUB_CONNECTION_ARN=$(aws codestar-connections create-connection \
+        --provider-type GitHub \
+        --connection-name "${CODESTAR_CONNECTION_NAME}" \
+        --query "ConnectionArn" \
+        --output text --no-cli-pager)
+    echo "Created CodeStar connection: $GITHUB_CONNECTION_ARN"
+    echo "Authorize the pending connection in the AWS Console before continuing."
 fi
 
 # Verify connection is AVAILABLE before proceeding
@@ -395,25 +384,27 @@ echo "==================================================="
 echo "Step 4: Provisioning CodeBuild Projects"
 echo "==================================================="
 
-# Export terraform outputs for provision-codebuilds.sh
+# Export terraform outputs for provision-cluster-resources.sh
 export PLATFORM_IMAGE=$(terraform output -raw platform_container_image)
 export GITHUB_CONNECTION_ARN=$(terraform output -raw github_connection_arn)
 export RC_CODEBUILD_ROLE_ARN=$(terraform output -raw rc_codebuild_role_arn)
 export MC_CODEBUILD_ROLE_ARN=$(terraform output -raw mc_codebuild_role_arn)
+export CODEPIPELINE_ROLE_ARN=$(terraform output -raw codepipeline_role_arn)
+export PIPELINE_ARTIFACT_BUCKET=$(terraform output -raw codepipeline_artifact_bucket_name)
 export ENVIRONMENT="${TARGET_ENVIRONMENT}"
 export GITHUB_REPOSITORY="${GITHUB_REPOSITORY}"
 export GITHUB_BRANCH="${GITHUB_BRANCH}"
 
 cd "${REPO_ROOT}"
 
-echo "Running provision-codebuilds.sh..."
-./scripts/provision-codebuilds.sh
+echo "Running provision-cluster-resources.sh..."
+./scripts/provision-cluster-resources.sh
 
 echo ""
 echo "==================================================="
 echo "Bootstrap Complete!"
 echo "==================================================="
 echo ""
-echo "CodeBuild projects have been created for RC/MC clusters."
+echo "CodeBuild projects and CodePipelines have been created for RC/MC clusters."
 echo "To add more regions, update config/<env>/<region>.yaml and run scripts/render.py."
 echo ""

@@ -15,7 +15,7 @@ variable "github_branch" {
 
 variable "region" {
   type        = string
-  description = "AWS Region for the Pipeline Provisioner"
+  description = "AWS Region for the platform image builder"
   default     = "us-east-1"
 }
 

@@ -46,7 +46,7 @@ output "platform_image_tag" {
 }
 
 output "platform_container_image" {
-  description = "Full container image URI (repository:tag) for use by provision-codebuilds.sh"
+  description = "Full container image URI (repository:tag) for use by provision-cluster-resources.sh"
   value       = module.platform_image.container_image
 }
 
@@ -62,4 +62,14 @@ output "rc_codebuild_role_arn" {
 output "mc_codebuild_role_arn" {
   description = "ARN of the shared IAM role used by all MC CodeBuild projects"
   value       = aws_iam_role.mc_codebuild_role.arn
+}
+
+output "codepipeline_artifact_bucket_name" {
+  description = "S3 bucket used by the dynamically managed RC/MC CodePipelines"
+  value       = module.codepipeline_shared.artifact_bucket_name
+}
+
+output "codepipeline_role_arn" {
+  description = "IAM role used by the dynamically managed RC/MC CodePipelines"
+  value       = module.codepipeline_shared.pipeline_role_arn
 }

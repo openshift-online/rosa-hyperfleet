@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# SDK-based provisioner: creates/updates/deletes CodeBuild projects via AWS SDK
-# (replaces terraform-of-pipelines for RC/MC projects)
+# Cluster lifecycle provisioner: creates/updates/deletes the CodeBuild worker and
+# matching CodePipeline for each RC/MC cluster.
+#
+# With no arguments, processes every rendered cluster in the environment. The
+# explicit create/delete commands provide the same per-cluster contract for the
+# MC autoscaler.
 #
 # Required environment variables:
 #   ENVIRONMENT          - Target environment (e.g., staging, production)
@@ -10,18 +14,20 @@
 #   PLATFORM_IMAGE       - Platform container image URI
 #   RC_CODEBUILD_ROLE_ARN - ARN of the centrally-managed RC CodeBuild role
 #   MC_CODEBUILD_ROLE_ARN - ARN of the shared MC CodeBuild role
+#   CODEPIPELINE_ROLE_ARN - ARN of the shared cluster CodePipeline role
+#   PIPELINE_ARTIFACT_BUCKET - S3 bucket used by cluster CodePipelines
 
 set -euo pipefail
 trap 'echo "FAILED: line $LINENO, exit code $?" >&2' ERR
 
-echo "Provisioning cluster CodeBuild projects for ${ENVIRONMENT:-staging}"
+echo "Provisioning cluster CodeBuild and CodePipeline resources for ${ENVIRONMENT:-staging}"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Platform Image Computation (ADR: fail-closed image check)
 # ──────────────────────────────────────────────────────────────────────────────
 
 DOCKERFILE="terraform/modules/platform-image/Dockerfile"
-if [ -f "$DOCKERFILE" ]; then
+if [ -f "$DOCKERFILE" ] && [ -n "${PLATFORM_IMAGE:-}" ]; then
   _computed_tag=$(sha256sum "$DOCKERFILE" | cut -c1-12)
   _base_repo="${PLATFORM_IMAGE%:*}"
   PLATFORM_IMAGE="${_base_repo}:${_computed_tag}"
@@ -157,9 +163,19 @@ ensure_platform_image() {
 # Helper Functions (preserved from original)
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Get central account ID for state bucket
-CENTRAL_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-TF_STATE_BUCKET="terraform-state-${CENTRAL_ACCOUNT_ID}"
+# Central account state is initialized lazily so explicit help/delete command
+# parsing does not require an unrelated STS call.
+CENTRAL_ACCOUNT_ID="${CENTRAL_ACCOUNT_ID:-}"
+TF_STATE_BUCKET="${TF_STATE_BUCKET:-}"
+
+init_central_state() {
+    if [ -z "$CENTRAL_ACCOUNT_ID" ]; then
+        CENTRAL_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+    fi
+    if [ -z "$TF_STATE_BUCKET" ]; then
+        TF_STATE_BUCKET="terraform-state-${CENTRAL_ACCOUNT_ID}"
+    fi
+}
 
 # Save central credentials for account switching
 _CENTRAL_AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-}"
@@ -173,6 +189,8 @@ BOOTSTRAPPED_ACCOUNTS=""
 bootstrap_target_state_bucket() {
     local target_account_id="$1"
     local target_region="$2"
+
+    init_central_state
 
     if echo "$BOOTSTRAPPED_ACCOUNTS" | grep -q "|${target_account_id}|"; then
         echo "State bucket already bootstrapped for account $target_account_id (skipping)"
@@ -222,7 +240,7 @@ resolve_ssm_param() {
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
-# SDK Functions (NEW)
+# Resource specification and lifecycle functions
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Generate CodeBuild project spec JSON (deterministic jq output for hashing)
@@ -289,7 +307,7 @@ generate_project_spec() {
         '{
             name: $name,
             serviceRole: $role_arn,
-            artifacts: {type: "NO_ARTIFACTS"},
+            artifacts: {type: "CODEPIPELINE"},
             environment: {
                 type: "LINUX_CONTAINER",
                 image: $image,
@@ -299,15 +317,8 @@ generate_project_spec() {
                 environmentVariables: $env_vars
             },
             source: {
-                type: "GITHUB",
-                location: ("https://github.com/" + $github_repo + ".git"),
-                gitCloneDepth: 0,
-                buildspec: $buildspec,
-                gitSubmodulesConfig: {fetchSubmodules: false},
-                auth: {
-                    type: "CODECONNECTIONS",
-                    resource: $github_conn_arn
-                }
+                type: "CODEPIPELINE",
+                buildspec: $buildspec
             },
             timeoutInMinutes: $timeout,
             concurrentBuildLimit: 1
@@ -320,106 +331,138 @@ compute_spec_hash() {
     echo "$spec" | jq -S 'del(.tags)' | sha256sum | awk '{print $1}'
 }
 
-# Retry wrapper for create/update-webhook (ADR: GitHub App rate limit)
-retry_webhook_operation() {
-    local operation="$1"  # create-webhook or update-webhook
-    shift
-    local args=("$@")
-
-    local max_attempts=3
-    local attempt=1
-    local wait_time=5
-
-    while [ $attempt -le $max_attempts ]; do
-        if aws codebuild "$operation" "${args[@]}" --no-cli-pager 2>&1; then
-            return 0
-        fi
-
-        if [ $attempt -lt $max_attempts ]; then
-            echo "Webhook $operation failed (attempt $attempt/$max_attempts), retrying in ${wait_time}s..."
-            sleep $wait_time
-            wait_time=$((wait_time * 2))
-            attempt=$((attempt + 1))
-        else
-            echo "ERROR: Webhook $operation failed after $max_attempts attempts" >&2
-            echo "Check that the GitHub App has the 'webhooks' permission scope granted." >&2
-            return 1
-        fi
-    done
-}
-
-# Generate webhook filter groups (ADR glob→regex)
-generate_webhook_filters() {
+generate_pipeline_file_paths() {
     local cluster_type="$1"
-    local branch="$2"
-    local env="$3"
-    local region_deployment="$4"
-    local cluster_id="${5:-}"  # REGIONAL_ID or MANAGEMENT_ID
-
-    local head_ref_pattern="^refs/heads/${branch}\$"
+    local env="$2"
+    local region_deployment="$3"
+    local cluster_id="${4:-}"
 
     if [ "$cluster_type" = "regional" ]; then
-        # RC: 6 filter groups (ADR paths exactly)
         jq -n \
-            --arg branch_pattern "$head_ref_pattern" \
             --arg env "$env" \
             --arg region "$region_deployment" \
             '[
-                [
-                    {type: "EVENT", pattern: "PUSH"},
-                    {type: "HEAD_REF", pattern: $branch_pattern},
-                    {type: "FILE_PATH", pattern: ("^deploy/" + $env + "/" + $region + "/codebuild-regional-cluster-inputs/terraform\\.json$")}
-                ],
-                [
-                    {type: "EVENT", pattern: "PUSH"},
-                    {type: "HEAD_REF", pattern: $branch_pattern},
-                    {type: "FILE_PATH", pattern: "^terraform/config/codebuild-regional-cluster/.*"}
-                ],
-                [
-                    {type: "EVENT", pattern: "PUSH"},
-                    {type: "HEAD_REF", pattern: $branch_pattern},
-                    {type: "FILE_PATH", pattern: "^terraform/config/regional-cluster/.*"}
-                ],
-                [
-                    {type: "EVENT", pattern: "PUSH"},
-                    {type: "HEAD_REF", pattern: $branch_pattern},
-                    {type: "FILE_PATH", pattern: "^terraform/modules/zoa/.*"}
-                ],
-                [
-                    {type: "EVENT", pattern: "PUSH"},
-                    {type: "HEAD_REF", pattern: $branch_pattern},
-                    {type: "FILE_PATH", pattern: "^terraform/modules/zoa-lambda/.*"}
-                ],
-                [
-                    {type: "EVENT", pattern: "PUSH"},
-                    {type: "HEAD_REF", pattern: $branch_pattern},
-                    {type: "FILE_PATH", pattern: "^scripts/buildspec/build-zoa-lambda\\.sh$"}
-                ]
+                ("deploy/" + $env + "/" + $region + "/codebuild-regional-cluster-inputs/terraform.json"),
+                "terraform/config/codebuild-regional-cluster/**",
+                "terraform/config/regional-cluster/**",
+                "terraform/modules/zoa/**",
+                "terraform/modules/zoa-lambda/**",
+                "scripts/buildspec/build-zoa-lambda.sh"
             ]'
     elif [ "$cluster_type" = "management" ]; then
-        # MC: 3 filter groups
         jq -n \
-            --arg branch_pattern "$head_ref_pattern" \
             --arg env "$env" \
             --arg region "$region_deployment" \
             --arg mc_id "$cluster_id" \
             '[
-                [
-                    {type: "EVENT", pattern: "PUSH"},
-                    {type: "HEAD_REF", pattern: $branch_pattern},
-                    {type: "FILE_PATH", pattern: ("^deploy/" + $env + "/" + $region + "/codebuild-management-cluster-" + $mc_id + "-inputs/terraform\\.json$")}
-                ],
-                [
-                    {type: "EVENT", pattern: "PUSH"},
-                    {type: "HEAD_REF", pattern: $branch_pattern},
-                    {type: "FILE_PATH", pattern: "^terraform/config/codebuild-management-cluster/.*"}
-                ],
-                [
-                    {type: "EVENT", pattern: "PUSH"},
-                    {type: "HEAD_REF", pattern: $branch_pattern},
-                    {type: "FILE_PATH", pattern: "^terraform/config/kube-applier-dynamodb-provisioning/.*"}
-                ]
+                ("deploy/" + $env + "/" + $region + "/codebuild-management-cluster-" + $mc_id + "-inputs/terraform.json"),
+                "terraform/config/codebuild-management-cluster/**",
+                "terraform/config/kube-applier-dynamodb-provisioning/**"
             ]'
+    fi
+}
+
+pipeline_name_for_project() {
+    echo "${1}-pipeline"
+}
+
+generate_pipeline_spec() {
+    local cluster_type="$1"
+    local pipeline_name="$2"
+    local project_name="$3"
+    local cluster_id="$4"
+    local region_deployment="$5"
+    local file_paths
+    file_paths=$(generate_pipeline_file_paths "$cluster_type" "$ENVIRONMENT" "$region_deployment" "$cluster_id")
+
+    jq -n -S \
+        --arg name "$pipeline_name" \
+        --arg role "$CODEPIPELINE_ROLE_ARN" \
+        --arg bucket "$PIPELINE_ARTIFACT_BUCKET" \
+        --arg connection "$GITHUB_CONNECTION_ARN" \
+        --arg repository "$GITHUB_REPOSITORY" \
+        --arg branch "$GITHUB_BRANCH" \
+        --arg project "$project_name" \
+        --argjson file_paths "$file_paths" \
+        --arg cluster_type "$cluster_type" \
+        '(
+          {
+            name: $name,
+            roleArn: $role,
+            pipelineType: "V2",
+            executionMode: "SUPERSEDED",
+            artifactStore: {type: "S3", location: $bucket},
+            triggers: [{
+              providerType: "CodeStarSourceConnection",
+              gitConfiguration: {
+                sourceActionName: "Source",
+                push: [{
+                  branches: {includes: [$branch]},
+                  filePaths: {includes: $file_paths}
+                }]
+              }
+            }],
+            stages: [
+              {
+                name: "Source",
+                actions: [{
+                  name: "Source",
+                  actionTypeId: {category: "Source", owner: "AWS", provider: "CodeStarSourceConnection", version: "1"},
+                  configuration: {
+                    ConnectionArn: $connection,
+                    FullRepositoryId: $repository,
+                    BranchName: $branch,
+                    DetectChanges: "false"
+                  },
+                  outputArtifacts: [{name: "source_output"}],
+                  runOrder: 1
+                }]
+              },
+              {
+                name: "Build",
+                actions: [{
+                  name: "ApplyInfrastructure",
+                  actionTypeId: {category: "Build", owner: "AWS", provider: "CodeBuild", version: "1"},
+                  configuration: {
+                    ProjectName: $project,
+                    EnvironmentVariables: (
+                      if $cluster_type == "management" then
+                        "[{\"name\":\"IS_DESTROY\",\"value\":\"#{variables.IS_DESTROY}\",\"type\":\"PLAINTEXT\"},{\"name\":\"RC_CODEBUILD_PROJECT\",\"value\":\"#{variables.RC_CODEBUILD_PROJECT}\",\"type\":\"PLAINTEXT\"},{\"name\":\"RC_CODEBUILD_BUILD_ID\",\"value\":\"#{variables.RC_CODEBUILD_BUILD_ID}\",\"type\":\"PLAINTEXT\"}]"
+                      else "[{\"name\":\"IS_DESTROY\",\"value\":\"#{variables.IS_DESTROY}\",\"type\":\"PLAINTEXT\"}]" end
+                    )
+                  },
+                  inputArtifacts: [{name: "source_output"}],
+                  runOrder: 1
+                }]
+              }
+            ]
+          }
+          + {
+              variables: ([{name: "IS_DESTROY", defaultValue: "false"}]
+                + (if $cluster_type == "management" then [
+                    {name: "RC_CODEBUILD_PROJECT", defaultValue: "__unset__"},
+                    {name: "RC_CODEBUILD_BUILD_ID", defaultValue: "__unset__"}
+                  ] else [] end))
+            }
+        )'
+}
+
+upsert_pipeline() {
+    local cluster_type="$1"
+    local project_name="$2"
+    local cluster_id="$3"
+    local region_deployment="$4"
+    local pipeline_name
+    pipeline_name=$(pipeline_name_for_project "$project_name")
+    local spec
+    spec=$(generate_pipeline_spec "$cluster_type" "$pipeline_name" "$project_name" "$cluster_id" "$region_deployment")
+
+    if aws codepipeline get-pipeline --name "$pipeline_name" --query 'pipeline.name' --output text --no-cli-pager 2>/dev/null | grep -qx "$pipeline_name"; then
+        aws codepipeline update-pipeline --cli-input-json "$spec" --no-cli-pager >/dev/null
+        echo "✓ CodePipeline updated: $pipeline_name"
+    else
+        aws codepipeline create-pipeline --cli-input-json "$spec" --no-cli-pager >/dev/null
+        echo "✓ CodePipeline created: $pipeline_name"
     fi
 }
 
@@ -431,6 +474,7 @@ upsert_project() {
     local buildspec_path="$4"
     local timeout_minutes="$5"
     local cluster_id="$6"
+    local region_deployment="${REGION_DEPLOYMENT:?REGION_DEPLOYMENT not set}"
 
     echo "═══ Upserting CodeBuild project: $project_name ($cluster_type) ═══"
 
@@ -453,7 +497,8 @@ upsert_project() {
             current_hash=$(echo "$existing_project" | jq -r '.tags[] | select(.key == "DefinitionHash") | .value // empty')
 
             if [ "$current_hash" = "$desired_hash" ]; then
-                echo "✓ No drift detected (hash1 matches). Webhook handles git changes (hash2)."
+                echo "✓ No CodeBuild drift detected (hash1 matches)."
+                upsert_pipeline "$cluster_type" "$project_name" "$cluster_id" "$region_deployment"
                 return 0
             else
                 echo "Drift detected (hash1 changed). Updating project..."
@@ -475,17 +520,7 @@ upsert_project() {
                     fi
 
                     echo "✓ Project updated"
-
-                    # Update webhook filter groups (idempotent)
-                    local filter_groups
-                    filter_groups=$(generate_webhook_filters "$cluster_type" "$GITHUB_BRANCH" "$ENVIRONMENT" "$REGION_DEPLOYMENT" "$cluster_id")
-
-                    if retry_webhook_operation update-webhook --project-name "$project_name" --filter-groups "$filter_groups"; then
-                        echo "✓ Webhook filters updated"
-                    else
-                        echo "ERROR: Failed to update webhook for $project_name" >&2
-                        return 1
-                    fi
+                    upsert_pipeline "$cluster_type" "$project_name" "$cluster_id" "$region_deployment"
                 else
                     echo "ERROR: Failed to update project $project_name" >&2
                     return 1
@@ -497,32 +532,25 @@ upsert_project() {
 
             if aws codebuild create-project --cli-input-json "$spec" --tags key=DefinitionHash,value="$desired_hash" --no-cli-pager >/dev/null; then
                 echo "✓ Project created"
+                upsert_pipeline "$cluster_type" "$project_name" "$cluster_id" "$region_deployment"
 
-                # Create webhook
-                local filter_groups
-                filter_groups=$(generate_webhook_filters "$cluster_type" "$GITHUB_BRANCH" "$ENVIRONMENT" "$REGION_DEPLOYMENT" "$cluster_id")
-
-                if retry_webhook_operation create-webhook --project-name "$project_name" --filter-groups "$filter_groups" --build-type BUILD; then
-                    echo "✓ Webhook created"
-                else
-                    echo "ERROR: Failed to create webhook for $project_name" >&2
-                    return 1
-                fi
-
-                # Day-1 first run: start a build with the current git SHA
-                # Gated by SKIP_DAY1_BUILD — ephemeral provider owns StartBuild for RC/MC
+                # Day-1 first run: start a pipeline with the current git SHA.
+                # Gated by SKIP_DAY1_BUILD — ephemeral provider owns pipeline execution.
                 if [ "${SKIP_DAY1_BUILD:-false}" != "true" ]; then
                     local git_sha
                     git_sha=$(git rev-parse HEAD 2>/dev/null || echo "main")
-                    echo "Starting Day-1 build at SHA: $git_sha"
+                    echo "Starting Day-1 pipeline at SHA: $git_sha"
 
-                    if aws codebuild start-build --project-name "$project_name" --source-version "$git_sha" --no-cli-pager >/dev/null; then
-                        echo "✓ Day-1 build started"
+                    if aws codepipeline start-pipeline-execution \
+                        --name "$(pipeline_name_for_project "$project_name")" \
+                        --source-revisions "actionName=Source,actionRevisionType=COMMIT_ID,actionRevision=$git_sha" \
+                        --no-cli-pager >/dev/null; then
+                        echo "✓ Day-1 pipeline started"
                     else
-                        echo "WARNING: Failed to start Day-1 build (non-fatal)" >&2
+                        echo "WARNING: Failed to start Day-1 pipeline (non-fatal)" >&2
                     fi
                 else
-                    echo "SKIP_DAY1_BUILD=true — skipping Day-1 StartBuild (provider will trigger)"
+                    echo "SKIP_DAY1_BUILD=true — skipping Day-1 pipeline execution (provider will trigger)"
                 fi
             else
                 echo "ERROR: Failed to create project $project_name" >&2
@@ -539,13 +567,14 @@ upsert_project() {
 delete_project() {
     local project_name="$1"
 
-    echo "═══ Deleting CodeBuild project: $project_name ═══"
+    echo "═══ Deleting CodePipeline and CodeBuild project: $project_name ═══"
 
-    # Delete webhook first (idempotent - ignores ResourceNotFoundException)
-    if aws codebuild delete-webhook --project-name "$project_name" --no-cli-pager 2>/dev/null; then
-        echo "✓ Webhook deleted"
+    local pipeline_name
+    pipeline_name=$(pipeline_name_for_project "$project_name")
+    if aws codepipeline delete-pipeline --name "$pipeline_name" --no-cli-pager 2>/dev/null; then
+        echo "✓ CodePipeline deleted: $pipeline_name"
     else
-        echo "Webhook already deleted or does not exist (continuing)"
+        echo "CodePipeline already deleted or does not exist (continuing)"
     fi
 
     # Delete project (idempotent)
@@ -556,22 +585,247 @@ delete_project() {
     fi
 }
 
+validate_environment() {
+    if [[ -z "$ENVIRONMENT" || ! "$ENVIRONMENT" =~ ^[A-Za-z0-9._-]+$ ]]; then
+        echo "ERROR: ENVIRONMENT is empty or contains invalid characters: '${ENVIRONMENT}'" >&2
+        return 1
+    fi
+}
+
+validate_child_admin_role() {
+    local role_name="$1"
+
+    if [[ "$role_name" != "OrganizationAccountAccessRole" && "$role_name" != "rosa-hyperfleet-account-admin" ]]; then
+        echo "ERROR: Invalid child_admin_role_name: '${role_name}'" >&2
+        return 1
+    fi
+}
+
+load_cluster_config() {
+    local cluster_type="$1"
+    local config_path="$2"
+    local region_deployment="$3"
+
+    if [ ! -f "$config_path" ]; then
+        echo "ERROR: Cluster config does not exist: $config_path" >&2
+        return 1
+    fi
+
+    AWS_REGION=$(jq -r '.region // .target_region // "us-east-1"' "$config_path")
+    TARGET_ACCOUNT_ID=$(jq -r '.account_id // ""' "$config_path")
+    TARGET_ACCOUNT_ID=$(resolve_ssm_param "$TARGET_ACCOUNT_ID" "$AWS_REGION")
+    CHILD_ADMIN_ROLE_NAME=$(jq -r '.child_admin_role_name // "OrganizationAccountAccessRole"' "$config_path")
+
+    validate_child_admin_role "$CHILD_ADMIN_ROLE_NAME"
+
+    if [ -z "$TARGET_ACCOUNT_ID" ]; then
+        echo "ERROR: account_id must be provided in $config_path" >&2
+        return 1
+    fi
+
+    if [ "$cluster_type" = "regional" ]; then
+        CLUSTER_PROJECT_ID=$(jq -r '.regional_id // ""' "$config_path")
+    else
+        CLUSTER_PROJECT_ID=$(jq -r '.management_id // ""' "$config_path")
+    fi
+
+    if [ -z "$CLUSTER_PROJECT_ID" ]; then
+        echo "ERROR: Cluster ID is missing from $config_path" >&2
+        return 1
+    fi
+
+    REGION_DEPLOYMENT="$region_deployment"
+    export AWS_REGION TARGET_ACCOUNT_ID CHILD_ADMIN_ROLE_NAME REGION_DEPLOYMENT
+}
+
+ensure_platform_image_once() {
+    if [ "${PLATFORM_IMAGE_READY:-false}" = "true" ]; then
+        return 0
+    fi
+
+    : "${PLATFORM_IMAGE:?PLATFORM_IMAGE must be set for cluster creation}"
+    ensure_platform_image "$PLATFORM_IMAGE"
+    PLATFORM_IMAGE_READY=true
+}
+
+create_cluster_resource() {
+    local cluster_type="$1"
+    local config_path="$2"
+    local region_deployment="$3"
+    local service_role_arn buildspec_path timeout_minutes
+
+    load_cluster_config "$cluster_type" "$config_path" "$region_deployment"
+    bootstrap_target_state_bucket "$TARGET_ACCOUNT_ID" "$AWS_REGION"
+    ensure_platform_image_once
+
+    if [ "$cluster_type" = "regional" ]; then
+        service_role_arn="$RC_CODEBUILD_ROLE_ARN"
+        buildspec_path="terraform/config/codebuild-regional-cluster/buildspec-combined.yml"
+        timeout_minutes=90
+    else
+        service_role_arn="$MC_CODEBUILD_ROLE_ARN"
+        buildspec_path="terraform/config/codebuild-management-cluster/buildspec-combined.yml"
+        timeout_minutes=180
+    fi
+
+    upsert_project "$cluster_type" "$CLUSTER_PROJECT_ID" "$service_role_arn" \
+        "$buildspec_path" "$timeout_minutes" "$CLUSTER_PROJECT_ID"
+}
+
+delete_cluster_resource() {
+    local cluster_type="$1"
+    local config_path="$2"
+
+    if [ ! -f "$config_path" ]; then
+        echo "ERROR: Cluster config does not exist: $config_path" >&2
+        return 1
+    fi
+
+    if [ "$cluster_type" = "regional" ]; then
+        CLUSTER_PROJECT_ID=$(jq -r '.regional_id // ""' "$config_path")
+    else
+        CLUSTER_PROJECT_ID=$(jq -r '.management_id // ""' "$config_path")
+    fi
+
+    if [ -z "$CLUSTER_PROJECT_ID" ]; then
+        echo "ERROR: Cluster ID is missing from $config_path" >&2
+        return 1
+    fi
+
+    delete_project "$CLUSTER_PROJECT_ID"
+}
+
+create_rc() {
+    create_cluster_resource regional "$1" "$2"
+}
+
+delete_rc() {
+    delete_cluster_resource regional "$1"
+}
+
+create_mc() {
+    create_cluster_resource management "$1" "$2"
+}
+
+delete_mc() {
+    delete_cluster_resource management "$1"
+}
+
+print_usage() {
+    cat <<'EOF'
+Usage:
+  provision-cluster-resources.sh
+  provision-cluster-resources.sh create-rc --config PATH --region-deployment REGION
+  provision-cluster-resources.sh delete-rc --config PATH
+  provision-cluster-resources.sh create-mc --config PATH --region-deployment REGION
+  provision-cluster-resources.sh delete-mc --config PATH
+
+The no-argument form processes all rendered RC/MC configs. Explicit actions
+operate on one cluster and are suitable for the MC autoscaler. Explicit create
+actions only create/update resources; the caller starts the pipeline at the
+desired source revision.
+EOF
+}
+
+run_cluster_action() {
+    local action="$1"
+    shift
+    local config_path=""
+    local region_deployment="${REGION_DEPLOYMENT:-}"
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --config)
+                [ "$#" -ge 2 ] || { echo "ERROR: --config requires a path" >&2; return 2; }
+                config_path="$2"
+                shift 2
+                ;;
+            --region-deployment)
+                [ "$#" -ge 2 ] || { echo "ERROR: --region-deployment requires a value" >&2; return 2; }
+                region_deployment="$2"
+                shift 2
+                ;;
+            --environment)
+                [ "$#" -ge 2 ] || { echo "ERROR: --environment requires a value" >&2; return 2; }
+                ENVIRONMENT="$2"
+                shift 2
+                ;;
+            --help|-h)
+                print_usage
+                return 0
+                ;;
+            *)
+                echo "ERROR: Unknown option: $1" >&2
+                return 2
+                ;;
+        esac
+    done
+
+    [ -n "$config_path" ] || { echo "ERROR: --config is required" >&2; return 2; }
+    validate_environment || return 2
+
+    # Explicit callers own execution at a specific source revision. Do not
+    # start an arbitrary local HEAD as a side effect of resource creation.
+    if [[ "$action" == create-* || "$action" == Create* ]]; then
+        export SKIP_DAY1_BUILD=true
+    fi
+
+    case "$action" in
+        create-rc|CreateRC)
+            [ -n "$region_deployment" ] || { echo "ERROR: --region-deployment is required" >&2; return 2; }
+            create_rc "$config_path" "$region_deployment"
+            ;;
+        delete-rc|DeleteRC)
+            delete_rc "$config_path"
+            ;;
+        create-mc|CreateMC)
+            [ -n "$region_deployment" ] || { echo "ERROR: --region-deployment is required" >&2; return 2; }
+            create_mc "$config_path" "$region_deployment"
+            ;;
+        delete-mc|DeleteMC)
+            delete_mc "$config_path"
+            ;;
+        *)
+            echo "ERROR: Unknown lifecycle action: $action" >&2
+            print_usage >&2
+            return 2
+            ;;
+    esac
+}
+
+ENVIRONMENT="${ENVIRONMENT:-${TARGET_ENVIRONMENT:-staging}}"
+PLATFORM_IMAGE_READY=false
+
+if [ "$#" -gt 0 ]; then
+    case "$1" in
+        create-rc|CreateRC|delete-rc|DeleteRC|create-mc|CreateMC|delete-mc|DeleteMC)
+            run_cluster_action "$@"
+            exit $?
+            ;;
+        --help|-h)
+            print_usage
+            exit 0
+            ;;
+        *)
+            echo "ERROR: Unknown argument: $1" >&2
+            print_usage >&2
+            exit 2
+            ;;
+    esac
+fi
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Main Execution (preserves original flow)
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Validate environment
-ENVIRONMENT="${ENVIRONMENT:-${TARGET_ENVIRONMENT:-staging}}"
-
-if [[ -z "$ENVIRONMENT" || ! "$ENVIRONMENT" =~ ^[A-Za-z0-9._-]+$ ]]; then
-    echo "ERROR: ENVIRONMENT is empty or contains invalid characters: '${ENVIRONMENT}'" >&2
-    exit 1
-fi
+validate_environment
 
 # Ensure platform image exists (builds if missing, once before any create/update)
-ensure_platform_image "$PLATFORM_IMAGE"
+ensure_platform_image_once
 
 # Detect TF state region
+init_central_state
 TF_STATE_REGION=""
 if [ -d "deploy/${ENVIRONMENT}" ]; then
     FIRST_REGIONAL_JSON=$(find "deploy/${ENVIRONMENT}" -name "regional-cluster.json" -path "*/codebuild-provisioner-inputs/*" -type f | head -n 1)
@@ -675,36 +929,14 @@ for region_dir in deploy/${ENVIRONMENT}/*/; do
     if [ -f "${region_dir}codebuild-provisioner-inputs/regional-cluster.json" ]; then
         REGIONAL_CONFIG="${region_dir}codebuild-provisioner-inputs/regional-cluster.json"
 
-        AWS_REGION=$(jq -r '.region // .target_region // "us-east-1"' "$REGIONAL_CONFIG")
-        TARGET_ACCOUNT_ID=$(jq -r '.account_id // ""' "$REGIONAL_CONFIG")
-        TARGET_ACCOUNT_ID=$(resolve_ssm_param "$TARGET_ACCOUNT_ID" "$AWS_REGION")
-        REGIONAL_ID=$(jq -r '.regional_id // ""' "$REGIONAL_CONFIG")
-
-        export CHILD_ADMIN_ROLE_NAME
-        CHILD_ADMIN_ROLE_NAME=$(jq -r '.child_admin_role_name // "OrganizationAccountAccessRole"' "$REGIONAL_CONFIG")
-
-        if [[ "$CHILD_ADMIN_ROLE_NAME" != "OrganizationAccountAccessRole" && "$CHILD_ADMIN_ROLE_NAME" != "rosa-hyperfleet-account-admin" ]]; then
-            echo "ERROR: Invalid child_admin_role_name: '${CHILD_ADMIN_ROLE_NAME}'" >&2
-            exit 1
-        fi
-
         DELETE_FLAG=$(jq -r '.delete_codebuild // false' "$REGIONAL_CONFIG")
         [ "$FORCE_DELETE_ALL_PIPELINES" == "true" ] && DELETE_FLAG="true"
 
-        if [[ -z "$TARGET_ACCOUNT_ID" ]]; then
-            echo "ERROR: account_id must be provided for region ${AWS_REGION}" >&2
-            exit 1
-        fi
-
-        bootstrap_target_state_bucket "$TARGET_ACCOUNT_ID" "$AWS_REGION"
-
-        # SDK upsert/delete (replaces terraform block)
         if [ "$DELETE_FLAG" == "true" ]; then
-            delete_project "$REGIONAL_ID"
+            delete_rc "$REGIONAL_CONFIG"
         else
-            if ! upsert_project "regional" "$REGIONAL_ID" "$RC_CODEBUILD_ROLE_ARN" \
-                "terraform/config/codebuild-regional-cluster/buildspec-combined.yml" 90 "$REGIONAL_ID"; then
-                echo "ERROR: Regional project upsert failed for ${REGIONAL_ID}" >&2
+            if ! create_rc "$REGIONAL_CONFIG" "$REGION_DEPLOYMENT"; then
+                echo "ERROR: Regional resource provisioning failed for $REGIONAL_CONFIG" >&2
                 PROVISION_FAILURES=$((PROVISION_FAILURES + 1))
             fi
         fi
@@ -721,36 +953,14 @@ for region_dir in deploy/${ENVIRONMENT}/*/; do
             _mc_basename=$(basename "$mc_config" .json)
             CLUSTER_NAME="${_mc_basename#management-cluster-}"
 
-            AWS_REGION=$(jq -r '.region // .target_region // "us-east-1"' "$mc_config")
-            TARGET_ACCOUNT_ID=$(jq -r '.account_id // ""' "$mc_config")
-            TARGET_ACCOUNT_ID=$(resolve_ssm_param "$TARGET_ACCOUNT_ID" "$AWS_REGION")
-            MANAGEMENT_ID=$(jq -r '.management_id // ""' "$mc_config")
-
-            export CHILD_ADMIN_ROLE_NAME
-            CHILD_ADMIN_ROLE_NAME=$(jq -r '.child_admin_role_name // "OrganizationAccountAccessRole"' "$mc_config")
-
-            if [[ "$CHILD_ADMIN_ROLE_NAME" != "OrganizationAccountAccessRole" && "$CHILD_ADMIN_ROLE_NAME" != "rosa-hyperfleet-account-admin" ]]; then
-                echo "ERROR: Invalid child_admin_role_name: '${CHILD_ADMIN_ROLE_NAME}'" >&2
-                exit 1
-            fi
-
             DELETE_FLAG=$(jq -r '.delete_codebuild // false' "$mc_config")
             [ "$FORCE_DELETE_ALL_PIPELINES" == "true" ] && DELETE_FLAG="true"
 
-            if [[ -z "$TARGET_ACCOUNT_ID" ]]; then
-                echo "ERROR: account_id must be provided for management cluster ${CLUSTER_NAME}" >&2
-                exit 1
-            fi
-
-            bootstrap_target_state_bucket "$TARGET_ACCOUNT_ID" "$AWS_REGION"
-
-            # SDK upsert/delete (replaces terraform block)
             if [ "$DELETE_FLAG" == "true" ]; then
-                delete_project "$MANAGEMENT_ID"
+                delete_mc "$mc_config"
             else
-                if ! upsert_project "management" "$MANAGEMENT_ID" "$MC_CODEBUILD_ROLE_ARN" \
-                    "terraform/config/codebuild-management-cluster/buildspec-combined.yml" 180 "$MANAGEMENT_ID"; then
-                    echo "ERROR: Management project upsert failed for ${MANAGEMENT_ID}" >&2
+                if ! create_mc "$mc_config" "$REGION_DEPLOYMENT"; then
+                    echo "ERROR: Management resource provisioning failed for $mc_config" >&2
                     PROVISION_FAILURES=$((PROVISION_FAILURES + 1))
                 fi
             fi
@@ -760,8 +970,8 @@ for region_dir in deploy/${ENVIRONMENT}/*/; do
 done
 
 if [ "$PROVISION_FAILURES" -gt 0 ]; then
-    echo "ERROR: Pipeline provisioning completed with $PROVISION_FAILURES failure(s)" >&2
+    echo "ERROR: Cluster resource provisioning completed with $PROVISION_FAILURES failure(s)" >&2
     exit 1
 fi
 
-echo "✓ Pipeline provisioning complete"
+echo "✓ Cluster resource provisioning complete"

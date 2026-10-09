@@ -42,16 +42,6 @@ resource "aws_iam_role_policy" "rc_codebuild_policy" {
         ]
       },
       {
-        Sid    = "GitHubConnectionAccess"
-        Effect = "Allow"
-        Action = [
-          "codestar-connections:GetConnection",
-          "codestar-connections:GetConnectionToken",
-          "codestar-connections:UseConnection"
-        ]
-        Resource = aws_codestarconnections_connection.github.arn
-      },
-      {
         Sid    = "CheckQueueSelfScope"
         Effect = "Allow"
         Action = [
@@ -74,6 +64,23 @@ resource "aws_iam_role_policy" "rc_codebuild_policy" {
         Resource = [
           "arn:aws:s3:::terraform-state-*",
           "arn:aws:s3:::terraform-state-*/*"
+        ]
+      },
+      {
+        Sid    = "PipelineArtifactRead"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:GetObjectVersion",
+          "s3:PutObject",
+          "s3:PutObjectAcl",
+          "s3:ListBucket",
+          "s3:GetBucketVersioning",
+          "s3:GetBucketLocation"
+        ]
+        Resource = [
+          module.codepipeline_shared.artifact_bucket_arn,
+          "${module.codepipeline_shared.artifact_bucket_arn}/*"
         ]
       },
       {

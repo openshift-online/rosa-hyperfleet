@@ -1,5 +1,5 @@
 # =============================================================================
-# CodeBuild Provisioner Outputs
+# Platform Image Builder Outputs
 # =============================================================================
 
 output "build_platform_image_project_name" {
@@ -22,11 +22,11 @@ output "github_connection_status" {
 # =============================================================================
 
 output "central_account_id" {
-  description = "AWS Account ID where CodeBuild provisioner is deployed"
+  description = "AWS Account ID where the platform image builder is deployed"
   value       = data.aws_caller_identity.current.account_id
 }
 
 output "deployment_region" {
-  description = "AWS Region where CodeBuild provisioner is deployed"
+  description = "AWS Region where the platform image builder is deployed"
   value       = var.region
 }

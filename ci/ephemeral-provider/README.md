@@ -76,6 +76,6 @@ Can be specified multiple times. Format is `<target-path>:<override-file>` where
 | `orchestrator.py`   | Top-level orchestration logic for provision, resume, and teardown workflows  |
 | `aws.py`            | AWS credential management and session helpers                                |
 | `git.py`            | Git operations for ephemeral branch creation, rendering, and resync (rebase) |
-| `pipeline.py`       | CodeBuild pipeline monitoring (discovery, polling, status)                   |
+| `codepipeline.py`   | CodePipeline execution monitoring and underlying CodeBuild status validation |
 | `codebuild_logs.py` | CloudWatch log fetching and formatting for CodeBuild projects                |
 | `yaml_utils.py`     | YAML deep-merge utilities for applying provision overrides                   |
