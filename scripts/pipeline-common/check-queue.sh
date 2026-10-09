@@ -1,0 +1,195 @@
+#!/usr/bin/env bash
+# Check CodeBuild queue and skip stale commits.
+# Called from: scripts/buildspec/provision-cluster.sh (MUST be sourced)
+#
+# ── Summary ───────────────────────────────────────────────────────────────────
+# When a build starts, check if a newer git commit is queued. If yes, stop older
+# queued builds and mark the build skipped — newer SHA will apply. Only the newest queued
+# commit proceeds to terraform apply.
+#
+# Savings: 30-90 min per stale commit skipped. Rapid pushes (A→B→C) complete in
+# 60min instead of 90min (A applies, B+C skip in <1min each).
+#
+# ── Full Documentation ────────────────────────────────────────────────────────
+# See docs/design/check-queue-skip-logic.md for:
+#   - Problem statement and example timeline
+#   - Winner selection algorithm (git ancestry + buildNumber fallback)
+#   - Source vs. execute distinction (why 'source' is critical)
+#   - Safety guarantees and troubleshooting
+#
+# ── CRITICAL: Must be sourced by provision-cluster.sh ──────────────────────────
+# Sourcing keeps CHECK_QUEUE_SKIPPED visible to the wrapper. The wrapper handles
+# returning/exiting after the flag is set, for both sourced and direct use.
+#
+# OPEN ITEM (spike validation): git merge-base may require full clone depth or
+# explicit fetch. Current implementation has buildNumber fallback (works either way).
+set -euo pipefail
+
+CHECK_QUEUE_SKIPPED=false
+
+# ── Self identity ─────────────────────────────────────────────────────────────
+SELF_BUILD_ID="${CODEBUILD_BUILD_ID:?CODEBUILD_BUILD_ID not set}"
+SELF_SHA="${CODEBUILD_RESOLVED_SOURCE_VERSION:?CODEBUILD_RESOLVED_SOURCE_VERSION not set}"
+SELF_BUILD_NUMBER="${CODEBUILD_BUILD_NUMBER:?CODEBUILD_BUILD_NUMBER not set}"
+
+# Extract project name from build ID (format: project-name:uuid)
+PROJECT_NAME="${SELF_BUILD_ID%%:*}"
+
+echo "check-queue: self=${SELF_BUILD_ID} sha=${SELF_SHA} buildNumber=${SELF_BUILD_NUMBER}"
+
+# ── List queued builds for this project ──────────────────────────────────────
+BUILD_IDS=$(aws codebuild list-builds-for-project \
+    --project-name "$PROJECT_NAME" \
+    --sort-order ASCENDING \
+    --query 'ids' \
+    --output text)
+
+if [ -z "$BUILD_IDS" ]; then
+    echo "check-queue: no builds found for project ${PROJECT_NAME}"
+    # Self is the only build; continue
+    if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+        return 0
+    fi
+    exit 0
+fi
+
+# ── Get build details ─────────────────────────────────────────────────────────
+BUILDS_JSON=$(aws codebuild batch-get-builds \
+    --ids $BUILD_IDS \
+    --query 'builds[*].[id,buildNumber,buildStatus,currentPhase,resolvedSourceVersion]' \
+    --output json)
+
+# ── Collect QUEUED builds (never stop builds past pre_build phase) ───────────
+# Why QUEUED only? We never want to stop a build already running terraform apply.
+# buildStatus progression: QUEUED → IN_PROGRESS (pre_build → build → post_build) → SUCCEEDED/FAILED
+QUEUED_BUILDS=$(echo "$BUILDS_JSON" | jq -r '.[] | select(.[2] == "QUEUED") | @json')
+
+if [ -z "$QUEUED_BUILDS" ]; then
+    echo "check-queue: no queued builds; continuing"
+    if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+        return 0
+    fi
+    exit 0
+fi
+
+echo "check-queue: found $(echo "$QUEUED_BUILDS" | wc -l) queued build(s)"
+
+# ── Determine newest commit among self + queued builds ───────────────────────
+# Winner selection:
+#   1. git merge-base --is-ancestor for ancestry (with fallback if shallow clone)
+#   2. Unrelated SHAs → higher buildNumber wins
+
+declare -A BUILD_MAP  # buildId -> "sha|buildNumber"
+
+# Add self
+BUILD_MAP["$SELF_BUILD_ID"]="${SELF_SHA}|${SELF_BUILD_NUMBER}"
+
+# Add queued builds
+while IFS= read -r build_json; do
+    BUILD_ID=$(echo "$build_json" | jq -r '.[0]')
+    BUILD_NUM=$(echo "$build_json" | jq -r '.[1]')
+    SHA=$(echo "$build_json" | jq -r '.[4]')
+
+    if [ "$BUILD_ID" == "$SELF_BUILD_ID" ]; then
+        continue  # Skip self (already added)
+    fi
+
+    BUILD_MAP["$BUILD_ID"]="${SHA}|${BUILD_NUM}"
+    echo "check-queue: queued build ${BUILD_ID} buildNumber=${BUILD_NUM} sha=${SHA}"
+done <<< "$QUEUED_BUILDS"
+
+# ── Find newest SHA ───────────────────────────────────────────────────────────
+# Winner = newest commit among self + queued builds (proceeds to terraform apply)
+NEWEST_SHA=""
+NEWEST_BUILD_NUM=0
+NEWEST_BUILD_ID=""
+
+for build_id in "${!BUILD_MAP[@]}"; do
+    build_record="${BUILD_MAP[$build_id]}"
+    sha="${build_record%%|*}"
+    build_num="${build_record##*|}"
+
+    if [ -z "$NEWEST_SHA" ]; then
+        NEWEST_SHA="$sha"
+        NEWEST_BUILD_NUM="$build_num"
+        NEWEST_BUILD_ID="$build_id"
+        continue
+    fi
+
+    # Duplicate SHAs are distinct builds. Keep the newest build number so the
+    # older duplicate can still be stopped without overwriting its record.
+    if [ "$sha" == "$NEWEST_SHA" ]; then
+        if [ "$build_num" -gt "$NEWEST_BUILD_NUM" ]; then
+            NEWEST_BUILD_NUM="$build_num"
+            NEWEST_BUILD_ID="$build_id"
+        fi
+        continue
+    fi
+
+    # Try git ancestry comparison (may fail on shallow clone — fallback to buildNumber)
+    # OPEN ITEM: spike will validate if we need git_clone_depth=0 or explicit fetch
+    IS_NEWER=false
+    if git merge-base --is-ancestor "$NEWEST_SHA" "$sha" 2>/dev/null; then
+        # Method 1: current newest is ancestor of this sha → this sha is newer (descendant)
+        IS_NEWER=true
+    elif ! git merge-base --is-ancestor "$sha" "$NEWEST_SHA" 2>/dev/null; then
+        # Method 2 Fallback: Neither is ancestor (unrelated branches or shallow clone)
+        # Use buildNumber as proxy (higher = queued later = newer)
+        if [ "$build_num" -gt "$NEWEST_BUILD_NUM" ]; then
+            IS_NEWER=true
+        fi
+    # else: this sha is ancestor of current newest → current newest stays
+    fi
+
+    if [ "$IS_NEWER" = true ]; then
+        NEWEST_SHA="$sha"
+        NEWEST_BUILD_NUM="$build_num"
+        NEWEST_BUILD_ID="$build_id"
+    fi
+done
+
+echo "check-queue: newest commit is sha=${NEWEST_SHA} buildNumber=${NEWEST_BUILD_NUM} build=${NEWEST_BUILD_ID}"
+
+# ── Decide: continue or skip ─────────────────────────────────────────────────
+if [ "$NEWEST_BUILD_ID" != "$SELF_BUILD_ID" ]; then
+    # Self is stale — a newer commit is queued. Skip this build to save time.
+    echo "check-queue: self is NOT the newest commit; skipping (newer SHA ${NEWEST_SHA} pending)"
+
+    # Stop other older queued builds (not the winner, not self)
+    # Why stop older builds? They're also stale. No point letting them sit in queue.
+    for build_id in "${!BUILD_MAP[@]}"; do
+        if [ "$build_id" == "$NEWEST_BUILD_ID" ]; then
+            continue  # Don't stop the winner (it will apply the latest changes)
+        fi
+
+        if [ "$build_id" != "$SELF_BUILD_ID" ]; then
+            echo "check-queue: stopping older queued build ${build_id}"
+            aws codebuild stop-build --id "$build_id" >/dev/null 2>&1 || true
+        fi
+    done
+
+    # Return 0 = skip this build (not an error — skipping is expected behavior).
+    # provision-cluster.sh sees the flag and returns/exits before provisioning.
+    CHECK_QUEUE_SKIPPED=true
+    if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+        return 0
+    fi
+    exit 0
+fi
+
+# Self IS the newest commit — we're the winner. Proceed to terraform apply.
+
+# Self is the newest — stop all other queued builds and continue
+echo "check-queue: self is the newest commit; stopping older queued builds and continuing"
+
+for build_id in "${!BUILD_MAP[@]}"; do
+    if [ "$build_id" == "$SELF_BUILD_ID" ]; then
+        continue  # Don't stop self
+    fi
+
+    echo "check-queue: stopping older queued build ${build_id}"
+    aws codebuild stop-build --id "$build_id" >/dev/null 2>&1 || true
+done
+
+echo "check-queue: proceeding to terraform apply"
+# Return/continue to the buildspec's provision-infra script

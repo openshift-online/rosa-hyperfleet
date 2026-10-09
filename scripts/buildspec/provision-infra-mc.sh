@@ -4,9 +4,36 @@
 set -euo pipefail
 
 source scripts/pipeline-common/lib.sh
+source scripts/pipeline-common/terraform-lib.sh
 
 preflight_check
 config_load management
+
+DEPLOY_DIR=$(dirname "$DEPLOY_CONFIG_FILE")
+STATIC_TFVARS="${DEPLOY_DIR}/static.tfvars.json"
+_REPO_BRANCH="${REPOSITORY_BRANCH:-main}"
+_ZOA_LAMBDA_IMAGE_TAG=$(jq -r '.zoa_lambda_image_tag // empty' "$STATIC_TFVARS")
+
+require_nonempty_vars "MC core runtime" \
+    TARGET_ACCOUNT_ID TARGET_REGION MANAGEMENT_ID REGIONAL_AWS_ACCOUNT_ID \
+    REPOSITORY_URL PLATFORM_IMAGE
+validate_aws_account_id "TARGET_ACCOUNT_ID" "${TARGET_ACCOUNT_ID}"
+validate_aws_account_id "REGIONAL_AWS_ACCOUNT_ID" "${REGIONAL_AWS_ACCOUNT_ID}"
+tf_require_static_vars "${STATIC_TFVARS}" "MC core" \
+    management_id app_code service_phase cost_center
+tf_require_static_keys "${STATIC_TFVARS}" "MC" \
+    zoa_lambda_image_tag zoa_runner_image_tag zoa_runner_source_image \
+    worker_node_ami_id worker_node_root_volume_size
+
+_STATIC_MANAGEMENT_ID=$(jq -r '.management_id // empty' "${STATIC_TFVARS}")
+if [[ "${_STATIC_MANAGEMENT_ID}" != "${MANAGEMENT_ID}" ]]; then
+    echo "ERROR: MC management_id mismatch: static=${_STATIC_MANAGEMENT_ID}, runtime=${MANAGEMENT_ID}" >&2
+    exit 1
+fi
+if [[ -n "${_ZOA_LAMBDA_IMAGE_TAG}" ]]; then
+    tf_require_static_vars "${STATIC_TFVARS}" "MC ZOA" \
+        zoa_lambda_image_tag zoa_runner_image_tag zoa_runner_source_image
+fi
 
 RESOLVED_REGIONAL_ACCOUNT_ID="${REGIONAL_AWS_ACCOUNT_ID}"
 
@@ -37,7 +64,33 @@ else
         --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
         --output text)
 
-    _RC_REGIONAL_ID=$(jq -r '.regional_id // "regional"' "deploy/${ENVIRONMENT}/${TARGET_REGION}/pipeline-regional-cluster-inputs/terraform.json" 2>/dev/null || echo "regional")
+    _RC_CONFIG_FILE=$(config_path_for_mode regional)
+    _RC_REGIONAL_ID=$(jq -r '.regional_id // "regional"' "$_RC_CONFIG_FILE" 2>/dev/null || echo "regional")
+    wait_for_rc_outputs() {
+        local tf_dir="$1" max_attempts="$2" retry_delay="$3"
+        shift 3
+        local output_names=("$@")
+        local attempt
+
+        echo "Waiting for ${#output_names[@]} required RC Terraform outputs..."
+        echo "  Max wait: $((max_attempts * retry_delay / 60)) minutes (${max_attempts} attempts * ${retry_delay}s)"
+
+        for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+            if tf_wait_for_outputs "${tf_dir}" 1 0 "${output_names[@]}"; then
+                echo "✓ Required RC outputs are ready; MC will continue while RC finishes"
+                return 0
+            fi
+
+            if [[ ${attempt} -lt ${max_attempts} ]]; then
+                echo "  RC dependency/output not ready (attempt ${attempt}/${max_attempts}); retrying in ${retry_delay}s..."
+                sleep "${retry_delay}"
+            fi
+        done
+
+        echo "ERROR: Required RC outputs were not ready after $((max_attempts * retry_delay / 60))+ minutes" >&2
+        return 1
+    }
+
     export DNS_ZONE_OPERATOR_ROLE_ARN="arn:aws:iam::${RESOLVED_REGIONAL_ACCOUNT_ID}:role/${_RC_REGIONAL_ID}-dns-zone-operator"
     export OIDC_WRITER_ROLE_ARN="arn:aws:iam::${RESOLVED_REGIONAL_ACCOUNT_ID}:role/${_RC_REGIONAL_ID}-oidc-writer"
     export OIDC_KEY_READER_ROLE_ARN="arn:aws:iam::${RESOLVED_REGIONAL_ACCOUNT_ID}:role/${_RC_REGIONAL_ID}-oidc-key-reader"
@@ -56,68 +109,116 @@ else
         -backend-config="region=${TARGET_REGION}" \
         -backend-config="use_lockfile=true" >/dev/null 2>&1
 
-    # RC and MC pipelines run in parallel — retry until all outputs appear (up to 45 min)
-    _OIDC_MAX_RETRIES=90
-    _OIDC_RETRY_DELAY=30
-    _OIDC_RETRY_COUNT=0
-    TF_VAR_oidc_cloudfront_domain=""
-    TF_VAR_oidc_bucket_name=""
-    TF_VAR_oidc_bucket_arn=""
-    TF_VAR_oidc_bucket_region=""
-    TF_VAR_rhobs_api_url=""
-    while [ $_OIDC_RETRY_COUNT -lt $_OIDC_MAX_RETRIES ]; do
-        _OIDC_RETRY_COUNT=$((_OIDC_RETRY_COUNT + 1))
-        TF_VAR_oidc_cloudfront_domain=$(AWS_ACCESS_KEY_ID=$(echo "$_rc_creds" | awk '{print $1}') AWS_SECRET_ACCESS_KEY=$(echo "$_rc_creds" | awk '{print $2}') AWS_SESSION_TOKEN=$(echo "$_rc_creds" | awk '{print $3}') terraform -chdir="$_RC_TF_DIR" output -raw oidc_cloudfront_domain 2>/dev/null || true)
-        TF_VAR_oidc_bucket_name=$(AWS_ACCESS_KEY_ID=$(echo "$_rc_creds" | awk '{print $1}') AWS_SECRET_ACCESS_KEY=$(echo "$_rc_creds" | awk '{print $2}') AWS_SESSION_TOKEN=$(echo "$_rc_creds" | awk '{print $3}') terraform -chdir="$_RC_TF_DIR" output -raw oidc_bucket_name 2>/dev/null || true)
-        TF_VAR_oidc_bucket_arn=$(AWS_ACCESS_KEY_ID=$(echo "$_rc_creds" | awk '{print $1}') AWS_SECRET_ACCESS_KEY=$(echo "$_rc_creds" | awk '{print $2}') AWS_SESSION_TOKEN=$(echo "$_rc_creds" | awk '{print $3}') terraform -chdir="$_RC_TF_DIR" output -raw oidc_bucket_arn 2>/dev/null || true)
-        TF_VAR_oidc_bucket_region=$(AWS_ACCESS_KEY_ID=$(echo "$_rc_creds" | awk '{print $1}') AWS_SECRET_ACCESS_KEY=$(echo "$_rc_creds" | awk '{print $2}') AWS_SESSION_TOKEN=$(echo "$_rc_creds" | awk '{print $3}') terraform -chdir="$_RC_TF_DIR" output -raw oidc_bucket_region 2>/dev/null || true)
-        TF_VAR_rhobs_api_url=$(AWS_ACCESS_KEY_ID=$(echo "$_rc_creds" | awk '{print $1}') AWS_SECRET_ACCESS_KEY=$(echo "$_rc_creds" | awk '{print $2}') AWS_SESSION_TOKEN=$(echo "$_rc_creds" | awk '{print $3}') terraform -chdir="$_RC_TF_DIR" output -raw rhobs_api_url 2>/dev/null || true)
-        if [ -n "${TF_VAR_oidc_cloudfront_domain}" ] && \
-           [ -n "${TF_VAR_oidc_bucket_name}" ] && \
-           [ -n "${TF_VAR_oidc_bucket_arn}" ] && \
-           [ -n "${TF_VAR_oidc_bucket_region}" ] && \
-           [ -n "${TF_VAR_rhobs_api_url}" ]; then
-            break
-        fi
-        echo "RC outputs not ready (attempt ${_OIDC_RETRY_COUNT}/${_OIDC_MAX_RETRIES}), retrying in ${_OIDC_RETRY_DELAY}s..."
-        sleep "$_OIDC_RETRY_DELAY"
-    done
-    if [ -z "${TF_VAR_oidc_cloudfront_domain}" ] || \
-       [ -z "${TF_VAR_oidc_bucket_name}" ] || \
-       [ -z "${TF_VAR_oidc_bucket_arn}" ] || \
-       [ -z "${TF_VAR_oidc_bucket_region}" ] || \
-       [ -z "${TF_VAR_rhobs_api_url}" ]; then
-        echo "ERROR: RC outputs missing after $((_OIDC_MAX_RETRIES * _OIDC_RETRY_DELAY / 60))+ minutes" >&2
-        exit 1
+    # RC and MC pipelines run in parallel — wait for all outputs consumed by MC
+    # Terraform to appear. ZOA Lambda deployment is enabled when the configured
+    # image tag is non-empty, so its RC outputs are required in that case.
+    # rhobs_api_url is NOT consumed by MC terraform (only re-emitted at outputs.tf);
+    # bootstrap-argocd-mc.sh already polls it before ArgoCD bootstrap.
+
+    # Set RC credentials for tf_wait_for_outputs (library reads terraform state)
+    export AWS_ACCESS_KEY_ID=$(echo "$_rc_creds" | awk '{print $1}')
+    export AWS_SECRET_ACCESS_KEY=$(echo "$_rc_creds" | awk '{print $2}')
+    export AWS_SESSION_TOKEN=$(echo "$_rc_creds" | awk '{print $3}')
+
+    _RC_REQUIRED_OUTPUTS=(
+        oidc_cloudfront_domain
+        oidc_bucket_name
+        oidc_bucket_arn
+        oidc_bucket_region
+    )
+    if [[ -n "$_ZOA_LAMBDA_IMAGE_TAG" ]]; then
+        _RC_REQUIRED_OUTPUTS+=(
+            zoa_bucket_arn
+            zoa_kms_key_arn
+            zoa_table_name
+            zoa_table_arn
+            zoa_audit_table_name
+            zoa_audit_table_arn
+            zoa_uploader_role_arn
+            zoa_data_access_role_arn
+            zoa_lambda_ecr_url
+        )
     fi
-    export TF_VAR_oidc_cloudfront_domain TF_VAR_oidc_bucket_name TF_VAR_oidc_bucket_arn TF_VAR_oidc_bucket_region TF_VAR_rhobs_api_url
 
-    # ZOA outputs bucket ARN — validate output looks like an ARN to avoid
-    # capturing terraform warnings as the value (non-ASCII chars break IAM policies)
-    export TF_VAR_zoa_outputs_bucket_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_bucket_arn 2>/dev/null | grep -E '^arn:' || echo "")
+    # Wait up to 45 minutes (90 attempts * 30s) for all required RC outputs.
+    # MC starts consuming them as soon as they are available; RC may continue
+    # with its remaining bootstrap/readiness steps in parallel. If RC fails
+    # before the outputs are ready, the output wait expires and the MC build
+    # reports the missing outputs.
+    wait_for_rc_outputs \
+        "$_RC_TF_DIR" \
+        90 \
+        30 \
+        "${_RC_REQUIRED_OUTPUTS[@]}" || {
+        echo "ERROR: Failed to read required RC outputs for MC provisioning" >&2
+        exit 1
+    }
+    # TF_VAR_* variables auto-exported by tf_wait_for_outputs
 
-    # ZOA KMS key ARN (optional — for S3 SSE-KMS cross-account access)
-    export TF_VAR_zoa_kms_key_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_kms_key_arn 2>/dev/null | grep -E '^arn:' || echo "")
+    if [[ -n "$_ZOA_LAMBDA_IMAGE_TAG" ]]; then
+        # Read ZOA outputs with validation after the wait above. These values
+        # are required by the MC Lambda module and must not be silently empty.
+        TF_VAR_zoa_outputs_bucket_arn=$(tf_read_output "$_RC_TF_DIR" zoa_bucket_arn '^arn:')
+        export TF_VAR_zoa_outputs_bucket_arn
 
-    # ZOA Lambda data-layer outputs (DynamoDB tables + uploader role in RC account)
-    export TF_VAR_zoa_table_name=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_table_name 2>/dev/null || echo "")
-    export TF_VAR_zoa_table_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_table_arn 2>/dev/null | grep -E '^arn:' || echo "")
-    export TF_VAR_zoa_audit_table_name=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_audit_table_name 2>/dev/null || echo "")
-    export TF_VAR_zoa_audit_table_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_audit_table_arn 2>/dev/null | grep -E '^arn:' || echo "")
-    export TF_VAR_zoa_uploader_role_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_uploader_role_arn 2>/dev/null | grep -E '^arn:' || echo "")
-    export TF_VAR_zoa_data_access_role_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_data_access_role_arn 2>/dev/null | grep -E '^arn:' || echo "")
+        TF_VAR_zoa_kms_key_arn=$(tf_read_output "$_RC_TF_DIR" zoa_kms_key_arn '^arn:')
+        export TF_VAR_zoa_kms_key_arn
+
+        # ZOA Lambda data-layer outputs (DynamoDB tables + uploader role in RC account)
+        TF_VAR_zoa_table_name=$(tf_read_output "$_RC_TF_DIR" zoa_table_name)
+        export TF_VAR_zoa_table_name
+
+        TF_VAR_zoa_table_arn=$(tf_read_output "$_RC_TF_DIR" zoa_table_arn '^arn:')
+        export TF_VAR_zoa_table_arn
+
+        TF_VAR_zoa_audit_table_name=$(tf_read_output "$_RC_TF_DIR" zoa_audit_table_name)
+        export TF_VAR_zoa_audit_table_name
+
+        TF_VAR_zoa_audit_table_arn=$(tf_read_output "$_RC_TF_DIR" zoa_audit_table_arn '^arn:')
+        export TF_VAR_zoa_audit_table_arn
+
+        TF_VAR_zoa_uploader_role_arn=$(tf_read_output "$_RC_TF_DIR" zoa_uploader_role_arn '^arn:')
+        export TF_VAR_zoa_uploader_role_arn
+
+        TF_VAR_zoa_data_access_role_arn=$(tf_read_output "$_RC_TF_DIR" zoa_data_access_role_arn '^arn:')
+        export TF_VAR_zoa_data_access_role_arn
+
+        # Lambda image lives in RC's ECR (cross-account pull via OU policy).
+        TF_VAR_zoa_lambda_ecr_url=$(tf_read_output "$_RC_TF_DIR" zoa_lambda_ecr_url)
+        export TF_VAR_zoa_lambda_ecr_url
+    fi
+
+    require_nonempty_vars "MC RC dependency" \
+        TF_VAR_oidc_cloudfront_domain TF_VAR_oidc_bucket_name \
+        TF_VAR_oidc_bucket_arn TF_VAR_oidc_bucket_region \
+        DNS_ZONE_OPERATOR_ROLE_ARN OIDC_WRITER_ROLE_ARN OIDC_KEY_READER_ROLE_ARN
+    validate_arn_account "DNS_ZONE_OPERATOR_ROLE_ARN" \
+        "${DNS_ZONE_OPERATOR_ROLE_ARN}" "${RESOLVED_REGIONAL_ACCOUNT_ID}"
+    validate_arn_account "OIDC_WRITER_ROLE_ARN" \
+        "${OIDC_WRITER_ROLE_ARN}" "${RESOLVED_REGIONAL_ACCOUNT_ID}"
+    validate_arn_account "OIDC_KEY_READER_ROLE_ARN" \
+        "${OIDC_KEY_READER_ROLE_ARN}" "${RESOLVED_REGIONAL_ACCOUNT_ID}"
+    if [[ -n "${_ZOA_LAMBDA_IMAGE_TAG}" ]]; then
+        require_nonempty_vars "MC ZOA RC dependency" \
+            TF_VAR_zoa_outputs_bucket_arn TF_VAR_zoa_kms_key_arn \
+            TF_VAR_zoa_table_name TF_VAR_zoa_table_arn \
+            TF_VAR_zoa_audit_table_name TF_VAR_zoa_audit_table_arn \
+            TF_VAR_zoa_uploader_role_arn TF_VAR_zoa_data_access_role_arn \
+            TF_VAR_zoa_lambda_ecr_url
+        validate_arn_account "TF_VAR_zoa_kms_key_arn" \
+            "${TF_VAR_zoa_kms_key_arn}" "${RESOLVED_REGIONAL_ACCOUNT_ID}"
+        validate_arn_account "TF_VAR_zoa_table_arn" \
+            "${TF_VAR_zoa_table_arn}" "${RESOLVED_REGIONAL_ACCOUNT_ID}"
+        validate_arn_account "TF_VAR_zoa_audit_table_arn" \
+            "${TF_VAR_zoa_audit_table_arn}" "${RESOLVED_REGIONAL_ACCOUNT_ID}"
+        validate_arn_account "TF_VAR_zoa_uploader_role_arn" \
+            "${TF_VAR_zoa_uploader_role_arn}" "${RESOLVED_REGIONAL_ACCOUNT_ID}"
+        validate_arn_account "TF_VAR_zoa_data_access_role_arn" \
+            "${TF_VAR_zoa_data_access_role_arn}" "${RESOLVED_REGIONAL_ACCOUNT_ID}"
+    fi
 fi
 
-# ── Phase 1b: ZOA Lambda image reference ──────────────────────────────────────
-# Lambda image lives in RC's ECR (cross-account pull via OU policy).
-# Runner image is pulled directly from Quay by K8s nodes.
-export TF_VAR_zoa_lambda_ecr_url=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_lambda_ecr_url 2>/dev/null || echo "")
-
-# ZOA image tags and source registries — from MC deploy config (same pins as RC)
-export TF_VAR_zoa_lambda_image_tag=$(jq -r '.zoa_lambda_image_tag // ""' "$DEPLOY_CONFIG_FILE")
-export TF_VAR_zoa_runner_image_tag=$(jq -r '.zoa_runner_image_tag // ""' "$DEPLOY_CONFIG_FILE")
-export TF_VAR_zoa_runner_source_image=$(jq -r '.zoa_runner_source_image // ""' "$DEPLOY_CONFIG_FILE")
-export TF_VAR_worker_node_ami_id=$(jq -r '.worker_node_ami_id // ""' "$DEPLOY_CONFIG_FILE")
+# ZOA image tags moved to static.tfvars.json (worker_node_ami_id, worker_node_root_volume_size too)
 
 # ── Phase 2: Apply/Destroy MC infrastructure ─────────────────────────────────
 use_mc_account
@@ -126,25 +227,17 @@ export TF_STATE_BUCKET="terraform-state-${TARGET_ACCOUNT_ID}-${TARGET_REGION}"
 export TF_STATE_KEY="management-cluster/${MANAGEMENT_ID}.tfstate"
 export TF_STATE_REGION="${TARGET_REGION}"
 
+# Static vars (app_code, service_phase, cost_center, management_id) in static.tfvars.json
 export TF_VAR_region="${TARGET_REGION}"
-export TF_VAR_app_code="${APP_CODE}"
-export TF_VAR_service_phase="${SERVICE_PHASE}"
-export TF_VAR_cost_center="${COST_CENTER}"
-export TF_VAR_management_id="${CLUSTER_ID:-mgmt-cluster-01}"
 export TF_VAR_environment="${ENVIRONMENT:-staging}"
 export TF_VAR_regional_aws_account_id="${RESOLVED_REGIONAL_ACCOUNT_ID}"
 
-_REPO_BRANCH="${REPOSITORY_BRANCH:-main}"
 export TF_VAR_repository_url="${REPOSITORY_URL}"
 export TF_VAR_repository_branch="${_REPO_BRANCH}"
 
-if [ -z "${PLATFORM_IMAGE:-}" ]; then
-    echo "ERROR: PLATFORM_IMAGE is not set" >&2
-    exit 1
-fi
 export TF_VAR_container_image="${PLATFORM_IMAGE}"
 
-export TF_VAR_enable_bastion="${ENABLE_BASTION}"
+# enable_bastion moved to static.tfvars.json
 
 if [ -n "${DNS_ZONE_OPERATOR_ROLE_ARN:-}" ]; then
     export TF_VAR_dns_zone_operator_role_arn="${DNS_ZONE_OPERATOR_ROLE_ARN}"
@@ -159,23 +252,53 @@ fi
 export REGION_DEPLOYMENT=$(jq -r '.region' "$DEPLOY_CONFIG_FILE")
 export ENVIRONMENT="${ENVIRONMENT:-staging}"
 
-cd terraform/config/management-cluster
-terraform init -reconfigure \
-    -backend-config="bucket=${TF_STATE_BUCKET}" \
-    -backend-config="key=${TF_STATE_KEY}" \
-    -backend-config="region=${TF_STATE_REGION}" \
-    -backend-config="use_lockfile=true"
+validate_aws_account_id "RESOLVED_REGIONAL_ACCOUNT_ID" "${RESOLVED_REGIONAL_ACCOUNT_ID}"
+require_nonempty_vars "MC Terraform runtime" \
+    TF_VAR_region TF_VAR_environment TF_VAR_regional_aws_account_id \
+    TF_VAR_repository_url TF_VAR_repository_branch TF_VAR_container_image \
+    TF_STATE_BUCKET TF_STATE_KEY
 
-if [ "${TERRAFORM_ACTION}" == "apply" ] && [ -f imports.sh ]; then
-    source imports.sh
+print_provision_param_summary "MC" \
+    "management_id" "static" "${_STATIC_MANAGEMENT_ID}" \
+    "MANAGEMENT_ID" "runtime" "${MANAGEMENT_ID}" \
+    "TARGET_ACCOUNT_ID" "runtime" "${TARGET_ACCOUNT_ID}" \
+    "REGIONAL_AWS_ACCOUNT_ID" "runtime" "${RESOLVED_REGIONAL_ACCOUNT_ID}" \
+    "TARGET_REGION" "runtime" "${TARGET_REGION}" \
+    "REPOSITORY_URL" "runtime" "${REPOSITORY_URL}" \
+    "REPOSITORY_BRANCH" "runtime" "${_REPO_BRANCH}" \
+    "PLATFORM_IMAGE" "runtime" "${PLATFORM_IMAGE}" \
+    "RC_STATE_BUCKET" "RC state" "${_RC_STATE_BUCKET:-<destroy-placeholder>}" \
+    "RC_STATE_KEY" "RC state" "${_RC_STATE_KEY:-<destroy-placeholder>}" \
+    "oidc_cloudfront_domain" "RC state" "${TF_VAR_oidc_cloudfront_domain:-}" \
+    "oidc_bucket_arn" "RC state" "${TF_VAR_oidc_bucket_arn:-}" \
+    "zoa_lambda_ecr_url" "RC state" "${TF_VAR_zoa_lambda_ecr_url:-}" \
+    "zoa_lambda_image_tag" "static" "${_ZOA_LAMBDA_IMAGE_TAG}" \
+    "TF_STATE_BUCKET" "runtime" "${TF_STATE_BUCKET}" \
+    "TF_STATE_KEY" "runtime" "${TF_STATE_KEY}"
+
+# Initialize backend
+tf_init_backend \
+    terraform/config/management-cluster \
+    "${TF_STATE_BUCKET}" \
+    "${TF_STATE_KEY}" \
+    "${TF_STATE_REGION}"
+
+# Apply or destroy
+tf_apply_with_static_vars \
+    terraform/config/management-cluster \
+    "${TERRAFORM_ACTION}" \
+    "${DEPLOY_DIR}/static.tfvars.json"
+
+if [[ "${TERRAFORM_ACTION}" == "apply" ]]; then
+    _MC_REQUIRED_OUTPUTS=(
+        "cluster_name"
+        "cluster_endpoint|^https://"
+        "vpc_id|^vpc-"
+        "oidc_bucket_name"
+        "oidc_cloudfront_domain"
+    )
+    if [[ -n "${_ZOA_LAMBDA_IMAGE_TAG}" ]]; then
+        _MC_REQUIRED_OUTPUTS+=("zoa_api_function_url|^https://")
+    fi
+    tf_validate_outputs terraform/config/management-cluster "MC" "${_MC_REQUIRED_OUTPUTS[@]}" || exit 1
 fi
-
-set +e
-terraform "${TERRAFORM_ACTION}" -auto-approve
-TERRAFORM_STATUS=$?
-set -e
-
-if [ $TERRAFORM_STATUS -ne 0 ]; then
-    exit $TERRAFORM_STATUS
-fi
-

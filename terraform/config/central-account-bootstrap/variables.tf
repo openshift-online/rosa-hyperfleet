@@ -23,6 +23,12 @@ variable "name_prefix" {
   default     = ""
 }
 
+variable "iam_role_prefix" {
+  type        = string
+  description = "Optional prefix for IAM role names. Defaults to name_prefix if not set. Ephemeral envs use eph-{id}, standing envs use empty string for unprefixed roles."
+  default     = null
+}
+
 # =============================================================================
 # AWS Configuration
 # =============================================================================
@@ -49,7 +55,7 @@ variable "environment" {
 
 variable "enable_slack_notifications" {
   type        = bool
-  description = "Enable Slack notifications for pipeline failures. When true, slack_webhook_ssm_param must point to a valid SSM parameter."
+  description = "Enable Slack notifications for CodeBuild failures. When true, slack_webhook_ssm_param must point to a valid SSM parameter."
   default     = false
 }
 
@@ -62,9 +68,3 @@ variable "slack_webhook_ssm_param" {
 # =============================================================================
 # MC Shared Role Configuration
 # =============================================================================
-
-variable "enable_shared_mc_role" {
-  type        = bool
-  description = "Create a shared IAM role for all MC pipelines. When true, creates mc-codebuild-role; when false (default), each MC pipeline creates its own role. Only enable for stage environment."
-  default     = false
-}

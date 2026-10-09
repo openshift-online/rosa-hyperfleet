@@ -35,6 +35,7 @@ usage() {
     echo ""
     echo "Commands:"
     echo "  provision       Provision an ephemeral environment"
+    echo "  provision-resume Resume a failed provisioning run"
     echo "  teardown        Tear down an ephemeral environment"
     echo "  resync          Resync an ephemeral environment to your branch"
     echo "  swap-branch     Swap an ephemeral environment to a different branch"
@@ -90,6 +91,31 @@ append_field() {
         && mv "${ENVS_FILE}.tmp" "$ENVS_FILE"
 }
 
+# Require the outputs needed by the local ephemeral workflow before marking the
+# environment ready. The provider writes zoa-enabled from the rendered static
+# inputs, so ZOA cannot silently be treated as disabled when both URLs are
+# missing. The endpoint-presence fallback keeps older artifacts compatible.
+validate_provision_outputs() {
+    local id="$1" api_url="$2" region="$3" rhobs_api_url="$4"
+    local zoa_rc_api_url="$5" zoa_mc_api_url="$6" zoa_enabled="${7:-false}"
+    local missing=()
+
+    [[ -n "$api_url" ]] || missing+=(API_URL)
+    [[ -n "$region" ]] || missing+=(REGION)
+    [[ -n "$rhobs_api_url" ]] || missing+=(RHOBS_API_URL)
+    if [[ "$zoa_enabled" == "true" || -n "$zoa_rc_api_url" || -n "$zoa_mc_api_url" ]]; then
+        [[ -n "$zoa_rc_api_url" ]] || missing+=(ZOA_RC_API_URL)
+        [[ -n "$zoa_mc_api_url" ]] || missing+=(ZOA_MC_API_URL)
+    fi
+
+    if (( ${#missing[@]} > 0 )); then
+        update_state "$id" "provisioning-failed"
+        echo "Fix the provisioning failure, then retry:"
+        echo "  make ephemeral-provision-resume ID=$id"
+        die "Provisioning completed but required outputs are missing for ID $id: ${missing[*]}"
+    fi
+}
+
 # Update one or more KEY=VALUE fields (update existing or append).
 # Usage: update_fields <id> KEY1=VAL1 [KEY2=VAL2 ...]
 update_fields() {
@@ -105,6 +131,26 @@ update_fields() {
     done
     rm -f "${ENVS_FILE}.tmp.bak"
     mv "${ENVS_FILE}.tmp" "$ENVS_FILE"
+}
+
+# Persist a successful provision as one metadata update. STATE=ready is only
+# written together with the outputs that were validated by the provider.
+record_ready_environment() {
+    local id="$1" region="$2" api_url="$3" rhobs_api_url="$4"
+    local zoa_rc_api_url="$5" zoa_mc_api_url="$6" eph_branch="$7"
+    local fields=("STATE=ready")
+
+    [[ -z "$region" ]] || fields+=("REGION=$region")
+    [[ -z "$api_url" ]] || fields+=("API_URL=$api_url")
+    [[ -z "$rhobs_api_url" ]] || fields+=("RHOBS_API_URL=$rhobs_api_url")
+    [[ -z "$zoa_rc_api_url" ]] || fields+=("ZOA_RC_API_URL=$zoa_rc_api_url")
+    [[ -z "$zoa_mc_api_url" ]] || fields+=("ZOA_MC_API_URL=$zoa_mc_api_url")
+    fields+=("EPH_BRANCH=$eph_branch")
+
+    if ! update_fields "$id" "${fields[@]}"; then
+        update_state "$id" "provisioning-failed" || true
+        die "Unable to persist successful provisioning metadata for ID $id"
+    fi
 }
 
 # Derive the ephemeral branch name from an env ID and branch name.
@@ -194,11 +240,11 @@ setup_override_mount() {
 # Fetch GitHub token from Secrets Manager (unless already set).
 # Requires rrp-ephemeral-central profile to be available.
 fetch_github_token() {
-    if [[ -z "${GITHUB_TOKEN:-}" ]]; then
+    if [[ -z "${HYPERFLEET_CI_GITHUB_TOKEN:-}" ]]; then
         echo "Fetching GitHub token from SSM Parameter Store..."
         local ssm_err
         ssm_err=$(mktemp)
-        GITHUB_TOKEN=$(aws ssm get-parameter \
+        HYPERFLEET_CI_GITHUB_TOKEN=$(aws ssm get-parameter \
             --name "$GITHUB_TOKEN_SECRET" \
             --with-decryption \
             --profile rrp-ephemeral-central \
@@ -207,7 +253,7 @@ fetch_github_token() {
 $(cat "$ssm_err")"
         rm -f "$ssm_err"
     fi
-    export GITHUB_TOKEN
+    export HYPERFLEET_CI_GITHUB_TOKEN
 }
 
 # Create temporary AWS config with ephemeral profiles.
@@ -355,6 +401,7 @@ preflight() {
 # =============================================================================
 
 cmd_provision() {
+    local command_start=$SECONDS
     local repo="${REPO:-openshift-online/rosa-hyperfleet}"
     local branch="${BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"
 
@@ -408,7 +455,7 @@ cmd_provision() {
     # shellcheck disable=SC2086
     $CONTAINER_ENGINE run --rm \
         $_CONTAINER_AWS_FLAGS \
-        -e "GITHUB_TOKEN=$GITHUB_TOKEN" \
+        -e "HYPERFLEET_CI_GITHUB_TOKEN=$HYPERFLEET_CI_GITHUB_TOKEN" \
         $OVERRIDE_MOUNT \
         -v "${REPO_ROOT}:/workspace:ro,z" \
         -v "${tmpdir}:/output:z" \
@@ -423,6 +470,9 @@ cmd_provision() {
             --save-regional-state /output/tf-outputs.json \
             --save-management-state /output/tf-outputs-mc.json \
     || rc=$?
+
+    local command_elapsed=$((SECONDS - command_start))
+    echo "Total provisioning command duration: $((command_elapsed / 60))m $((command_elapsed % 60))s"
 
     # Record results
     if [[ $rc -eq 0 ]]; then
@@ -446,16 +496,18 @@ cmd_provision() {
         if [[ -f "$tmpdir/tf-outputs-mc.json" ]]; then
             zoa_mc_api_url=$(jq -r '.zoa_api_function_url.value // empty' "$tmpdir/tf-outputs-mc.json" 2>/dev/null || true)
         fi
+        local zoa_enabled="false"
+        [[ -f "$tmpdir/zoa-enabled" ]] && zoa_enabled=$(<"$tmpdir/zoa-enabled")
 
-        update_state "$ID" "ready"
-        [[ -z "$region" ]]  || append_field "$ID" "REGION" "$region"
-        [[ -z "$api_url" ]] || append_field "$ID" "API_URL" "$api_url"
-        [[ -z "$rhobs_api_url" ]] || append_field "$ID" "RHOBS_API_URL" "$rhobs_api_url"
-        [[ -z "$zoa_rc_api_url" ]] || append_field "$ID" "ZOA_RC_API_URL" "$zoa_rc_api_url"
-        [[ -z "$zoa_mc_api_url" ]] || append_field "$ID" "ZOA_MC_API_URL" "$zoa_mc_api_url"
+        validate_provision_outputs \
+            "$ID" "$api_url" "$region" "$rhobs_api_url" \
+            "$zoa_rc_api_url" "$zoa_mc_api_url" "$zoa_enabled"
 
         # Store ephemeral branch name so it survives branch swaps
-        append_field "$ID" "EPH_BRANCH" "$(derive_eph_branch "$ID" "$branch")"
+        record_ready_environment \
+            "$ID" "$region" "$api_url" "$rhobs_api_url" \
+            "$zoa_rc_api_url" "$zoa_mc_api_url" \
+            "$(derive_eph_branch "$ID" "$branch")"
 
         echo ""
         echo "Environment recorded in $ENVS_FILE."
@@ -475,6 +527,131 @@ cmd_provision() {
         update_state "$ID" "provisioning-failed"
         echo "Provisioning failed. State updated to provisioning-failed."
         echo "CodeBuild logs (if captured): $artifacts_dir"
+        echo "Fix the failure, then retry:"
+        echo "  make ephemeral-provision-resume ID=$ID"
+        exit $rc
+    fi
+}
+
+cmd_provision_resume() {
+    local command_start=$SECONDS
+    select_env "STATE=provisioning-failed" \
+        "Select failed environment to resume:" \
+        "No failed provisioning environments found."
+
+    local repo branch eph_branch
+    repo=$(get_field "$ENV_LINE" REPO)
+    branch=$(get_field "$ENV_LINE" BRANCH)
+    eph_branch=$(get_field "$ENV_LINE" EPH_BRANCH)
+    local state
+    state=$(get_field "$ENV_LINE" STATE)
+
+    [[ "$state" == "provisioning-failed" ]] \
+        || die "Environment $BUILD_ID is in state '$state'; only provisioning-failed environments can be resumed."
+    [[ -n "$repo" ]] || die "Environment $BUILD_ID has no REPO field."
+    [[ -n "$branch" ]] || die "Environment $BUILD_ID has no BRANCH field."
+    [[ -n "$eph_branch" ]] || eph_branch=$(derive_eph_branch "$BUILD_ID" "$branch")
+
+    setup_override_mount
+    setup_aws_config
+    fetch_github_token
+    write_eph_container_config
+
+    echo "Resuming ephemeral environment provisioning..."
+    echo "  ID:                $BUILD_ID"
+    echo "  REPO:              $repo"
+    echo "  BRANCH:            $branch"
+    echo "  EPH_BRANCH:        $eph_branch"
+    echo "  CONTAINER_ENGINE:  $CONTAINER_ENGINE"
+    echo "  IMAGE:             $CI_IMAGE"
+
+    local tmpdir artifacts_dir
+    tmpdir=$(mktemp -d)
+    artifacts_dir="${ARTIFACTS_DIR:-${ARTIFACT_DIR:-${REPO_ROOT}/.ephemeral-artifacts/${BUILD_ID}}}"
+    mkdir -p "$artifacts_dir"
+    _prev_trap=$(trap -p EXIT | sed "s/^trap -- '//;s/' EXIT$//")
+    trap 'rm -rf "${tmpdir:-}"; eval "$_prev_trap"' EXIT
+
+    echo "  ARTIFACTS_DIR:     $artifacts_dir"
+
+    local rc=0
+    local resync_arg=()
+    case "${RESYNC:-true}" in
+        true|1|yes|TRUE|YES)
+            resync_arg=(--resync-before-resume)
+            ;;
+        false|0|no|FALSE|NO)
+            ;;
+        *)
+            die "RESYNC must be true or false (got: ${RESYNC})"
+            ;;
+    esac
+
+    update_state "$BUILD_ID" "provisioning"
+
+    # shellcheck disable=SC2086
+    $CONTAINER_ENGINE run --rm \
+        $_CONTAINER_AWS_FLAGS \
+        -e "HYPERFLEET_CI_GITHUB_TOKEN=$HYPERFLEET_CI_GITHUB_TOKEN" \
+        $OVERRIDE_MOUNT \
+        -v "${REPO_ROOT}:/workspace:ro,z" \
+        -v "${tmpdir}:/output:z" \
+        -v "${artifacts_dir}:/artifacts:z" \
+        -w /workspace \
+        -e WORKSPACE_DIR=/workspace \
+        -e ARTIFACT_DIR=/artifacts \
+        "$CI_IMAGE" \
+        uv run --no-cache ci/ephemeral-provider/main.py \
+            --resume \
+            "${resync_arg[@]}" \
+            --id "$BUILD_ID" \
+            --repo "$repo" --branch "$branch" \
+            --eph-branch "$eph_branch" \
+            --save-regional-state /output/tf-outputs.json \
+            --save-management-state /output/tf-outputs-mc.json \
+    || rc=$?
+
+    local command_elapsed=$((SECONDS - command_start))
+    echo "Total provisioning-resume command duration: $((command_elapsed / 60))m $((command_elapsed % 60))s"
+
+    if [[ $rc -eq 0 ]]; then
+        local api_url="" region=""
+        if [[ -f "$tmpdir/tf-outputs.json" ]] && command -v jq >/dev/null 2>&1; then
+            api_url=$(jq -r '.api_gateway_invoke_url.value // empty' "$tmpdir/tf-outputs.json" 2>/dev/null || true)
+        fi
+        if [[ -f "$tmpdir/region" ]]; then
+            region=$(cat "$tmpdir/region")
+        fi
+
+        local rhobs_api_url=""
+        if [[ -f "$tmpdir/tf-outputs.json" ]]; then
+            rhobs_api_url=$(jq -r '.rhobs_api_url.value // empty' "$tmpdir/tf-outputs.json" 2>/dev/null || true)
+        fi
+
+        local zoa_rc_api_url="" zoa_mc_api_url=""
+        if [[ -f "$tmpdir/tf-outputs.json" ]]; then
+            zoa_rc_api_url=$(jq -r '.zoa_api_function_url.value // empty' "$tmpdir/tf-outputs.json" 2>/dev/null || true)
+        fi
+        if [[ -f "$tmpdir/tf-outputs-mc.json" ]]; then
+            zoa_mc_api_url=$(jq -r '.zoa_api_function_url.value // empty' "$tmpdir/tf-outputs-mc.json" 2>/dev/null || true)
+        fi
+        local zoa_enabled="false"
+        [[ -f "$tmpdir/zoa-enabled" ]] && zoa_enabled=$(<"$tmpdir/zoa-enabled")
+
+        validate_provision_outputs \
+            "$BUILD_ID" "$api_url" "$region" "$rhobs_api_url" \
+            "$zoa_rc_api_url" "$zoa_mc_api_url" "$zoa_enabled"
+
+        record_ready_environment \
+            "$BUILD_ID" "$region" "$api_url" "$rhobs_api_url" \
+            "$zoa_rc_api_url" "$zoa_mc_api_url" "$eph_branch"
+        echo "Environment $BUILD_ID provisioning resumed successfully."
+    else
+        update_state "$BUILD_ID" "provisioning-failed"
+        echo "Resume failed. State updated to provisioning-failed."
+        echo "CodeBuild logs (if captured): $artifacts_dir"
+        echo "Fix the failure, then retry:"
+        echo "  make ephemeral-provision-resume ID=$BUILD_ID"
         exit $rc
     fi
 }
@@ -522,7 +699,7 @@ cmd_teardown() {
     # shellcheck disable=SC2086
     $CONTAINER_ENGINE run --rm \
         $_CONTAINER_AWS_FLAGS \
-        -e "GITHUB_TOKEN=$GITHUB_TOKEN" \
+        -e "HYPERFLEET_CI_GITHUB_TOKEN=$HYPERFLEET_CI_GITHUB_TOKEN" \
         -v "${REPO_ROOT}:/workspace:ro,z" \
         -v "${artifacts_dir}:/artifacts:z" \
         -w /workspace \
@@ -587,7 +764,7 @@ cmd_resync() {
     # shellcheck disable=SC2086
     $CONTAINER_ENGINE run --rm \
         $_CONTAINER_AWS_FLAGS \
-        -e "GITHUB_TOKEN=$GITHUB_TOKEN" \
+        -e "HYPERFLEET_CI_GITHUB_TOKEN=$HYPERFLEET_CI_GITHUB_TOKEN" \
         $OVERRIDE_MOUNT \
         -v "${REPO_ROOT}:/workspace:ro,z" \
         -v "${artifacts_dir}:/artifacts:z" \
@@ -1112,17 +1289,11 @@ cmd_e2e() {
         "Select environment for e2e tests:" \
         "No ready environments found."
 
-    local api_url region zoa_rc_api_url zoa_mc_api_url
+    local api_url region
     api_url=$(get_field "$ENV_LINE" API_URL)
     region=$(get_field "$ENV_LINE" REGION)
-    zoa_rc_api_url=$(get_field "$ENV_LINE" ZOA_RC_API_URL)
-    zoa_mc_api_url=$(get_field "$ENV_LINE" ZOA_MC_API_URL)
     [[ -n "$api_url" ]] \
         || die "No API_URL found for ID $BUILD_ID. Was it captured during provision?"
-    [[ -n "$zoa_rc_api_url" ]] \
-        || die "No ZOA_RC_API_URL found for ID $BUILD_ID. Was it captured during provision?"
-    [[ -n "$zoa_mc_api_url" ]] \
-        || die "No ZOA_MC_API_URL found for ID $BUILD_ID. Was it captured during provision?"
 
     # Fetch credentials and write container config
     setup_aws_config
@@ -1138,8 +1309,6 @@ cmd_e2e() {
     echo "  ID:             $BUILD_ID"
     echo "  API_URL:        $api_url"
     echo "  RHOBS_API_URL:  $rhobs_api_url"
-    echo "  ZOA_RC_API_URL: $zoa_rc_api_url"
-    echo "  ZOA_MC_API_URL: $zoa_mc_api_url"
     echo "  REGION:         $region"
     echo "  E2E_REF:        $e2e_ref"
     echo "  E2E_REPO:       $e2e_repo"
@@ -1152,8 +1321,6 @@ cmd_e2e() {
         -e "BUILD_ID=$BUILD_ID" \
         -e "BASE_URL=$api_url" \
         -e "RHOBS_API_URL=$rhobs_api_url" \
-        -e "ZOA_RC_API_URL=$zoa_rc_api_url" \
-        -e "ZOA_MC_API_URL=$zoa_mc_api_url" \
         -e "AWS_DEFAULT_REGION=$region" \
         -e "AWS_REGION=$region" \
         -e "E2E_REF=$e2e_ref" \
@@ -1169,7 +1336,6 @@ cmd_e2e() {
         -e "E2E_SKIP_HCP=${E2E_SKIP_HCP:-}" \
         -e "E2E_SKIP_MONITORING=${E2E_SKIP_MONITORING:-}" \
         -e "E2E_SKIP_ROSA_CLI=${E2E_SKIP_ROSA_CLI:-}" \
-        -e "E2E_SKIP_ZOA=${E2E_SKIP_ZOA:-}" \
         "$CI_IMAGE" \
         bash ci/e2e-tests.sh
 }
@@ -1187,17 +1353,14 @@ cmd_zoa_e2e() {
         "Select environment for ZOA e2e tests:" \
         "No ready environments found."
 
-    local zoa_rc_api_url zoa_mc_api_url region rhobs_api_url
+    local zoa_rc_api_url zoa_mc_api_url region
     zoa_rc_api_url=$(get_field "$ENV_LINE" ZOA_RC_API_URL)
     zoa_mc_api_url=$(get_field "$ENV_LINE" ZOA_MC_API_URL)
     region=$(get_field "$ENV_LINE" REGION)
-    rhobs_api_url=$(get_field "$ENV_LINE" RHOBS_API_URL)
     [[ -n "$zoa_rc_api_url" ]] \
         || die "No ZOA_RC_API_URL found for ID $BUILD_ID. Was it captured during provision?"
     [[ -n "$zoa_mc_api_url" ]] \
         || die "No ZOA_MC_API_URL found for ID $BUILD_ID. Was it captured during provision?"
-    [[ -n "$rhobs_api_url" ]] \
-        || die "No RHOBS_API_URL found for ID $BUILD_ID. Was it captured during provision?"
 
     setup_aws_config
     write_eph_container_config
@@ -1206,7 +1369,6 @@ cmd_zoa_e2e() {
     echo "  ID:             $BUILD_ID"
     echo "  ZOA_RC_API_URL: $zoa_rc_api_url"
     echo "  ZOA_MC_API_URL: $zoa_mc_api_url"
-    echo "  RHOBS_API_URL:  $rhobs_api_url"
     echo "  REGION:         $region"
     echo "  ZOA_REF:        $zoa_ref"
     echo "  ZOA_REPO:       $zoa_repo"
@@ -1215,7 +1377,6 @@ cmd_zoa_e2e() {
         $_CONTAINER_AWS_FLAGS \
         -e "ZOA_RC_API_URL=$zoa_rc_api_url" \
         -e "ZOA_MC_API_URL=$zoa_mc_api_url" \
-        -e "RHOBS_API_URL=$rhobs_api_url" \
         -e "AWS_DEFAULT_REGION=$region" \
         -e "AWS_REGION=$region" \
         -e "ZOA_MAKE_TARGET=${ZOA_MAKE_TARGET:-test-e2e}" \
@@ -1351,7 +1512,7 @@ case "${1:-help}" in
         ensure_image
         ;;
     *)
-        # provision, teardown, resync
+        # provision, provision-resume, teardown, resync
         preflight
         ensure_image
         ;;
@@ -1359,6 +1520,7 @@ esac
 
 case "${1:-help}" in
     provision)      cmd_provision ;;
+    provision-resume) cmd_provision_resume ;;
     teardown)       cmd_teardown ;;
     resync)         cmd_resync ;;
     swap-branch)    cmd_swap_branch ;;

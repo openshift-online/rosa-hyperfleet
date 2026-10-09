@@ -61,6 +61,20 @@ The region is derived from the environment config (see [Customizing Your Environ
 
 To view and interact with provisioned environments at a later point in time, see [List Environments](#list-environments).
 
+## Resume Failed Provisioning
+
+If provisioning fails after the ephemeral branch has been created, resync and resume the same environment without creating another branch or environment state record:
+
+```bash
+make ephemeral-provision-resume ID=6bd2d3d7
+```
+
+By default, resume first resets the ephemeral branch to the latest source branch, reapplies `.ephemeral-env/` overrides, renders, and force-pushes the result. It then reuses existing Terraform state, CodePipelines, and CodeBuild resources and retries the infrastructure executions. Use `RESYNC=false` to resume from the existing remote branch without changing it:
+
+make ephemeral-provision-resume ID=6bd2d3d7 RESYNC=false
+
+Automatic resync stops before the force-push if the environment has active CodePipeline executions or a platform-image CodeBuild build, preventing concurrent infrastructure changes. Wait for those executions to finish and retry, or use `RESYNC=false` if the existing branch should be retained.
+
 ## Customizing Your Environment
 
 By default, ephemeral environments use the preset in `config/ephemeral/` (bastion enabled, single MC in `us-east-1`). You can replace this config entirely for your local development by creating a `.ephemeral-env/` directory in the repo root.
@@ -80,7 +94,7 @@ This directory is gitignored — it only affects your local machine.
 ### Constraints
 
 - Exactly **one region file** (besides `defaults.yaml`) must exist — the ephemeral provisioner deploys to a single region.
-- The region file must define **`provision_mcs`** with at most **one management cluster** (only one MC account is available in the shared dev setup).
+- The region file must define **`provision_mcs`**. The default ephemeral topology contains one management cluster (`mc01`), while additional entries can be rendered when the corresponding account and runtime support are available.
 - AWS account IDs are injected automatically from credentials — do not set `aws.account_id` or `aws.management_cluster_account_id`.
 
 ### Examples
@@ -303,7 +317,7 @@ This skips both the cleanup-labeled ginkgo specs and the `DeferCleanup` safety n
 
 ZOA e2e tests live in [`rosa-hyperfleet-zoa`](https://github.com/openshift-online/rosa-hyperfleet-zoa); this repo clones and runs them — it does not duplicate test logic.
 
-- **`make ephemeral-e2e`** — runs platform e2e plus ZOA **smoke** (`ci/e2e-tests.sh` clones `rosa-hyperfleet-zoa@main` and runs `test-e2e-smoke` when RC/MC Lambda URLs are available).
+- **`make ephemeral-e2e`** — runs the platform API, HCP, ROSA CLI, and monitoring e2e tests. It does not require or run ZOA tests.
 - **`make ephemeral-zoa-e2e`** / **`make ephemeral-zoa-e2e-smoke`** — ZOA **full** or **smoke** only; same clone-by-ref pattern as API e2e (`ZOA_REF` / `ZOA_REPO`).
 
 ```bash

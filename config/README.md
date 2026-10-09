@@ -64,29 +64,29 @@ Running `scripts/render.py` generates:
   - Consumer: External processes
   - Region map with management cluster IDs per region.
 
-- **`deploy/<env>/<region>/pipeline-provisioner-inputs/terraform.json`**
-  - Consumer: `provision-pipelines.sh` (pipeline-provisioner pipeline)
-  - Trigger: Pipeline provisioner
+- **`deploy/<env>/<region>/codebuild-provisioner-inputs/terraform.json`**
+  - Consumer: `provision-cluster-resources.sh`
+  - Trigger: Central bootstrap or an explicit provisioner run
   - Contains: `domain`
 
-- **`deploy/<env>/<region>/pipeline-provisioner-inputs/regional-cluster.json`**
-  - Consumer: `provision-pipelines.sh` (pipeline-provisioner pipeline)
-  - Trigger: Pipeline provisioner
-  - Contains: `region`, `account_id`, `regional_id`, `delete_pipeline`
+- **`deploy/<env>/<region>/codebuild-provisioner-inputs/regional-cluster.json`**
+  - Consumer: `provision-cluster-resources.sh`
+  - Trigger: Central bootstrap or an explicit provisioner run
+  - Contains: `region`, `account_id`, `regional_id`, `delete_codebuild`
 
-- **`deploy/<env>/<region>/pipeline-provisioner-inputs/management-cluster-<mc>.json`**
-  - Consumer: `provision-pipelines.sh` (pipeline-provisioner pipeline)
-  - Trigger: Pipeline provisioner
-  - Contains: `region`, `account_id`, `management_id`, `delete_pipeline`
+- **`deploy/<env>/<region>/codebuild-provisioner-inputs/management-cluster-<mc>.json`**
+  - Consumer: `provision-cluster-resources.sh`
+  - Trigger: Central bootstrap or an explicit provisioner run
+  - Contains: `region`, `account_id`, `management_id`, `delete_codebuild`
 
-- **`deploy/<env>/<region>/pipeline-regional-cluster-inputs/terraform.json`**
-  - Consumer: RC pipeline stages (`provision-infra-rc.sh`, `bootstrap-argocd-rc.sh`, `register.sh`)
-  - Trigger: Regional cluster pipeline
+- **`deploy/<env>/<region>/codebuild-regional-cluster-inputs/terraform.json`**
+  - Consumer: RC CodePipeline's CodeBuild action (`provision-infra-rc.sh`, `bootstrap-argocd-rc.sh`)
+  - Trigger: Regional CodePipeline source filter
   - Contains: Terraform variables + `delete` flag
 
-- **`deploy/<env>/<region>/pipeline-management-cluster-<mc>-inputs/terraform.json`**
-  - Consumer: MC pipeline stages (`provision-infra-mc.sh`, `bootstrap-argocd-mc.sh`, `iot-mint.sh`, `register.sh`)
-  - Trigger: Management cluster pipeline
+- **`deploy/<env>/<region>/codebuild-management-cluster-<mc>-inputs/terraform.json`**
+  - Consumer: MC CodePipeline's CodeBuild action (`provision-infra-mc.sh`, `bootstrap-argocd-mc.sh`, `register.sh`)
+  - Trigger: Management CodePipeline source filter
   - Contains: Terraform variables + `delete` flag
 
 - **`deploy/<env>/<region>/argocd-values-<cluster-type>.yaml`**

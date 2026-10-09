@@ -62,15 +62,15 @@ These tools are available in all CI job containers and can be used in scripts ru
 
 ## Ephemeral Environment
 
-The [ci/ephemeral-provider/main.py](ci/ephemeral-provider/main.py) script manages ephemeral environments for CI testing. It supports three modes — provision, teardown (`--teardown`), and resync (`--resync`) — designed to run as separate CI steps with tests in between.
+The [ci/ephemeral-provider/main.py](ci/ephemeral-provider/main.py) script manages ephemeral environments for CI testing. It supports provision, resume (`--resume`), teardown (`--teardown`), and resync (`--resync`) modes, designed to run as separate CI steps with tests in between.
 
 1. Creates a CI-owned git branch from the source repo/branch
-2. Bootstraps the pipeline-provisioner pointing at the CI branch
-3. Pushes rendered deploy files to trigger pipelines via GitOps
+2. Bootstraps the central shared resources and per-cluster CodePipelines pointing at the CI branch
+3. Pushes rendered deploy files; matching RC/MC CodePipeline filters trigger through the CodeStar connection
 4. Waits for RC/MC pipelines to provision infrastructure
 5. (Separate CI step) Runs the testing suite against the provisioned environment
 6. Tears down infrastructure via GitOps (`delete: true` in config.yaml)
-7. Destroys the pipeline-provisioner
+7. Destroys the per-cluster CodePipelines, CodeBuild projects, and shared bootstrap resources
 8. CI branch is retained for post-run troubleshooting (delete manually via `git push ci --delete <branch>`)
 
 ### Running locally

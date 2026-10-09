@@ -8,9 +8,9 @@ For local development usage via Make targets, see [Provisioning a Development En
 
 The `--creds-dir` directory (default: `/var/run/rosa-credentials/`) must contain:
 
-| File           | Purpose                              | Fallback               |
-| -------------- | ------------------------------------ | ---------------------- |
-| `github_token` | GitHub token for pushing CI branches | `GITHUB_TOKEN` env var |
+| File           | Purpose                              | Fallback                             |
+| -------------- | ------------------------------------ | ------------------------------------ |
+| `github_token` | GitHub token for pushing CI branches | `HYPERFLEET_CI_GITHUB_TOKEN` env var |
 
 The provider also expects AWS CLI profiles `rrp-central`, `rrp-rc`, and `rrp-mc` to be available via `AWS_CONFIG_FILE`. See the [AWS Profiles](../README.md#aws-profiles) section in the CI README for details.
 
@@ -27,6 +27,12 @@ The provider also expects AWS CLI profiles `rrp-central`, `rrp-rc`, and `rrp-mc`
 
 # Teardown (same --id)
 ./ci/ephemeral-provider/main.py --teardown --id abc123 --repo owner/repo --branch my-feature --creds-dir /path/to/credentials
+
+# Resync and resume a failed provisioning run using the existing ephemeral branch
+./ci/ephemeral-provider/main.py --resume --resync-before-resume --id abc123 --repo owner/repo --branch my-feature --eph-branch eph-abc123-my-feature-ci --creds-dir /path/to/credentials
+
+# Resume without resyncing the existing ephemeral branch
+./ci/ephemeral-provider/main.py --resume --id abc123 --repo owner/repo --branch my-feature --eph-branch eph-abc123-my-feature-ci --creds-dir /path/to/credentials
 
 # Resync (rebase ephemeral branch onto latest source branch, same --id)
 ./ci/ephemeral-provider/main.py --resync --id abc123 --repo owner/repo --branch my-feature --creds-dir /path/to/credentials
@@ -66,10 +72,10 @@ Can be specified multiple times. Format is `<target-path>:<override-file>` where
 
 | Module              | Description                                                                  |
 | ------------------- | ---------------------------------------------------------------------------- |
-| `main.py`           | CLI entrypoint — parses args, runs provision, teardown, or resync            |
-| `orchestrator.py`   | Top-level orchestration logic for provision and teardown workflows           |
+| `main.py`           | CLI entrypoint — parses args, runs provision, resume, teardown, or resync    |
+| `orchestrator.py`   | Top-level orchestration logic for provision, resume, and teardown workflows  |
 | `aws.py`            | AWS credential management and session helpers                                |
 | `git.py`            | Git operations for ephemeral branch creation, rendering, and resync (rebase) |
-| `pipeline.py`       | CodeBuild pipeline monitoring (discovery, polling, status)                   |
+| `codepipeline.py`   | CodePipeline execution monitoring and underlying CodeBuild status validation |
 | `codebuild_logs.py` | CloudWatch log fetching and formatting for CodeBuild projects                |
 | `yaml_utils.py`     | YAML deep-merge utilities for applying provision overrides                   |

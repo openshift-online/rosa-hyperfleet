@@ -287,13 +287,13 @@ def cleanup_stale_files(
 
             valid_mcs = env_region_mcs.get(env_dir.name, {}).get(region_dir.name, set())
             for item in region_dir.iterdir():
-                if item.is_dir() and item.name.startswith("pipeline-management-cluster-"):
-                    mc_name = item.name.removeprefix("pipeline-management-cluster-").removesuffix("-inputs")
+                if item.is_dir() and item.name.startswith("codebuild-management-cluster-"):
+                    mc_name = item.name.removeprefix("codebuild-management-cluster-").removesuffix("-inputs")
                     if mc_name not in valid_mcs:
                         print(f"  [CLEANUP] Removing stale MC dir: {item}")
                         shutil.rmtree(item)
 
-            prov_dir = region_dir / "pipeline-provisioner-inputs"
+            prov_dir = region_dir / "codebuild-provisioner-inputs"
             if prov_dir.exists():
                 for mc_file in prov_dir.glob("management-cluster-*.json"):
                     mc_name = mc_file.stem.removeprefix("management-cluster-")
@@ -303,6 +303,57 @@ def cleanup_stale_files(
 
 
 # -- Context building ---------------------------------------------------------
+
+
+def _format_cluster_id(pattern: str, prefix: str, mc_key: str = "") -> str:
+    """Format a cluster ID without leading separators for shared environments."""
+    cluster_id = pattern.format(prefix=prefix, mc_key=mc_key).strip("-")
+    if not cluster_id:
+        raise ValueError(f"cluster naming pattern produced an empty ID: {pattern!r}")
+    return cluster_id
+
+
+def validate_cluster_topology(
+    merged: dict[str, Any], ctx: dict[str, Any], mc_list: list[dict],
+    env_name: str, region: str,
+) -> None:
+    """Validate rendered RC/MC identities and their required account hand-off."""
+    provision_mcs = merged.get("provision_mcs", {})
+    if not isinstance(provision_mcs, dict):
+        raise ValueError(
+            f"{env_name}/{region}: provision_mcs must be a mapping of MC keys to config"
+        )
+
+    errors = []
+    regional_id = str(ctx.get("regional_id", ""))
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", regional_id):
+        errors.append(f"regional_id={regional_id!r} is not a lowercase cluster ID")
+
+    seen_ids = {regional_id: "RC"}
+    for mc_key, mc in zip(provision_mcs, mc_list):
+        management_id = str(mc.get("management_id", ""))
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", management_id):
+            errors.append(
+                f"MC {mc_key!r} management_id={management_id!r} is not a lowercase cluster ID"
+            )
+        elif management_id in seen_ids:
+            errors.append(
+                f"cluster ID {management_id!r} is used by both "
+                f"{seen_ids[management_id]} and MC {mc_key!r}"
+            )
+        else:
+            seen_ids[management_id] = f"MC {mc_key}"
+
+        if mc.get("account_id") in (None, ""):
+            errors.append(
+                f"MC {mc_key!r} has no account_id and no "
+                "aws.management_cluster_account_id default"
+            )
+
+    if errors:
+        raise ValueError(
+            f"Invalid RC/MC topology for {env_name}/{region}: " + "; ".join(errors)
+        )
 
 
 def build_context(
@@ -336,6 +387,11 @@ def build_context(
     ctx["management_cluster_defaults"] = resolve_templates(ctx.get("management_cluster_defaults", {}), ctx)
     ctx["dns"] = resolve_templates(ctx.get("dns", {}), ctx)
 
+    # Compute regional_id using configurable naming pattern
+    codebuild_naming = ctx.get("codebuild_naming", {})
+    rc_pattern = codebuild_naming.get("rc_pattern", "{prefix}-regional")
+    ctx["regional_id"] = _format_cluster_id(rc_pattern, eph_prefix)
+
     if ctx["regional_cluster"].get("enable_write_sre_tools") and env_name != "ephemeral":
         raise ValueError(
             f"regional_cluster.enable_write_sre_tools can only be true for ephemeral "
@@ -353,9 +409,19 @@ def build_mc_list(
     default_mc_account = merged.get("aws", {}).get("management_cluster_account_id")
     mc_list = []
 
+    # Get MC naming pattern from config
+    codebuild_naming = merged.get("codebuild_naming", {})
+    mc_pattern = codebuild_naming.get("mc_pattern", "{prefix}-{mc_key}")
+
+    if not isinstance(mc_dict, dict):
+        raise ValueError("provision_mcs must be a mapping of MC keys to config")
+
     for mc_key, mc_val in mc_dict.items():
+        if mc_val is not None and not isinstance(mc_val, dict):
+            raise ValueError(f"MC {mc_key!r} must use a mapping value or {{}}")
         mc = dict(mc_val) if mc_val else {}
-        mc["management_id"] = f"{eph_prefix}-{mc_key}" if eph_prefix else mc_key
+        # Compute management_id using configurable naming pattern
+        mc["management_id"] = _format_cluster_id(mc_pattern, eph_prefix, mc_key)
         if "account_id" not in mc and default_mc_account:
             mc["account_id"] = default_mc_account
         mc = resolve_templates(mc, {**ctx, "cluster_prefix": mc_key})
@@ -375,7 +441,7 @@ CONTEXT_VARS = {
     "account_id", "child_admin_role_name", "management_clusters",
     "cluster_type",
     "application_values", "region_configs", "eph_prefix",
-    "delete", "delete_pipeline", "mc_key", "region",
+    "delete", "delete_pipeline", "delete_codebuild", "mc_key", "region",
     "pinned", "mc_account_ids", "ci",
 }
 
@@ -729,15 +795,17 @@ def main() -> int:
             merged = region_configs[region]
             ctx = build_context(merged, env_name, region, eph_prefix)
             mc_list = build_mc_list(ctx, merged, eph_prefix)
+            validate_cluster_topology(merged, ctx, mc_list, env_name, region)
             ctx["management_clusters"] = mc_list
             env_region_mcs[env_name][region] = {mc["management_id"] for mc in mc_list}
 
             out_dir = deploy_dir / env_name / region
 
             # 1:1 templates
-            render_file(templates_dir, "pipeline-provisioner-inputs/terraform.json", ctx, out_dir / "pipeline-provisioner-inputs" / "terraform.json")
-            render_file(templates_dir, "pipeline-provisioner-inputs/regional-cluster.json", ctx, out_dir / "pipeline-provisioner-inputs" / "regional-cluster.json")
-            render_file(templates_dir, "pipeline-regional-cluster-inputs/terraform.json", ctx, out_dir / "pipeline-regional-cluster-inputs" / "terraform.json")
+            render_file(templates_dir, "codebuild-provisioner-inputs/terraform.json", ctx, out_dir / "codebuild-provisioner-inputs" / "terraform.json")
+            render_file(templates_dir, "codebuild-provisioner-inputs/regional-cluster.json", ctx, out_dir / "codebuild-provisioner-inputs" / "regional-cluster.json")
+            render_file(templates_dir, "codebuild-regional-cluster-inputs/terraform.json", ctx, out_dir / "codebuild-regional-cluster-inputs" / "terraform.json")
+            render_file(templates_dir, "codebuild-regional-cluster-inputs/static.tfvars.json", ctx, out_dir / "codebuild-regional-cluster-inputs" / "static.tfvars.json")
 
             # Per-cluster-type: ArgoCD values + bootstrap
             app_config = resolve_templates(ctx.get("applications", {}), ctx)
@@ -751,8 +819,9 @@ def main() -> int:
             for mc in mc_list:
                 mc_ctx = {**ctx, "mc": mc}
                 mc_id = mc["management_id"]
-                render_file(templates_dir, "pipeline-provisioner-inputs/management-cluster.json", mc_ctx, out_dir / "pipeline-provisioner-inputs" / f"management-cluster-{mc_id}.json")
-                render_file(templates_dir, "pipeline-management-cluster-inputs/terraform.json", mc_ctx, out_dir / f"pipeline-management-cluster-{mc_id}-inputs" / "terraform.json")
+                render_file(templates_dir, "codebuild-provisioner-inputs/management-cluster.json", mc_ctx, out_dir / "codebuild-provisioner-inputs" / f"management-cluster-{mc_id}.json")
+                render_file(templates_dir, "codebuild-management-cluster-inputs/terraform.json", mc_ctx, out_dir / f"codebuild-management-cluster-{mc_id}-inputs" / "terraform.json")
+                render_file(templates_dir, "codebuild-management-cluster-inputs/static.tfvars.json", mc_ctx, out_dir / f"codebuild-management-cluster-{mc_id}-inputs" / "static.tfvars.json")
 
         print()
 
