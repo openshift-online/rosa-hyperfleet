@@ -10,7 +10,7 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 locals {
-  # When name_prefix is set (e.g., "abc123"), names become "abc123-provisioner-artifacts", etc.
+  # When name_prefix is set (e.g., "abc123"), platform-image resources use that prefix.
   name_prefix = var.name_prefix != "" ? "${var.name_prefix}-" : ""
 }
 
@@ -56,7 +56,7 @@ resource "aws_codebuild_project" "build_platform_image" {
     type            = "GITHUB"
     location        = "https://github.com/${var.github_repository}.git"
     git_clone_depth = 0 # Full history for check-queue.sh git merge-base
-    buildspec       = "terraform/modules/codebuild-provisioner/buildspec-build-image.yml"
+    buildspec       = "terraform/modules/platform-image-builder/buildspec-build-image.yml"
 
     git_submodules_config {
       fetch_submodules = false
@@ -65,44 +65,6 @@ resource "aws_codebuild_project" "build_platform_image" {
     auth {
       type     = "CODECONNECTIONS"
       resource = data.aws_codestarconnections_connection.github.arn
-    }
-  }
-}
-
-# Webhook for build-platform-image project
-resource "aws_codebuild_webhook" "build_platform_image" {
-  project_name = aws_codebuild_project.build_platform_image.name
-  build_type   = "BUILD"
-
-  # terraform/modules/platform-image/**
-  filter_group {
-    filter {
-      type    = "EVENT"
-      pattern = "PUSH"
-    }
-    filter {
-      type    = "HEAD_REF"
-      pattern = "^refs/heads/${var.github_branch}$"
-    }
-    filter {
-      type    = "FILE_PATH"
-      pattern = "^terraform/modules/platform-image/.*"
-    }
-  }
-
-  # scripts/build-platform-image.sh
-  filter_group {
-    filter {
-      type    = "EVENT"
-      pattern = "PUSH"
-    }
-    filter {
-      type    = "HEAD_REF"
-      pattern = "^refs/heads/${var.github_branch}$"
-    }
-    filter {
-      type    = "FILE_PATH"
-      pattern = "^scripts/build-platform-image\\.sh$"
     }
   }
 }

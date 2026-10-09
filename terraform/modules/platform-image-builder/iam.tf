@@ -1,5 +1,5 @@
 # =============================================================================
-# IAM Roles and Policies for CodeBuild Provisioner
+# IAM Roles and Policies for Platform Image Builder
 # =============================================================================
 
 # IAM Role for Build Platform Image CodeBuild Project

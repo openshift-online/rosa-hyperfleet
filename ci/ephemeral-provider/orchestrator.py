@@ -19,6 +19,7 @@ from __init__ import TARGET_ENVIRONMENT
 from aws import AWSCredentials
 from codebuild import BuildMonitor, BuildResult
 from codebuild_logs import download_codebuild_logs
+from codepipeline import PipelineMonitor
 from git import GitManager
 from yaml_utils import deep_merge, load_and_merge
 
@@ -79,7 +80,7 @@ class EphemeralEnvOrchestrator:
         self.eph_branch_name = eph_branch_name
         self.aws: AWSCredentials | None = None
         self.central_monitor: BuildMonitor | None = None
-        self.target_monitor: BuildMonitor | None = None
+        self.target_monitor: PipelineMonitor | None = None
         self.git: GitManager | None = None
         # CodeBuild project names (read from rendered config after bootstrap)
         self.rc_project: str | None = None
@@ -168,10 +169,10 @@ class EphemeralEnvOrchestrator:
             if not desired_sha:
                 raise RuntimeError("render_and_push returned no SHA — no changes committed")
 
-        # Bootstrap provisioner (terraform + provision-codebuilds.sh creates RC/MC projects)
+        # Bootstrap provisioner (terraform + provision-cluster-resources.sh creates RC/MC resources)
         with self._timed_step("Provisioner bootstrap"):
             self.central_monitor = BuildMonitor(self.aws.session)
-            self.target_monitor = BuildMonitor(self.aws.target_session)
+            self.target_monitor = PipelineMonitor(self.aws.target_session)
             self._bootstrap_provisioner(git)
 
         # Read RC/MC project names from rendered config
@@ -237,14 +238,17 @@ class EphemeralEnvOrchestrator:
         with self._timed_step("AWS credential setup"):
             self._setup_aws()
         self.central_monitor = BuildMonitor(self.aws.session)
-        self.target_monitor = BuildMonitor(self.aws.target_session)
+        self.target_monitor = PipelineMonitor(self.aws.target_session)
 
         if resync_before_resume:
             with self._timed_step("Resync and render deployment config"):
                 self._read_project_names(git)
-                project_names = [self.rc_project, *self.mc_projects]
-                project_names = [name for name in project_names if name]
-                active_builds = self.target_monitor.active_builds(project_names)
+                pipeline_names = [
+                    self.target_monitor.pipeline_name(name)
+                    for name in [self.rc_project, *self.mc_projects]
+                    if name
+                ]
+                active_builds = self.target_monitor.active_pipelines(pipeline_names)
                 active_builds.extend(
                     self.central_monitor.active_builds(
                         [f"{git.eph_prefix}-build-platform-image"]
@@ -323,7 +327,7 @@ class EphemeralEnvOrchestrator:
         self._purge_clusters(git)
 
         self.central_monitor = BuildMonitor(self.aws.session)
-        self.target_monitor = BuildMonitor(self.aws.target_session)
+        self.target_monitor = PipelineMonitor(self.aws.target_session)
 
         # Read RC/MC project names from rendered config
         self._read_project_names(git)
@@ -522,10 +526,10 @@ class EphemeralEnvOrchestrator:
             load_and_merge(target, override_file)
 
     def _bootstrap_provisioner(self, git: GitManager):
-        """Bootstrap the provisioner (terraform + provision-codebuilds.sh creates RC/MC projects).
+        """Bootstrap the provisioner (terraform + provision-cluster-resources.sh creates RC/MC resources).
 
-        Sets SKIP_DAY1_BUILD=true so provision-codebuilds.sh creates projects but does not
-        StartBuild them — the provider owns RC/MC StartBuild.
+        Sets SKIP_DAY1_BUILD=true so provision-cluster-resources.sh creates projects and pipelines
+        but does not start them — the provider owns RC/MC pipeline execution.
         """
         log.info("")
         log.info("==========================================")
@@ -543,7 +547,7 @@ class EphemeralEnvOrchestrator:
         env["GITHUB_BRANCH"] = git.eph_branch
         env["TARGET_ENVIRONMENT"] = TARGET_ENVIRONMENT
         env["NAME_PREFIX"] = git.eph_prefix
-        env["SKIP_DAY1_BUILD"] = "true"  # Provider owns RC/MC StartBuild
+        env["SKIP_DAY1_BUILD"] = "true"  # Provider owns RC/MC pipeline execution
 
         log.info("Executing: %s", bootstrap_script)
         log.info("Env: REPO=%s, BRANCH=%s", git.fork_repo, git.eph_branch)
@@ -617,34 +621,30 @@ class EphemeralEnvOrchestrator:
             log.info("  No MC projects found (RC-only deployment)")
 
     def _wait_for_provision(self, desired_sha: str):
-        """StartBuild RC + MCs at the pushed SHA and wait concurrently for completion."""
+        """Start RC + MC CodePipelines at the pushed SHA and wait concurrently."""
         log.info("")
         log.info("==========================================")
-        log.info("Provision: Starting Builds")
+        log.info("Provision: Starting CodePipelines")
         log.info("==========================================")
 
         build_window_start = time.monotonic()
 
-        # StartBuild RC + each MC, collecting (project_name, build_id) tuples
+        # Start RC + each MC pipeline, collecting (project_name, execution_id) tuples.
         builds = []
 
-        # Start RC build
-        rc_build_id = self.target_monitor.start_or_reuse_build(self.rc_project, desired_sha)
-        builds.append((self.rc_project, rc_build_id))
+        # Start RC pipeline first so RC and MC use the same source revision.
+        rc_pipeline = self.target_monitor.pipeline_name(self.rc_project)
+        rc_execution_id = self.target_monitor.start_pipeline(rc_pipeline, desired_sha)
+        builds.append((self.rc_project, rc_execution_id))
 
-        # Start MC builds
+        # The MC build scripts discover RC outputs directly; they do not need a
+        # direct CodeBuild build-ID override when invoked by CodePipeline.
         for mc_project in self.mc_projects:
-            mc_build_id = self.target_monitor.start_or_reuse_build(
-                mc_project,
-                desired_sha,
-                environment_overrides={
-                    "RC_CODEBUILD_PROJECT": self.rc_project,
-                    "RC_CODEBUILD_BUILD_ID": rc_build_id,
-                },
-            )
-            builds.append((mc_project, mc_build_id))
+            mc_pipeline = self.target_monitor.pipeline_name(mc_project)
+            mc_execution_id = self.target_monitor.start_pipeline(mc_pipeline, desired_sha)
+            builds.append((mc_project, mc_execution_id))
 
-        log.info("Started %d build(s) at SHA %s", len(builds), desired_sha[:7])
+        log.info("Started %d pipeline execution(s) at SHA %s", len(builds), desired_sha[:7])
 
         if not builds:
             raise RuntimeError("No CodeBuild projects were selected for provisioning.")
@@ -652,7 +652,7 @@ class EphemeralEnvOrchestrator:
         # Wait for all builds concurrently
         log.info("")
         log.info("==========================================")
-        log.info("Provision: Waiting for Builds")
+        log.info("Provision: Waiting for CodePipelines")
         log.info("==========================================")
 
         failed = []
@@ -660,8 +660,13 @@ class EphemeralEnvOrchestrator:
         with ThreadPoolExecutor(max_workers=len(builds)) as executor:
             # Submit all wait tasks
             future_to_build = {
-                executor.submit(self.target_monitor.wait_for_build, build_id, desired_sha): project_name
-                for project_name, build_id in builds
+                executor.submit(
+                    self.target_monitor.wait_for_pipeline,
+                    self.target_monitor.pipeline_name(project_name),
+                    execution_id,
+                    desired_sha,
+                ): project_name
+                for project_name, execution_id in builds
             }
 
             # Process results as they complete
@@ -694,7 +699,7 @@ class EphemeralEnvOrchestrator:
 
         build_window_duration = time.monotonic() - build_window_start
         self._record_timing(
-            "RC/MC CodeBuild window (overlap)",
+            "RC/MC CodePipeline window (overlap)",
             build_window_duration,
             "FAILED" if failed else "SUCCEEDED",
         )
@@ -1346,8 +1351,8 @@ class EphemeralEnvOrchestrator:
             return
 
         # Use the existing branch revision without pushing delete flags. The
-        # IS_DESTROY override makes every build phase honor teardown semantics
-        # without triggering RC and MC webhooks for the same commit.
+        # IS_DESTROY pipeline variable makes every build phase honor teardown
+        # semantics without requiring a source-triggered execution.
         desired_sha = git.current_sha()
         destroy_overrides = {"IS_DESTROY": "true"}
 
@@ -1355,43 +1360,42 @@ class EphemeralEnvOrchestrator:
         # can still depend on resources owned by the RC account.
         mc_builds = []
         for mc_project in self.mc_projects:
-            mc_build_id = self.target_monitor.start_build(
-                mc_project,
+            mc_pipeline = self.target_monitor.pipeline_name(mc_project)
+            mc_execution_id = self.target_monitor.start_pipeline(
+                mc_pipeline,
                 desired_sha,
-                environment_overrides=destroy_overrides,
+                environment_variables=destroy_overrides,
             )
-            mc_builds.append((mc_project, mc_build_id))
+            mc_builds.append((mc_project, mc_execution_id))
 
-        log.info("Started %d MC teardown build(s) at SHA %s", len(mc_builds), desired_sha[:7])
+        log.info("Started %d MC teardown pipeline(s) at SHA %s", len(mc_builds), desired_sha[:7])
         failed = self._wait_for_teardown_builds(mc_builds, desired_sha)
         self._raise_teardown_failure(failed)
 
         # Start RC destruction only after every MC teardown has succeeded.
-        rc_build_id = self.target_monitor.start_build(
-            self.rc_project,
+        rc_pipeline = self.target_monitor.pipeline_name(self.rc_project)
+        rc_execution_id = self.target_monitor.start_pipeline(
+            rc_pipeline,
             desired_sha,
-            environment_overrides=destroy_overrides,
+            environment_variables=destroy_overrides,
         )
-        log.info("Started RC teardown build at SHA %s", desired_sha[:7])
+        log.info("Started RC teardown pipeline at SHA %s", desired_sha[:7])
         failed = self._wait_for_teardown_builds(
-            [(self.rc_project, rc_build_id)],
+            [(self.rc_project, rc_execution_id)],
             desired_sha,
         )
         self._raise_teardown_failure(failed)
 
-        # Phase 2: Delete CodeBuild projects
+        # Phase 2: Delete CodePipelines and CodeBuild projects through the
+        # same per-cluster lifecycle commands used by the autoscaler.
         log.info("")
         log.info("==========================================")
-        log.info("Teardown: Delete CodeBuild Projects")
+        log.info("Teardown: Delete Cluster Resources")
         log.info("==========================================")
 
-        # Delete RC + MC projects directly (idempotent)
-        for mc_project in self.mc_projects:
-            self.target_monitor.delete_project(mc_project)
+        self._delete_cluster_resources(git)
 
-        self.target_monitor.delete_project(self.rc_project)
-
-        log.info("CodeBuild projects deleted.")
+        log.info("CodePipelines and CodeBuild projects deleted.")
 
         # Phase 3: Destroy bootstrap infrastructure via terraform destroy
         log.info("")
@@ -1401,6 +1405,47 @@ class EphemeralEnvOrchestrator:
         self._destroy_provisioner(git)
 
         log.info("Teardown complete.")
+
+    def _run_cluster_resource_action(self, git: GitManager, action: str, config_path: Path):
+        """Run one explicit cluster-resource lifecycle action."""
+        script = git.work_dir / "scripts" / "provision-cluster-resources.sh"
+        if not script.exists():
+            raise FileNotFoundError(f"Cluster resource script not found at {script}")
+
+        env = os.environ.copy()
+        env.update(self.aws.subprocess_env)
+        env["ENVIRONMENT"] = TARGET_ENVIRONMENT
+
+        log.info("Running cluster resource action: %s (%s)", action, config_path)
+        subprocess.run(
+            [
+                "/bin/bash",
+                str(script),
+                action,
+                "--config",
+                str(config_path),
+                "--region-deployment",
+                self.region,
+            ],
+            cwd=git.work_dir,
+            env=env,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+            check=True,
+            timeout=TEARDOWN_TIMEOUT,
+        )
+
+    def _delete_cluster_resources(self, git: GitManager):
+        """Delete all rendered MC resources, followed by the RC resources."""
+        deploy_dir = git.work_dir / "deploy" / TARGET_ENVIRONMENT / self.region
+        resource_config_dir = deploy_dir / "codebuild-provisioner-inputs"
+
+        for config_path in sorted(resource_config_dir.glob("management-cluster-*.json")):
+            self._run_cluster_resource_action(git, "delete-mc", config_path)
+
+        rc_config_path = resource_config_dir / "regional-cluster.json"
+        if rc_config_path.exists():
+            self._run_cluster_resource_action(git, "delete-rc", rc_config_path)
 
     def _wait_for_teardown_builds(
         self,
@@ -1414,8 +1459,13 @@ class EphemeralEnvOrchestrator:
         failed = []
         with ThreadPoolExecutor(max_workers=len(builds)) as executor:
             future_to_build = {
-                executor.submit(self.target_monitor.wait_for_build, build_id, desired_sha): project_name
-                for project_name, build_id in builds
+                executor.submit(
+                    self.target_monitor.wait_for_pipeline,
+                    self.target_monitor.pipeline_name(project_name),
+                    execution_id,
+                    desired_sha,
+                ): project_name
+                for project_name, execution_id in builds
             }
 
             for future in as_completed(future_to_build):

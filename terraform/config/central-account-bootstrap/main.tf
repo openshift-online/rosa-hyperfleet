@@ -22,8 +22,8 @@ locals {
 }
 
 # Shared GitHub CodeStar Connection
-# The bootstrap script locates the pre-existing connection and imports it here
-# so Terraform can reference the selected ARN without creating a replacement.
+# The bootstrap script ensures the shared connection exists and imports it here
+# so Terraform can reference the selected ARN without deleting it on teardown.
 # During teardown, `terraform state rm` removes it before destroy so the
 # connection persists across CI runs.
 resource "aws_codestarconnections_connection" "github" {
@@ -47,8 +47,16 @@ module "platform_image" {
   }
 }
 
-module "codebuild_provisioner" {
-  source = "../../modules/codebuild-provisioner"
+module "codepipeline_shared" {
+  source = "../../modules/codepipeline-shared"
+
+  github_connection_arn = aws_codestarconnections_connection.github.arn
+  name_prefix           = var.name_prefix
+  region                = var.region
+}
+
+module "platform_image_builder" {
+  source = "../../modules/platform-image-builder"
 
   github_repository     = var.github_repository
   github_branch         = var.github_branch
@@ -57,6 +65,11 @@ module "codebuild_provisioner" {
   github_connection_arn = aws_codestarconnections_connection.github.arn
   platform_ecr_repo     = module.platform_image.ecr_repository_url
   name_prefix           = var.name_prefix
+}
+
+moved {
+  from = module.codebuild_provisioner
+  to   = module.platform_image_builder
 }
 
 # CodeBuild Failure Notifications
@@ -70,5 +83,5 @@ module "codebuild_notifications" {
   slack_webhook_ssm_param = var.slack_webhook_ssm_param
   name_prefix             = var.name_prefix
   region                  = var.region
-  project_names           = [module.codebuild_provisioner.build_platform_image_project_name]
+  project_names           = [module.platform_image_builder.build_platform_image_project_name]
 }

@@ -69,11 +69,11 @@ If provisioning fails after the ephemeral branch has been created, resync and re
 make ephemeral-provision-resume ID=6bd2d3d7
 ```
 
-By default, resume first resets the ephemeral branch to the latest source branch, reapplies `.ephemeral-env/` overrides, renders, and force-pushes the result. It then reuses existing Terraform state and CodeBuild resources and retries bootstrap and infrastructure builds. Use `RESYNC=false` to resume from the existing remote branch without changing it:
+By default, resume first resets the ephemeral branch to the latest source branch, reapplies `.ephemeral-env/` overrides, renders, and force-pushes the result. It then reuses existing Terraform state, CodePipelines, and CodeBuild resources and retries the infrastructure executions. Use `RESYNC=false` to resume from the existing remote branch without changing it:
 
 make ephemeral-provision-resume ID=6bd2d3d7 RESYNC=false
 
-Automatic resync stops before the force-push if the environment has queued or running CodeBuild builds, preventing concurrent infrastructure changes. Wait for those builds to finish and retry, or use `RESYNC=false` if the existing branch should be retained.
+Automatic resync stops before the force-push if the environment has active CodePipeline executions or a platform-image CodeBuild build, preventing concurrent infrastructure changes. Wait for those executions to finish and retry, or use `RESYNC=false` if the existing branch should be retained.
 
 ## Customizing Your Environment
 

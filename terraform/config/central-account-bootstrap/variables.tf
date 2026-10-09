@@ -55,7 +55,7 @@ variable "environment" {
 
 variable "enable_slack_notifications" {
   type        = bool
-  description = "Enable Slack notifications for pipeline failures. When true, slack_webhook_ssm_param must point to a valid SSM parameter."
+  description = "Enable Slack notifications for CodeBuild failures. When true, slack_webhook_ssm_param must point to a valid SSM parameter."
   default     = false
 }
 

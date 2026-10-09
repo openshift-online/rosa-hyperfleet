@@ -8,9 +8,9 @@ from __init__ import POLL_INTERVAL, BUILD_COMPLETION_TIMEOUT
 
 log = logging.getLogger(__name__)
 
-WEBHOOK_DISCOVERY_ATTEMPTS = 5
-WEBHOOK_DISCOVERY_INTERVAL = 2
 BUILD_PROGRESS_LOG_INTERVAL = 300
+BUILD_DISCOVERY_ATTEMPTS = 5
+BUILD_DISCOVERY_INTERVAL = 2
 
 
 @dataclass
@@ -39,9 +39,8 @@ class BuildFailure(RuntimeError):
 class BuildMonitor:
     """Monitor AWS CodeBuild builds.
 
-    Replaces CodePipeline monitoring with direct CodeBuild API calls. The provider
-    explicitly StartBuilds each project pinned to a git SHA and waits on the returned
-    build ID, gating on the APPLIED/APPLIED_SHA success contract.
+    Monitors the CodeBuild action executed by a CodePipeline. Direct StartBuild
+    support remains for the platform-image build and diagnostics.
 
     No prefix discovery — project names are deterministic (read from rendered config).
     """
@@ -88,11 +87,11 @@ class BuildMonitor:
         except self.client.exceptions.ResourceNotFoundException:
             raise RuntimeError(
                 f"CodeBuild project not found: {project_name}. "
-                "Ensure provision-codebuilds.sh ran successfully."
+                "Ensure provision-cluster-resources.sh ran successfully."
             )
 
     def _find_active_build(self, project_name: str, source_version: str) -> str | None:
-        """Find an already-running webhook or manually-triggered build at a SHA."""
+        """Find an already-running build at a SHA."""
         response = self.client.list_builds_for_project(
             projectName=project_name,
             sortOrder="DESCENDING",
@@ -143,15 +142,7 @@ class BuildMonitor:
         source_version: str,
         environment_overrides: dict[str, str] | None = None,
     ) -> str:
-        """Reuse a webhook build at the requested SHA or start one explicitly.
-
-        Resync pushes can trigger the project's webhook immediately before the
-        provider reaches this point. Reusing that build avoids starting a
-        duplicate build; the explicit StartBuild fallback preserves operation
-        when webhook delivery is delayed or unavailable. Builds with
-        environment overrides always start explicitly because an active build
-        found by SHA alone may not contain the required overrides.
-        """
+        """Reuse an existing build at the requested SHA or start one explicitly."""
         if environment_overrides:
             log.info(
                 "Starting dedicated build at SHA %s because environment overrides are set",
@@ -159,13 +150,13 @@ class BuildMonitor:
             )
             return self.start_build(project_name, source_version, environment_overrides)
 
-        for attempt in range(WEBHOOK_DISCOVERY_ATTEMPTS):
+        for attempt in range(BUILD_DISCOVERY_ATTEMPTS):
             build_id = self._find_active_build(project_name, source_version)
             if build_id:
                 log.info("Reusing active build at SHA %s: %s", source_version[:7], build_id)
                 return build_id
-            if attempt < WEBHOOK_DISCOVERY_ATTEMPTS - 1:
-                time.sleep(WEBHOOK_DISCOVERY_INTERVAL)
+            if attempt < BUILD_DISCOVERY_ATTEMPTS - 1:
+                time.sleep(BUILD_DISCOVERY_INTERVAL)
 
         return self.start_build(project_name, source_version, environment_overrides)
 
@@ -537,31 +528,6 @@ class BuildMonitor:
             timeout_error.result = result
             raise timeout_error
         raise TimeoutError(timeout_message)
-
-    def delete_project(self, project_name: str):
-        """Delete a CodeBuild project (idempotent).
-
-        Used by teardown Phase 2 to remove RC/MC projects directly (replaces
-        the GitOps delete_codebuild flow).
-
-        Args:
-            project_name: CodeBuild project name.
-        """
-        log.info("Deleting CodeBuild project: %s", project_name)
-
-        # Delete webhook first (idempotent)
-        try:
-            self.client.delete_webhook(projectName=project_name)
-            log.info("  Webhook deleted: %s", project_name)
-        except self.client.exceptions.ResourceNotFoundException:
-            log.info("  Webhook already deleted or does not exist")
-
-        # Delete project (idempotent)
-        try:
-            self.client.delete_project(name=project_name)
-            log.info("  Project deleted: %s", project_name)
-        except self.client.exceptions.ResourceNotFoundException:
-            log.info("  Project already deleted or does not exist")
 
     @staticmethod
     def _is_full_commit_sha(value: str) -> bool:

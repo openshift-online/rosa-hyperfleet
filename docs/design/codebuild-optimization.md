@@ -1,5 +1,8 @@
 # CodeBuild Provisioning
 
+> Historical ADR. The current lifecycle is documented in
+> [CodePipeline Cluster Lifecycle](codepipeline-cluster-lifecycle.md).
+
 **Last Updated Date**: 2026-09-23
 
 ## Summary
@@ -132,7 +135,7 @@ sequenceDiagram
     Note over TF,Git: No GitHub hook is registered
   end
 
-  Boot->>Prov: Run provision-codebuilds.sh with ARN
+  Boot->>Prov: Run provision-cluster-resources.sh with ARN
   Prov->>CB: Create or update RC/MC projects
   CB->>Conn: Associate GitHub source connection
   CB->>Git: Create RC/MC webhooks
