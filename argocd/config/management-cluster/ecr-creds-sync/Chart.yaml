@@ -1,0 +1,15 @@
+apiVersion: v2
+name: ecr-creds-sync
+description: ECR credentials synchronizer for HostedClusters
+type: application
+version: 0.1.0
+appVersion: "latest"
+keywords:
+  - ecr
+  - credentials
+  - hypershift
+  - management-cluster
+maintainers:
+  - name: ROSA Regional Platform Team
+sources:
+  - https://github.com/openshift-online/ecr-creds-sync
