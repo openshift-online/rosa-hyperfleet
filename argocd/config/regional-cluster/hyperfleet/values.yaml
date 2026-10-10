@@ -8,8 +8,8 @@ hyperfleet:
   project: default
 
   source:
-    repoURL: https://github.com/openshift-online/rosa-hyperfleet-api.git
-    targetRevision: 3064a73d1d2641c6bf948dbaa2bfe1c5f480bf64
+    repoURL: https://github.com/typeid/rosa-hyperfleet-api.git
+    targetRevision: managed_ingress
     path: hyperfleet-operator/charts
 
   syncPolicy:
@@ -19,9 +19,14 @@ hyperfleet:
 
   helmValues:
     image:
-      repository: quay.io/redhat-user-workloads/rosa-tenant/hyperfleet-operator
-      tag: "3064a73d1d2641c6bf948dbaa2bfe1c5f480bf64"
+      repository: quay.io/cbusse_openshift/hyperfleet-operator
+      tag: "managed-ingress-dns-25de57a"
       pullPolicy: Always
+
+    # Operator-level control-plane-operator (CPO) override. The operator stamps
+    # this image onto every HostedCluster it provisions via CONTROL_PLANE_OPERATOR_IMAGE.
+    # Built from local openshift/hypershift managed_ingress (commit 014872538a).
+    controlPlaneOperatorImage: quay.io/cbusse_openshift/control-plane-operator:managed-ingress-dns-014872538a
 
     replicaCount: 2
 

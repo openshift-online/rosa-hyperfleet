@@ -17,8 +17,8 @@ platformApi:
   app:
     name: platform-api
     image:
-      repository: quay.io/redhat-user-workloads/rosa-tenant/platform-api
-      tag: "3064a73d1d2641c6bf948dbaa2bfe1c5f480bf64"
+      repository: quay.io/cbusse_openshift/platform-api
+      tag: "managed-ingress-dns-1159b86"
       pullPolicy: Always
 
     # Application arguments
