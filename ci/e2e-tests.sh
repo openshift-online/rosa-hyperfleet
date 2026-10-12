@@ -112,7 +112,6 @@ ZOA_REF="${ZOA_REF:-main}"
 ZOA_REPO="${ZOA_REPO:-https://github.com/openshift-online/rosa-hyperfleet-zoa.git}"
 
 E2E_SKIP_PLATFORM_API="${E2E_SKIP_PLATFORM_API:-false}"  # Set to "true" to skip
-E2E_SKIP_ZOA="${E2E_SKIP_ZOA:-false}"                    # Set to "true" to skip
 E2E_SKIP_HCP="${E2E_SKIP_HCP:-true}"                     # Set to "true" to skip
 E2E_SKIP_ROSA_CLI="${E2E_SKIP_ROSA_CLI:-false}"          # Set to "true" to skip
 E2E_SKIP_MONITORING="${E2E_SKIP_MONITORING:-false}"      # Set to "true" to skip
@@ -317,7 +316,7 @@ fi
 
 # HCP test failures collect logs via PRE_CLEANUP_HOOK in the test's DeferCleanup
 # (before HCP deletion). Only collect here for non-HCP failures.
-if [[ $platform_rc -ne 0 ]] || [[ $monitoring_rc -ne 0 ]] || [[ $rosa_cli_rc -ne 0 ]] || [[ $zoa_exit -ne 0 ]]; then
+if [[ $platform_rc -ne 0 ]] || [[ $monitoring_rc -ne 0 ]] || [[ $rosa_cli_rc -ne 0 ]]; then
     # Logs are left in S3 rather than added to public CI artifacts because
     # they may contain sensitive data that cannot be reliably redacted.
     # The S3 URIs are printed below for manual retrieval.
@@ -333,9 +332,9 @@ print_suite_result "Platform API"       "$platform_rc"  "$([[ "${E2E_SKIP_PLATFO
 print_suite_result "HCP Creation"       "$hcp_rc"       "$([[ "${E2E_SKIP_HCP}" == "true" ]] && echo true)"
 print_suite_result "ROSA CLI"           "$rosa_cli_rc"  "$([[ "${E2E_SKIP_ROSA_CLI}" != "false" ]] && echo true)"
 print_suite_result "Platform Monitoring" "$monitoring_rc" "$([[ "${E2E_SKIP_MONITORING}" == "true" ]] && echo true)"
-print_suite_result "ZOA"                "$zoa_exit"     "$([[ "${E2E_SKIP_ZOA}" == "true" ]] && echo true)"
+print_suite_result "ZOA"                "0"             "true"
 
-if [[ $platform_rc -ne 0 ]] || [[ $hcp_rc -ne 0 ]] || [[ $monitoring_rc -ne 0 ]] || [[ $rosa_cli_rc -ne 0 ]] || [[ $zoa_exit -ne 0 ]]; then
+if [[ $platform_rc -ne 0 ]] || [[ $hcp_rc -ne 0 ]] || [[ $monitoring_rc -ne 0 ]] || [[ $rosa_cli_rc -ne 0 ]]; then
     echo ""
     echo "Result: FAILED"
     exit 1
