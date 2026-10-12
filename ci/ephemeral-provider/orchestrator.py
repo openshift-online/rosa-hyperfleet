@@ -621,7 +621,7 @@ class EphemeralEnvOrchestrator:
             log.info("  No MC projects found (RC-only deployment)")
 
     def _wait_for_provision(self, desired_sha: str):
-        """Start RC + MC CodePipelines at the pushed SHA and wait concurrently."""
+        """Start RC + MC together and poll their pipelines in RC-first order."""
         log.info("")
         log.info("==========================================")
         log.info("Provision: Starting CodePipelines")
@@ -649,53 +649,30 @@ class EphemeralEnvOrchestrator:
         if not builds:
             raise RuntimeError("No CodeBuild projects were selected for provisioning.")
 
-        # Wait for all builds concurrently
+        # Poll pipeline status in the same RC-first order used to start them.
+        # The CodeBuild executions themselves are already running concurrently.
         log.info("")
         log.info("==========================================")
         log.info("Provision: Waiting for CodePipelines")
         log.info("==========================================")
 
-        failed = []
-        results: dict[str, BuildResult] = {}
-        with ThreadPoolExecutor(max_workers=len(builds)) as executor:
-            # Submit all wait tasks
-            future_to_build = {
-                executor.submit(
-                    self.target_monitor.wait_for_pipeline,
-                    self.target_monitor.pipeline_name(project_name),
-                    execution_id,
-                    desired_sha,
-                ): project_name
-                for project_name, execution_id in builds
-            }
-
-            # Process results as they complete
-            for future in as_completed(future_to_build):
-                project_name = future_to_build[future]
-                build_id = next(
-                    build_id for name, build_id in builds if name == project_name
-                )
-                try:
-                    result = future.result()
-                    results[project_name] = result
-                    log.info(
-                        "✓ Build completed: %s (status=%s, duration=%s)",
-                        project_name,
-                        result.status,
-                        self.target_monitor._format_duration(result.total_duration),
-                    )
-                except (RuntimeError, TimeoutError) as e:
-                    result = getattr(e, "result", None)
-                    if result is None:
-                        result = BuildResult(
-                            build_id=build_id,
-                            status="ERROR",
-                            total_duration=None,
-                            error=str(e),
-                        )
-                    results[project_name] = result
-                    log.error("Build '%s' failed: %s", project_name, e)
-                    failed.append(project_name)
+        results = self.target_monitor.wait_for_pipelines(builds, desired_sha)
+        failed = [
+            project_name
+            for project_name, _ in builds
+            if results[project_name].status != "SUCCEEDED"
+        ]
+        for project_name, _ in builds:
+            result = results[project_name]
+            if project_name in failed:
+                log.error("Build '%s' failed: %s", project_name, result.error or result.status)
+                continue
+            log.info(
+                "✓ Build completed: %s (status=%s, duration=%s)",
+                project_name,
+                result.status,
+                self.target_monitor._format_duration(result.total_duration),
+            )
 
         build_window_duration = time.monotonic() - build_window_start
         self._record_timing(
