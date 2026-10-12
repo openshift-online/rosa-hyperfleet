@@ -630,9 +630,13 @@ load_cluster_config() {
     fi
 
     if [ "$cluster_type" = "regional" ]; then
-        CLUSTER_PROJECT_ID=$(jq -r '.regional_id // ""' "$config_path")
+        REGIONAL_ID=$(jq -r '.regional_id // ""' "$config_path")
+        CLUSTER_PROJECT_ID="$REGIONAL_ID"
+        export REGIONAL_ID
     else
-        CLUSTER_PROJECT_ID=$(jq -r '.management_id // ""' "$config_path")
+        MANAGEMENT_ID=$(jq -r '.management_id // ""' "$config_path")
+        CLUSTER_PROJECT_ID="$MANAGEMENT_ID"
+        export MANAGEMENT_ID
     fi
 
     if [ -z "$CLUSTER_PROJECT_ID" ]; then
