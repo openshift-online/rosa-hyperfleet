@@ -256,7 +256,7 @@ resource "aws_iam_role_policy" "lambda_ecs" {
         Sid      = "RunTaskOnTaggedClusterAndTaskDef"
         Effect   = "Allow"
         Action   = ["ecs:RunTask"]
-        Resource = "*"
+        Resource = "${var.boundary_task_definition_arn_prefix}:*"
         Condition = {
           StringEquals = {
             "aws:ResourceTag/Component" = "zoa"

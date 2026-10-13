@@ -69,7 +69,12 @@ variable "mc_account_ids" {
 }
 
 variable "boundary_ecs_cluster_arn" {
-  description = "ARN of the RC ZOA Boundary ECS cluster. Used to scope StopTask/DescribeTasks (cluster ARN; task tags include Component/function=zoa at RunTask)."
+  description = "ARN of the RC ZOA Boundary ECS cluster. Used to scope StopTask/DescribeTasks."
+  type        = string
+}
+
+variable "boundary_task_definition_arn_prefix" {
+  description = "RC boundary task definition ARN without revision (from module.zoa-lambda). Scopes RunTask to the exact task definition family."
   type        = string
 }
 

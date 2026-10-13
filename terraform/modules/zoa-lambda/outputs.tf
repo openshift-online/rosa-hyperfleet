@@ -76,6 +76,11 @@ output "boundary_task_definition_arn" {
   value       = aws_ecs_task_definition.boundary.arn
 }
 
+output "boundary_task_definition_arn_prefix" {
+  description = "ARN of the ZOA Boundary task definition family (for IAM Resource scoping)"
+  value       = aws_ecs_task_definition.boundary.arn_without_revision
+}
+
 output "boundary_security_group_id" {
   description = "Security group ID for ZOA Boundary tasks"
   value       = aws_security_group.boundary.id

@@ -36,7 +36,7 @@ resource "aws_iam_role_policy" "boundary_access_ecs" {
         Sid      = "RunTaskOnBoundaryCluster"
         Effect   = "Allow"
         Action   = ["ecs:RunTask"]
-        Resource = "*"
+        Resource = "${aws_ecs_task_definition.boundary.arn_without_revision}:*"
         Condition = {
           StringEquals = {
             "aws:ResourceTag/Component" = "zoa"
