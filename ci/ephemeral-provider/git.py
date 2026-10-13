@@ -38,6 +38,8 @@ class GitManager:
         self.fork_repo = None
         self._auth_header = None
         self._eph_branch_override = eph_branch_name
+        self._pre_push_base_sha: str | None = None
+        self.pushed_file_paths: list[str] = []
 
     def _github_token(self) -> str:
         """Read the git token from credentials directory or environment."""
@@ -220,6 +222,7 @@ class GitManager:
         self._run_git("fetch", "upstream", self.source_branch, auth=True)
 
         head_before = self._run_git("rev-parse", "HEAD").stdout.strip()
+        self._pre_push_base_sha = head_before
         log.info("Resetting %s to upstream/%s", self.eph_branch, self.source_branch)
         self._run_git("reset", "--hard", f"upstream/{self.source_branch}")
         head_after = self._run_git("rev-parse", "HEAD").stdout.strip()
@@ -250,6 +253,8 @@ class GitManager:
         Returns:
             Full git SHA of the pushed commit, or None if nothing to commit.
         """
+        base_sha = self._pre_push_base_sha or self.current_sha()
+        self.pushed_file_paths = []
         self._run_git("add", "-A")
 
         result = self._run_git("diff", "--cached", "--quiet", check=False)
@@ -259,11 +264,14 @@ class GitManager:
                 return None
 
             log.info("No changes to commit; force-updating the ephemeral branch")
+            pushed_sha = self.current_sha()
+            self.pushed_file_paths = self._changed_paths(base_sha, pushed_sha)
             push_cmd = ["push", "ci", self.eph_branch]
             if force:
                 push_cmd.insert(1, "--force")
             self._run_git(*push_cmd, auth=True)
-            return self.current_sha()
+            self._pre_push_base_sha = None
+            return pushed_sha
 
         self._run_git("commit", "-m", message)
         push_cmd = ["push", "ci", self.eph_branch]
@@ -272,7 +280,9 @@ class GitManager:
         self._run_git(*push_cmd, auth=True)
         sha_result = self._run_git("rev-parse", "HEAD")
         pushed_sha = sha_result.stdout.strip()
+        self.pushed_file_paths = self._changed_paths(base_sha, pushed_sha)
         log.info("Pushed: %s (SHA: %s)", message, pushed_sha[:7])
+        self._pre_push_base_sha = None
         return pushed_sha
 
     def delete_eph_branch(self):
@@ -302,6 +312,26 @@ class GitManager:
             )
             return
         log.info("Deleted ephemeral branch: %s", self.eph_branch)
+
+    def _changed_paths(self, base_sha: str, target_sha: str) -> list[str]:
+        if base_sha == target_sha:
+            return []
+        tree_diff = self._run_git(
+            "diff", "--no-renames", "--name-only", f"{base_sha}..{target_sha}"
+        )
+        pushed_commits = self._run_git(
+            "log",
+            "--format=",
+            "--name-only",
+            "--no-renames",
+            f"{base_sha}..{target_sha}",
+        )
+        return sorted(
+            path
+            for path in set(tree_diff.stdout.splitlines())
+            | set(pushed_commits.stdout.splitlines())
+            if path
+        )
 
     def render_and_push(
         self,

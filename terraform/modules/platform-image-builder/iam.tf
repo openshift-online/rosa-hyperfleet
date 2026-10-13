@@ -38,20 +38,36 @@ resource "aws_iam_role_policy" "build_platform_image_policy" {
         Resource = "arn:aws:logs:${var.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/codebuild/${local.name_prefix}build-platform-image*"
       },
       {
-        Sid    = "ECRPublicAccess"
+        Sid    = "ECRPublicAuthorization"
         Effect = "Allow"
         Action = [
-          "ecr-public:GetAuthorizationToken",
-          "ecr-public:DescribeRepositories",
+          "ecr-public:GetAuthorizationToken"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "ECRPublicPlatformRepository"
+        Effect = "Allow"
+        Action = [
           "ecr-public:DescribeImages",
           "ecr-public:BatchCheckLayerAvailability",
           "ecr-public:PutImage",
           "ecr-public:InitiateLayerUpload",
           "ecr-public:UploadLayerPart",
-          "ecr-public:CompleteLayerUpload",
-          "sts:GetServiceBearerToken"
+          "ecr-public:CompleteLayerUpload"
         ]
+        Resource = var.platform_ecr_repo_arn
+      },
+      {
+        Sid      = "ECRPublicBearerToken"
+        Effect   = "Allow"
+        Action   = "sts:GetServiceBearerToken"
         Resource = "*"
+        Condition = {
+          StringEquals = {
+            "sts:AWSServiceName" = "ecr-public.amazonaws.com"
+          }
+        }
       },
       {
         Sid    = "GitHubConnectionAccess"

@@ -384,13 +384,31 @@ echo "==================================================="
 echo "Step 4: Provisioning CodeBuild Projects"
 echo "==================================================="
 
+read_required_terraform_output() {
+    local output_name="$1"
+    local output_value
+
+    if ! output_value=$(terraform output -raw "$output_name"); then
+        echo "ERROR: Failed to read required Terraform output '$output_name'" >&2
+        return 1
+    fi
+    if [[ -z "$output_value" || "$output_value" == "None" ]]; then
+        echo "ERROR: Required Terraform output '$output_name' is empty" >&2
+        return 1
+    fi
+
+    printf '%s\n' "$output_value"
+}
+
 # Export terraform outputs for provision-cluster-resources.sh
-export PLATFORM_IMAGE=$(terraform output -raw platform_container_image)
-export GITHUB_CONNECTION_ARN=$(terraform output -raw github_connection_arn)
-export RC_CODEBUILD_ROLE_ARN=$(terraform output -raw rc_codebuild_role_arn)
-export MC_CODEBUILD_ROLE_ARN=$(terraform output -raw mc_codebuild_role_arn)
-export CODEPIPELINE_ROLE_ARN=$(terraform output -raw codepipeline_role_arn)
-export PIPELINE_ARTIFACT_BUCKET=$(terraform output -raw codepipeline_artifact_bucket_name)
+PLATFORM_IMAGE=$(read_required_terraform_output platform_container_image)
+GITHUB_CONNECTION_ARN=$(read_required_terraform_output github_connection_arn)
+RC_CODEBUILD_ROLE_ARN=$(read_required_terraform_output rc_codebuild_role_arn)
+MC_CODEBUILD_ROLE_ARN=$(read_required_terraform_output mc_codebuild_role_arn)
+CODEPIPELINE_ROLE_ARN=$(read_required_terraform_output codepipeline_role_arn)
+PIPELINE_ARTIFACT_BUCKET=$(read_required_terraform_output codepipeline_artifact_bucket_name)
+export PLATFORM_IMAGE GITHUB_CONNECTION_ARN RC_CODEBUILD_ROLE_ARN
+export MC_CODEBUILD_ROLE_ARN CODEPIPELINE_ROLE_ARN PIPELINE_ARTIFACT_BUCKET
 export ENVIRONMENT="${TARGET_ENVIRONMENT}"
 export GITHUB_REPOSITORY="${GITHUB_REPOSITORY}"
 export GITHUB_BRANCH="${GITHUB_BRANCH}"

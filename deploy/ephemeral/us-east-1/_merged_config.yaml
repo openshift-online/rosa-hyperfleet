@@ -91,6 +91,7 @@ worker_node_ami:
 # @used-by worker_node_root_volume_size _context
 # @used-by worker_node_root_volume_size codebuild-management-cluster-inputs/static.tfvars.json.j2
 # @used-by worker_node_root_volume_size codebuild-management-cluster-inputs/terraform.json.j2
+# @used-by worker_node_root_volume_size codebuild-regional-cluster-inputs/static.tfvars.json.j2
 # @used-by worker_node_root_volume_size codebuild-regional-cluster-inputs/terraform.json.j2
   family: AL2023
   id: ami-056d5e72aa5cf51f1
@@ -111,6 +112,7 @@ regional_cluster:
   # @used-by regional_cluster.enable_api_custom_domain codebuild-regional-cluster-inputs/terraform.json.j2
   enable_api_custom_domain: false
   # @doc regional_cluster.enable_rate_limit_redis Enable ElastiCache Redis for Platform API rate limiting.
+  # @used-by regional_cluster.enable_rate_limit_redis codebuild-regional-cluster-inputs/static.tfvars.json.j2
   # @used-by regional_cluster.enable_rate_limit_redis codebuild-regional-cluster-inputs/terraform.json.j2
   enable_rate_limit_redis: true
   # @doc regional_cluster.enable_write_sre_tools Enable write/admin access to SRE tools (Grafana, ArgoCD). Off by default. Can only be set to true for ephemeral environments — render.py enforces this.
@@ -124,6 +126,7 @@ regional_cluster:
   # @used-by regional_cluster.node_instance_families _context
   node_instance_families: ["m8i-flex", "m7i-flex"]
   # @doc regional_cluster.hyperfleet_db_instance_class Aurora instance class for HyperFleet DB.
+  # @used-by regional_cluster.hyperfleet_db_instance_class codebuild-regional-cluster-inputs/static.tfvars.json.j2
   # @used-by regional_cluster.hyperfleet_db_instance_class codebuild-regional-cluster-inputs/terraform.json.j2
   hyperfleet_db_instance_class: "db.t4g.medium"
   # @doc regional_cluster.hyperfleet_db_deletion_protection Enable deletion protection for HyperFleet DB Aurora cluster.
@@ -131,12 +134,15 @@ regional_cluster:
   # @used-by regional_cluster.hyperfleet_db_deletion_protection codebuild-regional-cluster-inputs/terraform.json.j2
   hyperfleet_db_deletion_protection: false
   # @doc regional_cluster.hyperfleet_db_skip_final_snapshot Skip final snapshot when destroying HyperFleet DB (ephemeral only).
+  # @used-by regional_cluster.hyperfleet_db_skip_final_snapshot codebuild-regional-cluster-inputs/static.tfvars.json.j2
   # @used-by regional_cluster.hyperfleet_db_skip_final_snapshot codebuild-regional-cluster-inputs/terraform.json.j2
   hyperfleet_db_skip_final_snapshot: true
   # @doc regional_cluster.hyperfleet_db_performance_insights_enabled Enable Performance Insights for HyperFleet DB Aurora.
+  # @used-by regional_cluster.hyperfleet_db_performance_insights_enabled codebuild-regional-cluster-inputs/static.tfvars.json.j2
   # @used-by regional_cluster.hyperfleet_db_performance_insights_enabled codebuild-regional-cluster-inputs/terraform.json.j2
   hyperfleet_db_performance_insights_enabled: false
   # @doc regional_cluster.hyperfleet_db_monitoring_interval Enhanced Monitoring interval in seconds for HyperFleet DB Aurora (0 to disable).
+  # @used-by regional_cluster.hyperfleet_db_monitoring_interval codebuild-regional-cluster-inputs/static.tfvars.json.j2
   # @used-by regional_cluster.hyperfleet_db_monitoring_interval codebuild-regional-cluster-inputs/terraform.json.j2
   hyperfleet_db_monitoring_interval: 0
   # @doc regional_cluster.enable_sre_tools_gateway Enable internal ALB for SRE UI tools (Grafana, ArgoCD, Prometheus, Thanos, Loki). Requires dns.domain to be set for DNS/TLS.

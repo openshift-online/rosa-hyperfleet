@@ -6,7 +6,12 @@
   "service_phase": "{{ terraform_tags.service_phase }}",
   "cost_center": "{{ terraform_tags.cost_center }}",
   "enable_bastion": {{ regional_cluster.enable_bastion | default(false) | tojson }},
+  "enable_rate_limit_redis": {{ regional_cluster.enable_rate_limit_redis | default(false) | tojson }},
+  "hyperfleet_db_instance_class": {{ regional_cluster.hyperfleet_db_instance_class | default('db.r6g.large') | tojson }},
   "hyperfleet_db_deletion_protection": {{ regional_cluster.hyperfleet_db_deletion_protection | default(true) | tojson }},
+  "hyperfleet_db_skip_final_snapshot": {{ regional_cluster.hyperfleet_db_skip_final_snapshot | default(false) | tojson }},
+  "hyperfleet_db_performance_insights_enabled": {{ regional_cluster.hyperfleet_db_performance_insights_enabled | default(true) | tojson }},
+  "hyperfleet_db_monitoring_interval": {{ regional_cluster.hyperfleet_db_monitoring_interval | default(60) | tojson }},
   "enable_cloudtrail": {{ regional_cluster.enable_cloudtrail | default(true) | tojson }},
   "enable_api_custom_domain": {{ regional_cluster.enable_api_custom_domain | default(false) | tojson }},
   "zone_shard_count": {{ regional_cluster.zone_shard_count | default(1) | tojson }},
@@ -26,5 +31,6 @@
   "zoa_lambda_source_image": {{ regional_cluster.zoa_lambda_source_image | tojson }},
   "zoa_runner_source_image": {{ regional_cluster.zoa_runner_source_image | tojson }},
   "worker_node_ami_id": {% if worker_node_ami %}{{ worker_node_ami.id | tojson }}{% else %}""{% endif %},
+  "worker_node_root_volume_size": {{ worker_node_root_volume_size | default(50) | tojson }},
   "eph_prefix": "{{ eph_prefix | default('') }}"
 }

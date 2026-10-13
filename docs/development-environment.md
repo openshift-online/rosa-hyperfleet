@@ -71,7 +71,17 @@ make ephemeral-provision-resume ID=6bd2d3d7
 
 By default, resume first resets the ephemeral branch to the latest source branch, reapplies `.ephemeral-env/` overrides, renders, and force-pushes the result. It then reuses existing Terraform state, CodePipelines, and CodeBuild resources and retries the infrastructure executions. Use `RESYNC=false` to resume from the existing remote branch without changing it:
 
+```bash
 make ephemeral-provision-resume ID=6bd2d3d7 RESYNC=false
+```
+
+Ephemeral CodePipeline push triggers remain enabled. A push matching a pipeline's
+branch and file-path filters starts that pipeline, and the provider adopts the
+execution for the pushed SHA. On initial creation, the provider adopts the
+pipeline's automatically started execution. A resume without a matching push
+reuses an active execution at that SHA or starts a retry if the pipeline is idle.
+See [CodePipeline Cluster Lifecycle](design/codepipeline-cluster-lifecycle.md)
+for the trigger and execution details.
 
 Automatic resync stops before the force-push if the environment has active CodePipeline executions or a platform-image CodeBuild build, preventing concurrent infrastructure changes. Wait for those executions to finish and retry, or use `RESYNC=false` if the existing branch should be retained.
 

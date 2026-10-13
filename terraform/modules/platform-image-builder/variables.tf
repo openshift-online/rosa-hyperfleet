@@ -48,3 +48,8 @@ variable "platform_ecr_repo" {
   type        = string
   description = "Public ECR repository URI for the platform image"
 }
+
+variable "platform_ecr_repo_arn" {
+  type        = string
+  description = "Public ECR repository ARN for the platform image"
+}

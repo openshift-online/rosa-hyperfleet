@@ -113,7 +113,10 @@ resource "aws_iam_role_policy" "pipeline" {
           "codebuild:StartBuild",
           "codebuild:StopBuild"
         ]
-        Resource = "arn:aws:codebuild:${var.region}:${data.aws_caller_identity.current.account_id}:project/*"
+        Resource = [
+          "arn:aws:codebuild:${var.region}:${data.aws_caller_identity.current.account_id}:project/*regional*",
+          "arn:aws:codebuild:${var.region}:${data.aws_caller_identity.current.account_id}:project/${local.name_prefix}mc*"
+        ]
       }
     ]
   })

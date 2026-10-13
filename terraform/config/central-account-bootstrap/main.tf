@@ -64,6 +64,7 @@ module "platform_image_builder" {
   environment           = var.environment
   github_connection_arn = aws_codestarconnections_connection.github.arn
   platform_ecr_repo     = module.platform_image.ecr_repository_url
+  platform_ecr_repo_arn = module.platform_image.ecr_repository_arn
   name_prefix           = var.name_prefix
 }
 

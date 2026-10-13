@@ -77,7 +77,10 @@ def main():
     lifecycle_group.add_argument(
         "--teardown-fire-and-forget",
         action="store_true",
-        help="Start teardown and exit immediately without waiting for completion",
+        help=(
+            "Wait for MC teardown, start RC teardown, then exit without waiting "
+            "for RC completion"
+        ),
     )
     lifecycle_group.add_argument(
         "--resync",
@@ -242,7 +245,10 @@ def main():
             env.teardown(fire_and_forget=args.teardown_fire_and_forget)
             log.info("")
             log.info("==========================================")
-            log.info("Teardown completed successfully!")
+            if args.teardown_fire_and_forget:
+                log.info("MC teardown succeeded; RC teardown was started asynchronously.")
+            else:
+                log.info("Teardown completed successfully!")
             log.info("==========================================")
         else:
             env.provision(

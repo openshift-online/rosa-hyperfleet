@@ -1,13 +1,14 @@
 # CodeBuild Provisioning
 
-> Historical ADR. The current lifecycle is documented in
+> Historical proposal that was not adopted. The deployed lifecycle retains
+> CodePipelines, with CodeBuild as the RC/MC build action. See
 > [CodePipeline Cluster Lifecycle](codepipeline-cluster-lifecycle.md).
 
 **Last Updated Date**: 2026-09-23
 
 ## Summary
 
-This ADR replaces AWS CodePipeline with standalone AWS CodeBuild for Regional Cluster (RC) and Management Cluster (MC) provisioning. Bootstrap still creates shared central resources (CodeStar, IAM, ECR) plus a thin **cluster-build provisioner** CodeBuild. That provisioner uses the **AWS SDK** (not Terraform state) to create, update, and delete **one CodeBuild project per cluster**. Git webhooks start those projects at the commit SHA.
+This proposal explored replacing AWS CodePipeline with standalone AWS CodeBuild for Regional Cluster (RC) and Management Cluster (MC) provisioning. Bootstrap would create shared central resources (CodeStar, IAM, ECR) plus a thin **cluster-build provisioner** CodeBuild. That provisioner would use the **AWS SDK** (not Terraform state) to create, update, and delete **one CodeBuild project per cluster**, started by Git webhooks at the commit SHA.
 
 GitOps (`config/` → `scripts/render.py` → `deploy/` → git push) and terraform for **cluster infrastructure** are unchanged, including **one terraform state object per cluster**. This supersedes the CodePipeline hierarchy in [pipeline-based-lifecycle.md](pipeline-based-lifecycle.md). Concurrency, stacked-commit skipping, and parallel MCs are in [Concurrency and queue behavior](#concurrency-and-queue-behavior).
 
@@ -28,7 +29,7 @@ GitOps (`config/` → `scripts/render.py` → `deploy/` → git push) and terraf
 
 ## Context
 
-**Today**
+**Context at the time of this proposal**
 
 - Three hops: bootstrap → provisioner CodePipeline (`QUEUED`) → terraform-applied RC/MC CodePipelines → CodeBuild (`CODEPIPELINE` artifacts).
 - Concurrency control only on provisioner pipeline. Cluster pipelines have no `concurrent_build_limit`; stacked git pushes can overlap applies on the same state.
@@ -63,9 +64,9 @@ Rejected: keeping CodePipeline with `QUEUED`/`SUPERSEDED` (doesn't eliminate met
 
 ## Architecture
 
-### Bootstrap phase
+### Historical proposal: bootstrap phase
 
-**What bootstrap creates today:**
+**What this proposal assumed bootstrap would create:**
 
 1. **S3 state bucket** (via bootstrap-state.sh)
 2. **CodeStar GitHub connection**
@@ -79,75 +80,20 @@ Rejected: keeping CodePipeline with `QUEUED`/`SUPERSEDED` (doesn't eliminate met
 
 **Key issue:** RC and MC CodePipelines are terraform-managed, creating state lock overhead the team wants to eliminate.
 
-### After this ADR
+### Deployed implementation
 
-#### CodeStar connection and CodeBuild source flow
+The bootstrap script finds the shared CodeStar connection and creates it when
+missing. The `build-platform-image` CodeBuild project has no webhook; bootstrap
+starts it explicitly. RC/MC CodeBuild projects are invoked by CodePipelines,
+whose source action uses the CodeStar connection. Ephemeral push triggers remain
+enabled: when a push matches a pipeline's filters, the provider adopts the
+execution for that SHA. It adopts the initial execution on pipeline creation
+and starts or reuses an execution for retries without a matching push. See
+[CodePipeline Cluster Lifecycle](codepipeline-cluster-lifecycle.md) for the
+deployed behavior. The standalone-CodeBuild design below is historical and was
+not adopted.
 
-The shared CodeStar connection is the authorization bridge between GitHub and CodeBuild. Bootstrap locates the pre-existing connection and refuses to create a replacement, Terraform wires its ARN into the central CodeBuild project, and the SDK provisioner reuses the same ARN for RC and MC projects. CodeBuild IAM roles may use the connection, but GitHub repository and webhook access is granted by the GitHub App authorization behind the connection.
-
-```mermaid
-sequenceDiagram
-  autonumber
-  participant Op as Operator or CI
-  participant Eph as Ephemeral provider
-  participant Git as GitHub fork
-  participant Boot as Bootstrap script
-  participant Conn as CodeStar connection
-  participant TF as Terraform
-  participant IAM as CodeBuild IAM role
-  participant CB as CodeBuild
-  participant Prov as SDK provisioner
-
-  Op->>Eph: make ephemeral-provision ID
-  Eph->>Git: Create and push ephemeral branch
-  Git-->>Eph: Branch available
-  Eph->>Boot: Start central-account bootstrap
-
-  Boot->>Conn: Find existing rosa-regional-github-shared
-  alt Exactly one matching connection exists
-    Conn-->>Boot: Return connection ARN
-  else Missing or duplicate connection
-    Conn-->>Boot: Fail bootstrap
-    Note over Op,Conn: Bootstrap never creates a replacement connection
-  end
-  Boot->>Conn: Verify connection status
-  Conn-->>Boot: AVAILABLE
-
-  Boot->>TF: Import connection ARN and apply
-  TF->>Conn: Read shared connection
-  Conn-->>TF: Connection ARN
-  TF->>IAM: Create roles and UseConnection policy
-  TF->>TF: Wait for IAM propagation
-  TF->>CB: Create build-platform-image project
-  CB-->>TF: Project created
-  TF->>CB: Create CodeBuild webhook
-  CB->>Conn: Authorize webhook operation
-  Conn->>Git: Register repository webhook
-
-  alt GitHub App can access the repository
-    Git-->>Conn: Webhook registered
-    Conn-->>CB: Webhook created
-    CB-->>TF: Terraform apply succeeds
-  else Repository or webhook permission is missing
-    Git-->>Conn: Access denied
-    Conn-->>CB: OAuthProviderException
-    CB-->>TF: CreateWebhook fails
-    Note over TF,Git: No GitHub hook is registered
-  end
-
-  Boot->>Prov: Run provision-cluster-resources.sh with ARN
-  Prov->>CB: Create or update RC/MC projects
-  CB->>Conn: Associate GitHub source connection
-  CB->>Git: Create RC/MC webhooks
-  Eph->>CB: StartBuild at ephemeral commit SHA
-  CB->>IAM: Assume service role
-  IAM->>Conn: Use connection
-  Conn->>Git: Fetch source branch
-  Git-->>Conn: Repository source
-  Conn-->>CB: Source available
-  CB->>CB: Run buildspec and assume target-account roles
-  CB-->>Eph: Build status and logs
-```
+### Historical proposed standalone-CodeBuild flow (not adopted)
 
 #### Day 1: Initial Region Provisioning
 

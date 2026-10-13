@@ -48,7 +48,7 @@ for project_name in "${projects[@]}"; do
         --names "$project_name" \
         --query 'projects[0].name' \
         --output text \
-        "${region_args[@]}" \
+        "${region_args[@]+"${region_args[@]}"}" \
         --no-cli-pager 2>/dev/null || true)
 
     if [ "$existing_project" != "$project_name" ]; then
@@ -60,7 +60,7 @@ for project_name in "${projects[@]}"; do
     delete_output=""
     if delete_output=$(aws codebuild delete-webhook \
         --project-name "$project_name" \
-        "${region_args[@]}" \
+        "${region_args[@]+"${region_args[@]}"}" \
         --no-cli-pager 2>&1); then
         echo "Removed CodeBuild webhook: $project_name"
     elif grep -q "ResourceNotFoundException" <<<"$delete_output"; then

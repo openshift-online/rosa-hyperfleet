@@ -20,7 +20,10 @@ tf_require_static_vars "${STATIC_TFVARS}" "RC core" \
     regional_id environment deployment_name app_code service_phase cost_center
 tf_require_static_keys "${STATIC_TFVARS}" "RC" \
     zoa_lambda_image_tag zoa_runner_image_tag \
-    zoa_lambda_source_image zoa_runner_source_image worker_node_ami_id eph_prefix
+    zoa_lambda_source_image zoa_runner_source_image worker_node_ami_id eph_prefix \
+    enable_rate_limit_redis hyperfleet_db_instance_class \
+    hyperfleet_db_skip_final_snapshot hyperfleet_db_performance_insights_enabled \
+    hyperfleet_db_monitoring_interval worker_node_root_volume_size
 
 _STATIC_REGIONAL_ID=$(jq -r '.regional_id // empty' "${STATIC_TFVARS}")
 _STATIC_ENVIRONMENT=$(jq -r '.environment // empty' "${STATIC_TFVARS}")

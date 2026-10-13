@@ -109,16 +109,16 @@ When a build is stale, `check-queue.sh` returns after setting the skip flag. The
 ## Safety Guarantees
 
 1. **Only stops QUEUED builds** — never interrupts IN_PROGRESS (terraform mid-apply is safe)
-2. **Self ARN scoping** — IAM policy only allows `StopBuild` on self project ARN
+2. **Cluster-project scoping** — IAM permissions are limited to the configured RC/MC project-name patterns
 3. **Idempotent** — safe to run multiple times (no-op if already winner)
-4. **Fail-open** — if check-queue.sh errors, build continues (doesn't block)
+4. **Fail-closed discovery** — failures listing or describing builds fail the build rather than applying without queue state; `stop-build` cleanup failures are ignored
 
 ## Troubleshooting
 
 **Build keeps retrying stale SHA:**
 
 - Verify the wrapper is sourced and the buildspec checks `CHECK_QUEUE_SKIPPED`.
-- RC may retry one failed build phase; MC uses `ABORT` so a registration/readiness failure does not rerun the entire MC apply.
+- RC and MC build phases use `ABORT`; after fixing the cause, resume explicitly instead of retrying the full phase automatically.
 
 **All builds skipping:**
 

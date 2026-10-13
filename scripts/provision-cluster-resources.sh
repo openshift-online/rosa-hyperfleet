@@ -170,7 +170,14 @@ TF_STATE_BUCKET="${TF_STATE_BUCKET:-}"
 
 init_central_state() {
     if [ -z "$CENTRAL_ACCOUNT_ID" ]; then
-        CENTRAL_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        if ! CENTRAL_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text); then
+            echo "ERROR: Failed to resolve the central AWS account ID" >&2
+            return 1
+        fi
+        if [ -z "$CENTRAL_ACCOUNT_ID" ] || [ "$CENTRAL_ACCOUNT_ID" = "None" ]; then
+            echo "ERROR: AWS returned an empty central account ID" >&2
+            return 1
+        fi
     fi
     if [ -z "$TF_STATE_BUCKET" ]; then
         TF_STATE_BUCKET="terraform-state-${CENTRAL_ACCOUNT_ID}"
@@ -190,7 +197,7 @@ bootstrap_target_state_bucket() {
     local target_account_id="$1"
     local target_region="$2"
 
-    init_central_state
+    init_central_state || return 1
 
     if echo "$BOOTSTRAPPED_ACCOUNTS" | grep -q "|${target_account_id}|"; then
         echo "State bucket already bootstrapped for account $target_account_id (skipping)"
@@ -198,7 +205,7 @@ bootstrap_target_state_bucket() {
     fi
 
     if [ "$target_account_id" = "$CENTRAL_ACCOUNT_ID" ]; then
-        ./scripts/bootstrap-state.sh "$target_region"
+        ./scripts/bootstrap-state.sh "$target_region" || return 1
     else
         local admin_role="${CHILD_ADMIN_ROLE_NAME:-OrganizationAccountAccessRole}"
         local creds
@@ -212,10 +219,13 @@ bootstrap_target_state_bucket() {
             return 1
         fi
 
-        AWS_ACCESS_KEY_ID=$(echo "$creds" | awk '{print $1}') \
-        AWS_SECRET_ACCESS_KEY=$(echo "$creds" | awk '{print $2}') \
-        AWS_SESSION_TOKEN=$(echo "$creds" | awk '{print $3}') \
-        ./scripts/bootstrap-state.sh "$target_region"
+        if ! AWS_ACCESS_KEY_ID=$(echo "$creds" | awk '{print $1}') \
+            AWS_SECRET_ACCESS_KEY=$(echo "$creds" | awk '{print $2}') \
+            AWS_SESSION_TOKEN=$(echo "$creds" | awk '{print $3}') \
+            ./scripts/bootstrap-state.sh "$target_region"; then
+            echo "ERROR: Failed to bootstrap Terraform state in account $target_account_id" >&2
+            return 1
+        fi
     fi
 
     BOOTSTRAPPED_ACCOUNTS="${BOOTSTRAPPED_ACCOUNTS}|${target_account_id}|"
@@ -342,12 +352,15 @@ generate_pipeline_file_paths() {
             --arg env "$env" \
             --arg region "$region_deployment" \
             '[
-                ("deploy/" + $env + "/" + $region + "/codebuild-regional-cluster-inputs/terraform.json"),
+                ("deploy/" + $env + "/" + $region + "/codebuild-regional-cluster-inputs/**"),
                 "terraform/config/codebuild-regional-cluster/**",
+                "terraform/config/pipeline-regional-cluster/**",
                 "terraform/config/regional-cluster/**",
-                "terraform/modules/zoa/**",
-                "terraform/modules/zoa-lambda/**",
-                "scripts/buildspec/build-zoa-lambda.sh"
+                "terraform/modules/**",
+                "scripts/buildspec/provision-infra-rc.sh",
+                "scripts/buildspec/build-zoa-lambda.sh",
+                "scripts/pipeline-common/**",
+                "scripts/provision-cluster-resources.sh"
             ]'
     elif [ "$cluster_type" = "management" ]; then
         jq -n \
@@ -355,9 +368,15 @@ generate_pipeline_file_paths() {
             --arg region "$region_deployment" \
             --arg mc_id "$cluster_id" \
             '[
-                ("deploy/" + $env + "/" + $region + "/codebuild-management-cluster-" + $mc_id + "-inputs/terraform.json"),
+                ("deploy/" + $env + "/" + $region + "/codebuild-management-cluster-" + $mc_id + "-inputs/**"),
                 "terraform/config/codebuild-management-cluster/**",
-                "terraform/config/kube-applier-dynamodb-provisioning/**"
+                "terraform/config/pipeline-management-cluster/**",
+                "terraform/config/management-cluster/**",
+                "terraform/config/kube-applier-dynamodb-provisioning/**",
+                "terraform/modules/**",
+                "scripts/buildspec/provision-infra-mc.sh",
+                "scripts/pipeline-common/**",
+                "scripts/provision-cluster-resources.sh"
             ]'
     fi
 }
@@ -372,7 +391,14 @@ generate_pipeline_spec() {
     local project_name="$3"
     local cluster_id="$4"
     local region_deployment="$5"
+    local push_triggers_enabled="${ENABLE_CODEPIPELINE_PUSH_TRIGGERS:-true}"
     local file_paths
+
+    if [[ "$push_triggers_enabled" != "true" && "$push_triggers_enabled" != "false" ]]; then
+        echo "ERROR: ENABLE_CODEPIPELINE_PUSH_TRIGGERS must be true or false" >&2
+        return 1
+    fi
+
     file_paths=$(generate_pipeline_file_paths "$cluster_type" "$ENVIRONMENT" "$region_deployment" "$cluster_id")
 
     jq -n -S \
@@ -384,6 +410,7 @@ generate_pipeline_spec() {
         --arg branch "$GITHUB_BRANCH" \
         --arg project "$project_name" \
         --argjson file_paths "$file_paths" \
+        --argjson push_triggers_enabled "$push_triggers_enabled" \
         --arg cluster_type "$cluster_type" \
         '{pipeline: (
           {
@@ -392,7 +419,7 @@ generate_pipeline_spec() {
             pipelineType: "V2",
             executionMode: "SUPERSEDED",
             artifactStore: {type: "S3", location: $bucket},
-            triggers: [{
+            triggers: (if $push_triggers_enabled then [{
               providerType: "CodeStarSourceConnection",
               gitConfiguration: {
                 sourceActionName: "Source",
@@ -401,7 +428,7 @@ generate_pipeline_spec() {
                   filePaths: {includes: $file_paths}
                 }]
               }
-            }],
+            }] else [] end),
             stages: [
               {
                 name: "Source",
@@ -458,6 +485,33 @@ upsert_pipeline() {
     spec=$(generate_pipeline_spec "$cluster_type" "$pipeline_name" "$project_name" "$cluster_id" "$region_deployment")
 
     if aws codepipeline get-pipeline --name "$pipeline_name" --query 'pipeline.name' --output text --no-cli-pager 2>/dev/null | grep -qx "$pipeline_name"; then
+        local current_spec current_normalized desired_normalized active_count
+        current_spec=$(aws codepipeline get-pipeline --name "$pipeline_name" --query 'pipeline' --output json --no-cli-pager)
+        current_normalized=$(echo "$current_spec" | jq -S 'del(.version)')
+        desired_normalized=$(echo "$spec" | jq -S '.pipeline | del(.version)')
+
+        if [[ "$current_normalized" == "$desired_normalized" ]]; then
+            echo "✓ CodePipeline unchanged: $pipeline_name"
+            return 0
+        fi
+
+        active_count=$(aws codepipeline list-pipeline-executions \
+            --pipeline-name "$pipeline_name" \
+            --max-results 100 \
+            --output json \
+            --no-cli-pager | jq '[.pipelineExecutionSummaries[]? | select(.status == "InProgress" or .status == "Stopping" or .status == "Queued")] | length')
+        if (( active_count > 0 )); then
+            local current_core desired_core
+            current_core=$(echo "$current_spec" | jq -S 'del(.version, .triggers)')
+            desired_core=$(echo "$spec" | jq -S '.pipeline | del(.version, .triggers)')
+            if [[ "$current_core" != "$desired_core" ]]; then
+                echo "ERROR: CodePipeline $pipeline_name has an active execution and non-trigger settings changed; update would stop that execution. Wait for it to finish, then resume provisioning." >&2
+                return 1
+            fi
+            echo "ERROR: CodePipeline $pipeline_name has an active execution and its push-trigger settings changed. Wait for it to finish, then resume provisioning to apply the trigger update." >&2
+            return 1
+        fi
+
         if ! aws codepipeline update-pipeline --cli-input-json "$spec" --no-cli-pager >/dev/null; then
             echo "ERROR: Failed to update CodePipeline $pipeline_name" >&2
             return 1
@@ -617,24 +671,50 @@ load_cluster_config() {
         return 1
     fi
 
-    AWS_REGION=$(jq -r '.region // .target_region // "us-east-1"' "$config_path")
-    TARGET_ACCOUNT_ID=$(jq -r '.account_id // ""' "$config_path")
-    TARGET_ACCOUNT_ID=$(resolve_ssm_param "$TARGET_ACCOUNT_ID" "$AWS_REGION")
-    CHILD_ADMIN_ROLE_NAME=$(jq -r '.child_admin_role_name // "OrganizationAccountAccessRole"' "$config_path")
+    if ! AWS_REGION=$(jq -er '.region // .target_region // "us-east-1"' "$config_path"); then
+        echo "ERROR: Could not read region from $config_path" >&2
+        return 1
+    fi
+    if [ -z "$AWS_REGION" ]; then
+        echo "ERROR: region must not be empty in $config_path" >&2
+        return 1
+    fi
+    if ! TARGET_ACCOUNT_ID=$(jq -er '.account_id // empty' "$config_path"); then
+        echo "ERROR: account_id must be provided in $config_path" >&2
+        return 1
+    fi
+    if ! TARGET_ACCOUNT_ID=$(resolve_ssm_param "$TARGET_ACCOUNT_ID" "$AWS_REGION"); then
+        echo "ERROR: Failed to resolve account_id from $config_path" >&2
+        return 1
+    fi
+    if ! CHILD_ADMIN_ROLE_NAME=$(jq -er '.child_admin_role_name // "OrganizationAccountAccessRole"' "$config_path"); then
+        echo "ERROR: Could not read child_admin_role_name from $config_path" >&2
+        return 1
+    fi
 
-    validate_child_admin_role "$CHILD_ADMIN_ROLE_NAME"
+    validate_child_admin_role "$CHILD_ADMIN_ROLE_NAME" || return 1
 
     if [ -z "$TARGET_ACCOUNT_ID" ]; then
         echo "ERROR: account_id must be provided in $config_path" >&2
         return 1
     fi
+    if [[ ! "$TARGET_ACCOUNT_ID" =~ ^[0-9]{12}$ ]]; then
+        echo "ERROR: account_id must resolve to a 12-digit AWS account ID in $config_path" >&2
+        return 1
+    fi
 
     if [ "$cluster_type" = "regional" ]; then
-        REGIONAL_ID=$(jq -r '.regional_id // ""' "$config_path")
+        if ! REGIONAL_ID=$(jq -er '.regional_id // empty' "$config_path"); then
+            echo "ERROR: regional_id is missing from $config_path" >&2
+            return 1
+        fi
         CLUSTER_PROJECT_ID="$REGIONAL_ID"
         export REGIONAL_ID
     else
-        MANAGEMENT_ID=$(jq -r '.management_id // ""' "$config_path")
+        if ! MANAGEMENT_ID=$(jq -er '.management_id // empty' "$config_path"); then
+            echo "ERROR: management_id is missing from $config_path" >&2
+            return 1
+        fi
         CLUSTER_PROJECT_ID="$MANAGEMENT_ID"
         export MANAGEMENT_ID
     fi
@@ -653,8 +733,11 @@ ensure_platform_image_once() {
         return 0
     fi
 
-    : "${PLATFORM_IMAGE:?PLATFORM_IMAGE must be set for cluster creation}"
-    ensure_platform_image "$PLATFORM_IMAGE"
+    if [ -z "${PLATFORM_IMAGE:-}" ]; then
+        echo "ERROR: PLATFORM_IMAGE must be set for cluster creation" >&2
+        return 1
+    fi
+    ensure_platform_image "$PLATFORM_IMAGE" || return 1
     PLATFORM_IMAGE_READY=true
 }
 
@@ -664,22 +747,26 @@ create_cluster_resource() {
     local region_deployment="$3"
     local service_role_arn buildspec_path timeout_minutes
 
-    load_cluster_config "$cluster_type" "$config_path" "$region_deployment"
-    bootstrap_target_state_bucket "$TARGET_ACCOUNT_ID" "$AWS_REGION"
-    ensure_platform_image_once
-
     if [ "$cluster_type" = "regional" ]; then
-        service_role_arn="$RC_CODEBUILD_ROLE_ARN"
+        service_role_arn="${RC_CODEBUILD_ROLE_ARN:-}"
         buildspec_path="terraform/config/codebuild-regional-cluster/buildspec-combined.yml"
         timeout_minutes=90
     else
-        service_role_arn="$MC_CODEBUILD_ROLE_ARN"
+        service_role_arn="${MC_CODEBUILD_ROLE_ARN:-}"
         buildspec_path="terraform/config/codebuild-management-cluster/buildspec-combined.yml"
         timeout_minutes=180
     fi
 
+    load_cluster_config "$cluster_type" "$config_path" "$region_deployment" || return 1
+    if [ -z "$service_role_arn" ]; then
+        echo "ERROR: Missing CodeBuild service role ARN for $cluster_type cluster $CLUSTER_PROJECT_ID" >&2
+        return 1
+    fi
+    bootstrap_target_state_bucket "$TARGET_ACCOUNT_ID" "$AWS_REGION" || return 1
+    ensure_platform_image_once || return 1
+
     upsert_project "$cluster_type" "$CLUSTER_PROJECT_ID" "$service_role_arn" \
-        "$buildspec_path" "$timeout_minutes" "$CLUSTER_PROJECT_ID"
+        "$buildspec_path" "$timeout_minutes" "$CLUSTER_PROJECT_ID" || return 1
 }
 
 delete_cluster_resource() {
@@ -831,9 +918,6 @@ fi
 # Validate environment
 validate_environment
 
-# Ensure platform image exists (builds if missing, once before any create/update)
-ensure_platform_image_once
-
 # Detect TF state region
 init_central_state
 TF_STATE_REGION=""
@@ -894,7 +978,14 @@ if [ -n "$ENVIRONMENT_DOMAIN" ] && [ "$CREATE_ENVIRONMENT_ZONE" = "true" ]; then
         if terraform apply -auto-approve \
             -var="environment_domain=${ENVIRONMENT_DOMAIN}" \
             -var="environment=${ENVIRONMENT}"; then
-            ENVIRONMENT_HOSTED_ZONE_ID=$(terraform output -raw zone_id)
+            if ! ENVIRONMENT_HOSTED_ZONE_ID=$(terraform output -raw zone_id); then
+                echo "ERROR: Failed to read zone_id after creating $ENVIRONMENT_DOMAIN" >&2
+                exit 1
+            fi
+            if [ -z "$ENVIRONMENT_HOSTED_ZONE_ID" ]; then
+                echo "ERROR: Terraform returned an empty zone_id for $ENVIRONMENT_DOMAIN" >&2
+                exit 1
+            fi
             break
         fi
         if [ $_attempt -lt $_max_attempts ]; then

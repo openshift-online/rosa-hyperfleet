@@ -169,18 +169,39 @@ class EphemeralEnvOrchestrator:
             if not desired_sha:
                 raise RuntimeError("render_and_push returned no SHA — no changes committed")
 
+        self.central_monitor = BuildMonitor(self.aws.session)
+        self.target_monitor = PipelineMonitor(self.aws.target_session)
+        self._read_project_names(git)
+        pipeline_names = [
+            self.target_monitor.pipeline_name(name)
+            for name in [self.rc_project, *self.mc_projects]
+            if name
+        ]
+        push_trigger_configs = self.target_monitor.push_trigger_configs(pipeline_names)
+        created_pipeline_names = set(self.target_monitor.missing_pipelines(pipeline_names))
+
         # Bootstrap provisioner (terraform + provision-cluster-resources.sh creates RC/MC resources)
         with self._timed_step("Provisioner bootstrap"):
-            self.central_monitor = BuildMonitor(self.aws.session)
-            self.target_monitor = PipelineMonitor(self.aws.target_session)
             self._bootstrap_provisioner(git)
 
         # Read RC/MC project names from rendered config
         with self._timed_step("Discover RC/MC CodeBuild projects"):
             self._read_project_names(git)
 
+        desired_push_trigger_configs = (
+            self.target_monitor.push_trigger_configs(pipeline_names)
+            if push_trigger_configs is not None
+            else None
+        )
         # Wait for provisioning builds
-        self._wait_for_provision(desired_sha)
+        self._wait_for_provision(
+            desired_sha,
+            created_pipeline_names,
+            push_trigger_configs=push_trigger_configs,
+            branch=git.eph_branch,
+            changed_paths=git.pushed_file_paths,
+            desired_push_trigger_configs=desired_push_trigger_configs,
+        )
 
         if save_rc_state:
             with self._timed_step("Save and validate RC outputs"):
@@ -269,17 +290,40 @@ class EphemeralEnvOrchestrator:
                     force=True,
                     force_push_if_clean=True,
                 )
+                push_trigger_configs = self.target_monitor.push_trigger_configs(pipeline_names)
         else:
+            push_trigger_configs = None
             with self._timed_step("Resolve resume commit"):
                 desired_sha = git.current_sha()
 
         log.info("Resuming provisioning at commit: %s", desired_sha)
 
+        self._read_project_names(git)
+        pipeline_names = [
+            self.target_monitor.pipeline_name(name)
+            for name in [self.rc_project, *self.mc_projects]
+            if name
+        ]
+        created_pipeline_names = set(self.target_monitor.missing_pipelines(pipeline_names))
+
         with self._timed_step("Provisioner bootstrap"):
             self._bootstrap_provisioner(git)
         with self._timed_step("Discover RC/MC CodeBuild projects"):
             self._read_project_names(git)
-        self._wait_for_provision(desired_sha)
+        desired_push_trigger_configs = (
+            self.target_monitor.push_trigger_configs(pipeline_names)
+            if push_trigger_configs is not None
+            else None
+        )
+        self._wait_for_provision(
+            desired_sha,
+            created_pipeline_names,
+            push_trigger_configs=push_trigger_configs,
+            branch=git.eph_branch if push_trigger_configs is not None else None,
+            changed_paths=git.pushed_file_paths if push_trigger_configs is not None else None,
+            skip_untriggered_pushes=push_trigger_configs is not None,
+            desired_push_trigger_configs=desired_push_trigger_configs,
+        )
 
         if save_rc_state:
             with self._timed_step("Save and validate RC outputs"):
@@ -300,9 +344,8 @@ class EphemeralEnvOrchestrator:
         so teardown always matches the provisioned environment.
 
         Args:
-            fire_and_forget: If True, only pushes the initial infrastructure
-                delete flags (Phase 1) and exits immediately without waiting
-                for builds to complete. Phase 2 (delete_codebuild flags) and
+            fire_and_forget: If True, waits for MC teardown, starts RC teardown,
+                and exits without waiting for RC completion. Phase 2 (delete_codebuild flags) and
                 Phase 3 (provisioner destruction) are intentionally
                 skipped — teardown is expected to be driven to completion by
                 the in-account aws-nuke-cf janitor.
@@ -320,17 +363,29 @@ class EphemeralEnvOrchestrator:
 
         self._setup_aws()
 
+        self.central_monitor = BuildMonitor(self.aws.session)
+        self.target_monitor = PipelineMonitor(self.aws.target_session)
+
+        # Read RC/MC project names from rendered config before any teardown side effects.
+        self._read_project_names(git)
+        if fire_and_forget:
+            pipeline_names = [
+                self.target_monitor.pipeline_name(name)
+                for name in [self.rc_project, *self.mc_projects]
+                if name
+            ]
+            active_pipelines = self.target_monitor.active_pipelines(pipeline_names)
+            if active_pipelines:
+                raise RuntimeError(
+                    "Cannot start fire-and-forget teardown while CodePipeline executions "
+                    f"are active: {', '.join(active_pipelines)}. Wait for them to finish and retry."
+                )
+
         # Purge clusters and resource bundles before infrastructure teardown.
         # Deleting bundles triggers ManifestWork removal on the MC, which is
         # what actually tears down the HostedClusters. Without this, terraform
         # destroy on the MC can be blocked by active HCPs.
         self._purge_clusters(git)
-
-        self.central_monitor = BuildMonitor(self.aws.session)
-        self.target_monitor = PipelineMonitor(self.aws.target_session)
-
-        # Read RC/MC project names from rendered config
-        self._read_project_names(git)
 
         self._run_teardown(git, fire_and_forget=fire_and_forget)
 
@@ -340,18 +395,50 @@ class EphemeralEnvOrchestrator:
         Re-reads the environment config (including .ephemeral-env/ overrides if
         mounted) so that config changes are picked up alongside code changes.
         """
-        self._setup_aws()
-
         git = GitManager(self.creds_dir, self.repo, self.branch,
                          eph_branch_name=self.eph_branch_name)
         self.git = git
+        git.checkout_eph_branch(self.eph_prefix)
+        env_config_dir = git.work_dir / "config" / TARGET_ENVIRONMENT
+        self.region = discover_region(env_config_dir)
+        self._setup_aws()
+        self.target_monitor = PipelineMonitor(self.aws.target_session)
+        self._read_project_names(git)
+        pipeline_names = [
+            self.target_monitor.pipeline_name(name)
+            for name in [self.rc_project, *self.mc_projects]
+            if name
+        ]
+        active_pipelines = self.target_monitor.active_pipelines(pipeline_names)
+        if active_pipelines:
+            raise RuntimeError(
+                "Cannot resync while CodePipeline executions are active: "
+                f"{', '.join(active_pipelines)}. Wait for them to finish and retry."
+            )
         git.resync_eph_branch(self.eph_prefix)
 
         self._inject_ephemeral_config(git)
-        git.render_and_push(
+        desired_sha = git.render_and_push(
             "ci: resync ephemeral environment config",
             force=True,
             force_push_if_clean=True,
+        )
+        if not desired_sha:
+            raise RuntimeError("render_and_push returned no SHA during ephemeral resync")
+
+        push_trigger_configs = self.target_monitor.push_trigger_configs(pipeline_names)
+        self._read_project_names(git)
+        started = self._start_provision_pipelines(
+            desired_sha,
+            push_trigger_configs=push_trigger_configs,
+            branch=git.eph_branch,
+            changed_paths=git.pushed_file_paths,
+            skip_untriggered_pushes=True,
+        )
+        log.info(
+            "Adopted or started %d ephemeral pipeline execution(s) for resynced commit %s",
+            len(started),
+            desired_sha[:7],
         )
 
     def collect_codebuild_logs(self):
@@ -528,8 +615,8 @@ class EphemeralEnvOrchestrator:
     def _bootstrap_provisioner(self, git: GitManager):
         """Bootstrap the provisioner (terraform + provision-cluster-resources.sh creates RC/MC resources).
 
-        Sets SKIP_DAY1_BUILD=true so provision-cluster-resources.sh creates projects and pipelines
-        but does not start them — the provider owns RC/MC pipeline execution.
+        Push triggers stay enabled. The provider adopts matching push executions
+        and only starts executions for explicit retries or unmatched changes.
         """
         log.info("")
         log.info("==========================================")
@@ -548,6 +635,7 @@ class EphemeralEnvOrchestrator:
         env["TARGET_ENVIRONMENT"] = TARGET_ENVIRONMENT
         env["NAME_PREFIX"] = git.eph_prefix
         env["SKIP_DAY1_BUILD"] = "true"  # Provider owns RC/MC pipeline execution
+        env["ENABLE_CODEPIPELINE_PUSH_TRIGGERS"] = "true"
 
         log.info("Executing: %s", bootstrap_script)
         log.info("Env: REPO=%s, BRANCH=%s", git.fork_repo, git.eph_branch)
@@ -620,34 +708,148 @@ class EphemeralEnvOrchestrator:
         if not self.mc_projects:
             log.info("  No MC projects found (RC-only deployment)")
 
-    def _wait_for_provision(self, desired_sha: str):
-        """Start RC + MC together and poll their pipelines in RC-first order."""
+    def _start_provision_pipelines(
+        self,
+        desired_sha: str,
+        created_pipeline_names: set[str] | None = None,
+        push_trigger_configs: dict[str, dict | None] | None = None,
+        branch: str | None = None,
+        changed_paths: list[str] | None = None,
+        skip_untriggered_pushes: bool = False,
+        desired_push_trigger_configs: dict[str, dict | None] | None = None,
+    ) -> list[tuple[str, str]]:
+        """Adopt push/create executions; explicitly start only provider-owned retries."""
+        if not self.rc_project:
+            raise RuntimeError("Cannot start provisioning: RC project name is unavailable")
+
+        created_pipeline_names = created_pipeline_names or set()
+        projects = [self.rc_project, *self.mc_projects]
+        execution_ids = {}
+
+        for project_name in projects:
+            pipeline_name = self.target_monitor.pipeline_name(project_name)
+            if pipeline_name in created_pipeline_names:
+                continue
+
+            push_matched = (
+                push_trigger_configs is not None
+                and self.target_monitor.push_trigger_matches(
+                    push_trigger_configs.get(pipeline_name),
+                    branch or "",
+                    changed_paths or [],
+                )
+            )
+            desired_filter_matches = (
+                push_trigger_configs is not None
+                and self.target_monitor.push_trigger_matches(
+                    (desired_push_trigger_configs or push_trigger_configs).get(pipeline_name),
+                    branch or "",
+                    changed_paths or [],
+                )
+            )
+            if push_matched:
+                execution_ids[project_name] = self.target_monitor.wait_for_revision_execution(
+                    pipeline_name,
+                    desired_sha,
+                )
+            elif desired_filter_matches:
+                log.info(
+                    "Starting %s pipeline %s at SHA %s: its current push filter matches, "
+                    "but the filter was not active when this branch update was pushed",
+                    "RC" if project_name == self.rc_project else "MC",
+                    pipeline_name,
+                    desired_sha[:7],
+                )
+                execution_ids[project_name] = self.target_monitor.start_or_reuse_pipeline(
+                    pipeline_name,
+                    desired_sha,
+                )
+            elif skip_untriggered_pushes:
+                active_execution = self.target_monitor.start_or_reuse_pipeline(
+                    pipeline_name,
+                    desired_sha,
+                    start_if_idle=False,
+                )
+                if active_execution:
+                    execution_ids[project_name] = active_execution
+                    continue
+                previous_success = self.target_monitor.has_successful_execution(pipeline_name)
+                if previous_success:
+                    log.info(
+                        "Skipping %s pipeline %s: changed paths do not match its push filter; "
+                        "retaining successful execution %s at SHA %s",
+                        "RC" if project_name == self.rc_project else "MC",
+                        pipeline_name,
+                        previous_success[0],
+                        previous_success[1][:7],
+                    )
+                    continue
+                execution_ids[project_name] = self.target_monitor.start_or_reuse_pipeline(
+                    pipeline_name,
+                    desired_sha,
+                )
+            else:
+                execution_ids[project_name] = self.target_monitor.start_or_reuse_pipeline(
+                    pipeline_name,
+                    desired_sha,
+                )
+
+        for project_name in projects:
+            pipeline_name = self.target_monitor.pipeline_name(project_name)
+            if pipeline_name in created_pipeline_names:
+                execution_ids[project_name] = self.target_monitor.wait_for_creation_execution(
+                    pipeline_name,
+                    desired_sha,
+                )
+
+        return [
+            (project_name, execution_ids[project_name])
+            for project_name in projects
+            if project_name in execution_ids
+        ]
+
+    def _wait_for_provision(
+        self,
+        desired_sha: str,
+        created_pipeline_names: set[str] | None = None,
+        push_trigger_configs: dict[str, dict | None] | None = None,
+        branch: str | None = None,
+        changed_paths: list[str] | None = None,
+        skip_untriggered_pushes: bool = False,
+        desired_push_trigger_configs: dict[str, dict | None] | None = None,
+    ):
+        """Monitor RC + MC executions in RC-first order."""
         log.info("")
         log.info("==========================================")
-        log.info("Provision: Starting CodePipelines")
+        log.info("Provision: Reconciling RC and MC CodePipeline executions for this revision")
         log.info("==========================================")
 
         build_window_start = time.monotonic()
 
-        # Start RC + each MC pipeline, collecting (project_name, execution_id) tuples.
-        builds = []
-
-        # Start RC pipeline first so RC and MC use the same source revision.
-        rc_pipeline = self.target_monitor.pipeline_name(self.rc_project)
-        rc_execution_id = self.target_monitor.start_pipeline(rc_pipeline, desired_sha)
-        builds.append((self.rc_project, rc_execution_id))
-
         # The MC build scripts discover RC outputs directly; they do not need a
         # direct CodeBuild build-ID override when invoked by CodePipeline.
-        for mc_project in self.mc_projects:
-            mc_pipeline = self.target_monitor.pipeline_name(mc_project)
-            mc_execution_id = self.target_monitor.start_pipeline(mc_pipeline, desired_sha)
-            builds.append((mc_project, mc_execution_id))
+        builds = self._start_provision_pipelines(
+            desired_sha,
+            created_pipeline_names,
+            push_trigger_configs,
+            branch,
+            changed_paths,
+            skip_untriggered_pushes,
+            desired_push_trigger_configs,
+        )
 
-        log.info("Started %d pipeline execution(s) at SHA %s", len(builds), desired_sha[:7])
+        log.info("Tracking %d pipeline execution(s) at SHA %s", len(builds), desired_sha[:7])
 
         if not builds:
-            raise RuntimeError("No CodeBuild projects were selected for provisioning.")
+            self._record_timing(
+                "RC/MC CodePipeline window (overlap)",
+                time.monotonic() - build_window_start,
+                "SUCCEEDED",
+            )
+            self._provision_builds = []
+            self._provision_results = {}
+            log.info("No RC/MC changes require a pipeline run; retaining prior successful state.")
+            return
 
         # Poll pipeline status in the same RC-first order used to start them.
         # The CodeBuild executions themselves are already running concurrently.
@@ -945,17 +1147,12 @@ class EphemeralEnvOrchestrator:
         management_account_id = self.aws.get_target_account_id("management")
         state_bucket = f"terraform-state-{management_account_id}-{self.region}"
 
-        # MC management_id follows the pattern: {eph_prefix}-{mc_key}.
-        # The current state-file interface stores one MC output file, so retain
-        # the default MC01 behavior until per-MC state output is introduced.
-        region_file = git.work_dir / "config" / TARGET_ENVIRONMENT / f"{self.region}.yaml"
-        with open(region_file) as f:
-            region_config = yaml.safe_load(f) or {}
-        mc_keys = list(region_config.get("provision_mcs", {}).keys())
-        if not mc_keys:
+        # The state-file interface currently stores one MC output file. Use the
+        # first rendered project so state lookup and output validation agree.
+        if not self.mc_projects:
             log.warning("No MCs in provision_mcs — skipping MC state save")
             return
-        mc_id = f"{self.eph_prefix}-{mc_keys[0]}"
+        mc_id = self.mc_projects[0]
 
         state_key = f"management-cluster/{mc_id}.tfstate"
         tf_dir = git.work_dir / "terraform" / "config" / "management-cluster"
@@ -1308,22 +1505,42 @@ class EphemeralEnvOrchestrator:
         log.info("Teardown: Infrastructure Destroy")
         log.info("==========================================")
 
-        def set_delete_flag(region_config):
-            region_config["delete"] = True
-            for mc_name, mc_config in region_config.get("provision_mcs", {}).items():
-                if mc_config is None:
-                    region_config["provision_mcs"][mc_name] = mc_config = {}
-                mc_config["delete"] = True
-
         if fire_and_forget:
-            desired_sha = git.modify_config(TARGET_ENVIRONMENT, self.region, set_delete_flag)
-            if not desired_sha:
-                raise RuntimeError("modify_config returned no SHA — no changes committed")
+            desired_sha = git.current_sha()
+            destroy_overrides = {"IS_DESTROY": "true"}
+            mc_builds = []
+            for mc_project in self.mc_projects:
+                mc_pipeline = self.target_monitor.pipeline_name(mc_project)
+                execution_id = self.target_monitor.start_pipeline(
+                    mc_pipeline,
+                    desired_sha,
+                    environment_variables=destroy_overrides,
+                )
+                mc_builds.append((mc_project, execution_id))
 
             log.info(
-                "Fire-and-forget mode: pushed infrastructure delete flags (Phase 1) "
-                "and exiting. Phases 2 (delete projects) and 3 (terraform destroy) "
-                "will NOT run — complete teardown must be triggered separately."
+                "Started %d MC teardown pipeline(s) at SHA %s",
+                len(mc_builds),
+                desired_sha[:7],
+            )
+            failed = self._wait_for_teardown_builds(mc_builds, desired_sha)
+            self._raise_teardown_failure(failed)
+
+            if not self.rc_project:
+                raise RuntimeError("Cannot start RC teardown: RC project name is unavailable")
+            rc_pipeline = self.target_monitor.pipeline_name(self.rc_project)
+            execution_id = self.target_monitor.start_pipeline(
+                rc_pipeline,
+                desired_sha,
+                environment_variables=destroy_overrides,
+            )
+
+            log.info(
+                "Fire-and-forget mode: MC teardown succeeded; RC teardown execution %s "
+                "started at SHA %s and will continue asynchronously. Phases 2 "
+                "(delete projects) and 3 (terraform destroy) will NOT run.",
+                execution_id,
+                desired_sha[:7],
             )
             return
 
@@ -1453,11 +1670,22 @@ class EphemeralEnvOrchestrator:
             for future in as_completed(future_to_build):
                 project_name = future_to_build[future]
                 try:
-                    future.result()
-                    log.info("✓ Teardown build succeeded: %s", project_name)
+                    result = future.result()
                 except (RuntimeError, TimeoutError) as e:
                     log.error("Teardown build '%s' failed: %s", project_name, e)
                     failed.append(project_name)
+                    continue
+
+                if result.status != "SUCCEEDED":
+                    log.error(
+                        "Teardown build '%s' did not succeed (status=%s): %s",
+                        project_name,
+                        result.status,
+                        result.error or "no failure detail returned",
+                    )
+                    failed.append(project_name)
+                    continue
+                log.info("✓ Teardown build succeeded: %s", project_name)
         return failed
 
     def _raise_teardown_failure(self, failed: list[str]) -> None:
