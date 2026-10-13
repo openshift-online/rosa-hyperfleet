@@ -112,6 +112,30 @@ variable "data_access_role_arn" {
   default     = ""
 }
 
+variable "hyperfleet_db_resource_arn" {
+  description = "ARN of the HyperFleet DB resource for IAM database authentication (rds-db:connect). Format: arn:aws:rds-db:region:account:dbuser:cluster-resource-id/username"
+  type        = string
+  default     = ""
+}
+
+variable "hyperfleet_db_endpoint" {
+  description = "HyperFleet Aurora cluster endpoint (host:port) for IAM auth connections"
+  type        = string
+  default     = ""
+}
+
+variable "hyperfleet_db_name" {
+  description = "HyperFleet database name"
+  type        = string
+  default     = ""
+}
+
+variable "hyperfleet_db_username" {
+  description = "HyperFleet database username for IAM auth"
+  type        = string
+  default     = ""
+}
+
 
 # --- Sizing and timeouts ---
 

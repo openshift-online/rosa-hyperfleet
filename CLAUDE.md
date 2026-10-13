@@ -204,6 +204,7 @@ See [`docs/development-environment.md`](docs/development-environment.md) for ful
   enforce. Skipping this step is how formatting and lint failures reach CI (e.g. PR #364).
 - **Terraform Validation**: Always run `terraform validate` and `terraform plan`
 - **Format Check**: `make terraform-fmt` (also run automatically by `make pre-push`)
+- **Alerting Rule Tests**: `make promtool-test` validates PrometheusRule syntax and runs unit tests from `ci/promtool-test/`
 - **ArgoCD Health**: Verify applications sync successfully
 - **Security Review**: Use architect agent for security-sensitive changes
 
@@ -245,7 +246,7 @@ Scheduled CI/documentation tasks run via Chai Bot. Schedules are defined in `.ch
 - `---THREAD_DETAILS---` — everything after this line becomes threaded replies (not posted to the channel)
 - `---THREAD_BREAK---` — separates individual threaded replies
 
-**Daily CI report** tracks `nightly-ephemeral` and `nightly-integration` jobs. Top-level message shows today's status + 10-day trend table. Threaded replies are created only when jobs are failing, using the `ci-troubleshooter` agent for root cause analysis.
+**Daily CI report** tracks the `nightly-ephemeral`, `nightly-integration`, and `nightly-stage` jobs. Top-level message shows today's status + 10-day trend table. It also reports, as a single condensed header line, the latest run of the **OCP nightly e2e** periodics — the HyperShift `periodic-ci-openshift-hypershift-release-{5.0,5.1}-periodics-e2e-rosa-hyperfleet` jobs that run rosa-hyperfleet e2e against OCP nightly release images (condensed latest-run header line plus a 10-run trend row per OCP version). Threaded replies are created only when jobs are failing, using the `ci-troubleshooter` agent for root cause analysis. Fix PRs are only raised when the fix lands in a hyperfleet repo (`rosa-hyperfleet`, `rosa-hyperfleet-api`, `rosa-hyperfleet-cli`); failures rooted in HyperShift or the OCP payload are reported with a recommendation but no PR.
 
 **Weekly status** groups epics by status (In Progress with completion %, To Do, Done) and summarizes PR activity across `rosa-hyperfleet`, `rosa-hyperfleet-api`, and `rosa-hyperfleet-cli`.
 

@@ -107,6 +107,38 @@ resource "aws_iam_role_policy" "task_bootstrap" {
   })
 }
 
+# HyperFleet DB access for the ZOA read-only role provisioning step.
+# Created only on the RC (enable_zoa_db_bootstrap), which has hyperfleet-db.
+# The count must be driven by a plan-time-known flag rather than the DSN secret
+# ARN, which is unknown at plan time on a greenfield apply (the secret is
+# created in the same apply). The bootstrap task reads the master DSN from
+# Secrets Manager and must decrypt it with the DB KMS key. The general
+# secretsmanager grant above scopes to "${cluster_id}/*", which does NOT match
+# the "${cluster_id}-hyperfleet-db-dsn" name, so an explicit grant on that ARN
+# is required.
+resource "aws_iam_role_policy" "task_hyperfleet_db" {
+  count = var.enable_zoa_db_bootstrap ? 1 : 0
+
+  name = "${var.cluster_id}-bootstrap-hyperfleet-db"
+  role = aws_iam_role.task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = var.hyperfleet_db_dsn_secret_arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = var.hyperfleet_db_kms_key_arn
+      }
+    ]
+  })
+}
+
 # Data source for current AWS account
 data "aws_caller_identity" "current" {}
 

@@ -21,12 +21,3 @@ hypershift:
     # - hypershift.openshift.io/aws-iam-authenticator annotation propagation
     # Branch: https://github.com/typeid/hypershift/tree/aws-iam-authenticator-poc
     image: quay.io/cbusse_openshift/hypershift-operator:aws-iam-auth
-    # Optional development override for the control-plane-operator (CPO) image.
-    # When set, the HyperShift operator is installed with
-    # --control-plane-operator-image, so every HostedCluster it provisions on
-    # this management cluster runs the given CPO build (e.g. from an
-    # openshift/hypershift PR). Empty disables the override — the CPO image then
-    # defaults to the one the operator derives from the release payload.
-    # Intended for pre-merge e2e (set via ROSA_REGIONAL_EXTRA_COMPONENTS); leave
-    # empty for normal deployments.
-    controlPlaneOperatorImage: ""

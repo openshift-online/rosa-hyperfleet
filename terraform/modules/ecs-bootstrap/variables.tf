@@ -81,3 +81,41 @@ variable "redis_endpoint" {
   type        = string
   default     = ""
 }
+
+# -----------------------------------------------------------------------------
+# HyperFleet DB — ZOA read-only IAM role provisioning (RC only)
+#
+# When set, the bootstrap task provisions a dedicated Postgres role granted
+# rds_iam so the ZOA Lambda can connect via RDS IAM auth. Left empty for MCs
+# (which have no hyperfleet-db), skipping the step.
+# -----------------------------------------------------------------------------
+
+variable "enable_zoa_db_bootstrap" {
+  description = "Whether the bootstrap task provisions the ZOA read-only IAM DB role. Enabled on the RC (which has hyperfleet-db), disabled on MCs. Must be known at plan time because it drives resource count."
+  type        = bool
+  default     = false
+}
+
+variable "hyperfleet_db_dsn_secret_arn" {
+  description = "Secrets Manager ARN of the hyperfleet-db master DSN. Used to grant the bootstrap task access and injected as a bootstrap env var when enable_zoa_db_bootstrap is true."
+  type        = string
+  default     = ""
+}
+
+variable "hyperfleet_db_kms_key_arn" {
+  description = "KMS key ARN encrypting the hyperfleet-db DSN secret (needed to decrypt it)."
+  type        = string
+  default     = ""
+}
+
+variable "hyperfleet_db_name" {
+  description = "HyperFleet database name (used in GRANT CONNECT)."
+  type        = string
+  default     = ""
+}
+
+variable "hyperfleet_db_reader_username" {
+  description = "Postgres role name for ZOA read-only IAM auth."
+  type        = string
+  default     = "zoa_ro"
+}

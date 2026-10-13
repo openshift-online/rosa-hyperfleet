@@ -52,6 +52,11 @@ locals {
     var.sessions_table_name != "" ? {
       SESSIONS_TABLE               = var.sessions_table_name
       SESSION_IDLE_TIMEOUT_SECONDS = tostring(var.session_idle_timeout_seconds)
+    } : {},
+    var.hyperfleet_db_endpoint != "" ? {
+      HYPERFLEET_DB_ENDPOINT = var.hyperfleet_db_endpoint
+      HYPERFLEET_DB_NAME     = var.hyperfleet_db_name
+      HYPERFLEET_DB_USERNAME = var.hyperfleet_db_username
   } : {})
 
   common_tags = {
@@ -249,7 +254,7 @@ resource "aws_iam_role_policy" "zoa_aws_read" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
+    Statement = concat([
       {
         Effect = "Allow"
         Action = [
@@ -276,7 +281,15 @@ resource "aws_iam_role_policy" "zoa_aws_read" {
         Action   = "kms:GenerateDataKey"
         Resource = var.kms_key_arn
       },
-    ]
+      ],
+      var.hyperfleet_db_resource_arn != "" ? [{
+        Effect = "Allow"
+        Action = [
+          "rds-db:connect",
+        ]
+        Resource = var.hyperfleet_db_resource_arn
+      }] : []
+    )
   })
 }
 

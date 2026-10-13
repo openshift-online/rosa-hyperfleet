@@ -99,46 +99,46 @@ watch -n 1 rosactl cluster list $CLUSTER_NAME
 ## Create a Cluster using ROSA CLI
 
 ```bash
-# asusuming your running from the ROSA repo folder
-✗ ./rosa login --hyperfleet-url $API_URL
-I: Logged in to Platform API: https://5abcsz88t2.execute-api.us-east-1.amazonaws.com/prod
+# Assuming you are running from the ROSA repo folder
+./rosa login --hyperfleet-url $API_URL
+I: Logged in to Platform API: $API_URL
 
-✗ ./rosa whoami
-AWS ARN:                      arn:aws:iam::754XXXXX
-AWS Account ID:               754XXXXX
+./rosa whoami
+AWS ARN:                      arn:aws:iam::<account-id>:user/<username>
+AWS Account ID:               <account-id>
 AWS Default Region:           us-east-1
-V2 API:                       https://5abcsz88t2.execute-api.us-east-1.amazonaws.com/prod
+V2 API:                       $API_URL
 
-✗ ./rosa list clusters
+./rosa list clusters
 E: Failed to list clusters: AUTH-004: Account is not provisioned for ROSA authorization. Contact your administrator.
 
-# add your account to the platform api
-✗ make ephemeral-post-account-shell ACCOUNT_ID=754XXXXX
+# Add your account to the platform API
+make ephemeral-post-account-shell ACCOUNT_ID=<account-id>
 
-✗ ./rosa list clusters
+./rosa list clusters
 I: No clusters available
 
-✗ ./rosa create oidc-config --managed --mode auto
+./rosa create oidc-config --managed --mode auto
 
-✗ ./rosa list oidc-config
-ID                                    TYPE     ISSUER URL                                                                  SECRET ARN
-ef477f3f-0c62-4c6f-9ede-4cbe640e2887  managed  https://d2wkz7m09tqiv4.cloudfront.net/ef477f3f-0c62-4c6f-9ede-4cbe640e2887
+./rosa list oidc-config
+ID                                    TYPE     ISSUER URL                                                          SECRET ARN
+<oidc-config-id>                      managed  https://<cloudfront-id>.cloudfront.net/<oidc-config-id>
 
-✗ CLUSTER_NAME=cd-rosa-1
-✗ OIDC_ID=ef477f3f-0c62-4c6f-9ede-4cbe640e2887
+CLUSTER_NAME=my-cluster
+OIDC_ID=<oidc-config-id>
 
-✗ ./rosa create operator-roles --hosted-cp --oidc-config-id $OIDC_ID --mode auto --prefix $CLUSTER_NAME
+./rosa create operator-roles --hosted-cp --oidc-config-id $OIDC_ID --mode auto --prefix $CLUSTER_NAME
 
-✗ ./rosa create network \
+./rosa create network \
     --mode auto \
     --param ClusterName=$CLUSTER_NAME \
     --param Name=$CLUSTER_NAME-vpc \
     --param Region=us-east-1 \
     --param VpcCidr=10.0.0.0/16
 
-✗ SUBNETS=$(aws cloudformation describe-stacks --stack-name $CLUSTER_NAME-vpc --query 'Stacks[0].Outputs' --region us-east-1 | jq -r '[ .[] | select(.OutputKey | contains("Subnets")).OutputValue ] | join(",")')
+SUBNETS=$(aws cloudformation describe-stacks --stack-name $CLUSTER_NAME-vpc --query 'Stacks[0].Outputs' --region us-east-1 | jq -r '[ .[] | select(.OutputKey | contains("Subnets")).OutputValue ] | join(",")')
 
-✗ ./rosa create cluster \
+./rosa create cluster \
     --cluster-name=$CLUSTER_NAME -y \
     --region us-east-1 \
     --operator-roles-prefix $CLUSTER_NAME \
@@ -148,23 +148,23 @@ ef477f3f-0c62-4c6f-9ede-4cbe640e2887  managed  https://d2wkz7m09tqiv4.cloudfront
     --compute-machine-type m5.xlarge \
     --oidc-config-id $OIDC_ID
 
-✗ ./rosa create machinepool --cluster=$CLUSTER_NAME --name=workers --replicas=2 --instance-type=m5.xlarge --subnet <one of the subnet ids> --region us-east-1
+./rosa create machinepool --cluster=$CLUSTER_NAME --name=workers --replicas=2 --instance-type=m5.xlarge --subnet <subnet-id> --region us-east-1
 
-✗ ./rosa list clusters
-ID                                    NAME       STATE         TOPOLOGY
-145e4852-8146-4c0f-85d3-8c5d24b800f6  cd-rosa-1  Provisioning  Hosted CP
+./rosa list clusters
+ID                                    NAME        STATE         TOPOLOGY
+<cluster-id>                          my-cluster  Provisioning  Hosted CP
 
-✗ ./rosa list machinepool -c cd-rosa-1
-ID       NAME     REPLICAS  INSTANCE TYPE  SUBNET                    STATE
-workers  workers  2         m5.xlarge      subnet-0bceee86d866a8efd  Provisioning
+./rosa list machinepool -c $CLUSTER_NAME
+ID       NAME     REPLICAS  INSTANCE TYPE  SUBNET         STATE
+workers  workers  2         m5.xlarge      <subnet-id>    Provisioning
 
-✗ ./rosa list machinepool -c cd-rosa-1
-ID       NAME     REPLICAS  INSTANCE TYPE  SUBNET                    STATE
-workers  workers  2         m5.xlarge      subnet-0bceee86d866a8efd  Ready
+./rosa list machinepool -c $CLUSTER_NAME
+ID       NAME     REPLICAS  INSTANCE TYPE  SUBNET         STATE
+workers  workers  2         m5.xlarge      <subnet-id>    Ready
 
-✗ ./rosa delete cluster -c cd-rosa-1
-? Are you sure you want to delete cluster cd-rosa-1? Yes
-I: Cluster 'cd-rosa-1' will start deleting now
+./rosa delete cluster -c $CLUSTER_NAME
+? Are you sure you want to delete cluster my-cluster? Yes
+I: Cluster 'my-cluster' will start deleting now
 ```
 
 ## Access the Cluster

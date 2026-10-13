@@ -6,6 +6,8 @@ You are running a **cron** scheduled task that produces a daily CI health report
 
 Check the pass/fail history (last 10 completed builds per job) for ROSA HyperFleet CI periodic jobs. Report overall CI health and individual job status.
 
+In addition, report the **OCP nightly e2e periodics** — the HyperShift periodics that run rosa-hyperfleet e2e against OCP nightly release images. Report them as extra rows in the same trend table plus a condensed status line in the header. If today's run has finished, show its real pass/fail; if it is still running (or hasn't started), show `:loader:` in its today cell instead of a pass/fail.
+
 - Always post the top-level status to the channel (never call `no_action_required()`)
 - If all jobs are passing: post the status summary only — no threaded replies
 - If any job is failing: post the status summary, then create a threaded reply per failing job with investigation
@@ -34,11 +36,30 @@ If the fetch fails, fall back to these job names:
 - periodic-ci-openshift-online-rosa-hyperfleet-main-nightly-integration
 - periodic-ci-openshift-online-rosa-hyperfleet-main-nightly-stage
 
+**Also track these 2 OCP nightly e2e periodics** (HyperShift repo — rosa-hyperfleet e2e against OCP nightly release images, `cron: 0 8 * * *`):
+
+- `periodic-ci-openshift-hypershift-release-5.0-periodics-e2e-rosa-hyperfleet`
+- `periodic-ci-openshift-hypershift-release-5.1-periodics-e2e-rosa-hyperfleet`
+
+Their config lives in the HyperShift CI config (not the rosa-hyperfleet config above):
+
+- `https://raw.githubusercontent.com/openshift/release/refs/heads/main/ci-operator/jobs/openshift/hypershift/openshift-hypershift-release-5.0-periodics.yaml`
+- `https://raw.githubusercontent.com/openshift/release/refs/heads/main/ci-operator/jobs/openshift/hypershift/openshift-hypershift-release-5.1-periodics.yaml`
+
+For these two jobs, collect their recent completed runs (date, pass/fail, build ID). They render as two extra rows in the shared trend table (`hypershift-ocp-5.0-nightly`, `hypershift-ocp-5.1-nightly`). Today's cell shows a real pass/fail once the run has finished; while it is still running (or hasn't started) it shows `:loader:`. They also appear in a condensed header line (see Step 4).
+
 ### 2. Collect build history (last 10 runs)
 
 For each job, collect the **last 10 completed job runs** for the trend table. Use Prow CI tools (`search_prow_jobs`, `query_prowjobs`, etc.) or `fetch_web_content` on the job-history page.
 
-**Same-day reporting rule:** The "Latest Run Status" section must report **today's run** for each job. Do not fall back to a previous day's completed run for the latest status. All jobs must be reported from the same day (today).
+**Same-day reporting rule (rosa-hyperfleet jobs):** For `ephemeral`, `integration`, and `stage`, the "Latest Run Status" section must report **today's run**. Do not fall back to a previous day's completed run for the latest status. These three jobs run at `0 4 * * *` (04:00 UTC), so by the time this report runs they have normally finished.
+
+**Exception — OCP nightly e2e periodics:** Report these based on whether today's run has finished, not on the clock:
+
+- **If today's run has finished:** use it as a normal pass/fail — real `✅`/`❌` in the today cell, and a `passing (<date>)` / `failing (<date>)` header.
+- **If today's run is still running or hasn't started:** show `:loader:`/`⌛` in the today cell and base the header on the latest completed run, e.g. `in progress (last passed Oct 9)`.
+
+This exception **overrides** both the "today only" rule above and the generic "Retry for in-progress jobs" rule below: do **not** wait or retry on an unfinished OCP nightly run — report it as `:loader:`/in progress straight away. This keeps the row correct whether the periodic lands before or after this report, and avoids a confusing "no run today" when it simply hasn't finished.
 
 **Job status values:** Report the actual state of today's run:
 
@@ -48,7 +69,7 @@ For each job, collect the **last 10 completed job runs** for the trend table. Us
 - **scheduled** — today's run is queued but not yet started
 - **no run today** — no run was triggered today
 
-**Retry for in-progress jobs:** If today's run for any tracked job is in a `scheduled` or `running` state:
+**Retry for in-progress jobs** (the three rosa-hyperfleet jobs; the OCP nightly periodics are excepted per Step 2 above)**:** If today's run for any tracked job is in a `scheduled` or `running` state:
 
 1. Wait **10 minutes** and re-check the job status
 2. Repeat up to **3 times** (30 minutes maximum wait)
@@ -70,18 +91,21 @@ If Prow tools don't return historical build data directly, use `fetch_web_conten
 
 **10-run trend table**: Create a table with dates as header and jobs as rows:
 
-- **Header row**: Dates in MonDD format (e.g., Jun10, Jun11, Jun12, ...)
-- **Job rows**: Job name followed by ✅ or ❌ for each run, then pass count and percentage
+- **Header row**: Dates in MonDD format (e.g., Jun10, Jun11, Jun12, ...), newest = today in the rightmost column
+- **Job rows**: Job name followed by ✅ or ❌ for each run, then the pass count (e.g. `9/10`)
+- **OCP nightly rows** go in the same table. Today's cell is a real pass/fail once the run has finished, or `:loader:` while it is still running (see the Step 2 exception); the pass count ignores a `:loader:` cell
 - Order: oldest run first (leftmost) → newest run last (rightmost)
-- Use monospace formatting for alignment
+- Use monospace formatting for alignment; pad all labels to the longest
 
 **Table format example:**
 
 ```text
-              Jun10 Jun11 Jun12 Jun13 Jun14 Jun15 Jun16 Jun17 Jun18 Jun19
-ephemeral:     ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅   10/10 (100%)
-integration:   ✅    ✅    ❌    ✅    ✅    ✅    ✅    ✅    ❌    ❌    7/10 (70%)
-stage:         ✅    ✅    ✅    ✅    ✅    ❌    ✅    ✅    ✅    ✅    9/10 (90%)
+                            Jun10 Jun11 Jun12 Jun13 Jun14 Jun15 Jun16 Jun17 Jun18 Jun19
+ephemeral:                   ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅   10/10
+integration:                 ✅    ✅    ❌    ✅    ✅    ✅    ✅    ✅    ❌    ❌    7/10
+stage:                       ✅    ✅    ✅    ✅    ✅    ❌    ✅    ✅    ✅    ✅    9/10
+hypershift-ocp-5.0-nightly:  ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅   :loader:  9/9
+hypershift-ocp-5.1-nightly:  ✅    ❌    ✅    ✅    ✅    ✅    ✅    ✅    ✅   :loader:  8/9
 ```
 
 **Overall CI health** (based on today's run status for each job):
@@ -105,23 +129,40 @@ Evaluate status in this order:
 
 Post a concise summary as your channel response. Use concise job names: "ephemeral", "integration", and "stage".
 
-**Emoji key:** :large_green_circle: passing, :red_circle: failing, :large_yellow_circle: mixed, :hourglass_flowing_sand: running/scheduled, :white_circle: no run today.
+**Emoji key:** :large_green_circle: passing, :red_circle: failing, :large_yellow_circle: mixed, :hourglass_flowing_sand: running/scheduled, :white_circle: no run today. In the trend table, a `:loader:` cell means that OCP nightly run is still running (or hasn't started).
 
 ```text
 %OVERALL_EMOJI% *CI Daily — %DATE%*
 %JOB_EMOJI% ephemeral: %STATUS% (<%URL%|run>)  |  %JOB_EMOJI% integration: %STATUS% (<%URL%|run>)  |  %JOB_EMOJI% stage: %STATUS% (<%URL%|run>)
+%JOB_EMOJI% latest OCP nightly: 5.0 %STATUS% (<%URL%|run>)  |  5.1 %STATUS% (<%URL%|run>)
 
-              Jun10 Jun11 Jun12 Jun13 Jun14 Jun15 Jun16 Jun17 Jun18 Jun19
-ephemeral:     ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅   10/10 (100%)
-integration:   ✅    ✅    ❌    ✅    ✅    ✅    ✅    ✅    ❌    ❌    7/10 (70%)
-stage:         ✅    ✅    ✅    ✅    ✅    ❌    ✅    ✅    ✅    ✅    9/10 (90%)
+                            Oct01 Oct02 Oct03 Oct04 Oct05 Oct06 Oct07 Oct08 Oct09 Oct10
+ephemeral:                   ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅   10/10
+integration:                 ✅    ✅    ❌    ✅    ✅    ✅    ✅    ✅    ❌    ❌    7/10
+stage:                       ✅    ✅    ✅    ✅    ✅    ❌    ✅    ✅    ✅    ✅    9/10
+hypershift-ocp-5.0-nightly:  ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅   :loader:  9/9
+hypershift-ocp-5.1-nightly:  ✅    ❌    ✅    ✅    ✅    ✅    ✅    ✅    ✅   :loader:  8/9
 ```
 
-Use monospace/code block formatting for the trend table. Align columns for readability.
+**One merged table; the last column is today.** The rosa-hyperfleet jobs run at 04:00 UTC and have finished by report time, so their today cell is a real ✅/❌. For the OCP nightly periodics, the today cell is a real ✅/❌ if that run has finished, or `:loader:` while it is still running (or hasn't started). The pass count ignores a `:loader:` cell, so an in-progress day reads e.g. `9/9`.
+
+**Header line:** lead with a single `%JOB_EMOJI%` for the combined OCP nightly status (red if either version failed, green if both are passing/in progress, otherwise the mixed/pending dot — same rules as individual job health). Then, for each version, show the shorthand (`5.0`, `5.1`), the status in plain words, and a link to that version's latest run `(<%URL%|run>)`. Link to the run the status describes (the finished run, or today's in-progress build).
+
+Status is one of:
+
+- `passing (Oct 11)` — today's run finished green
+- `failing (Oct 11)` — today's run finished red
+- `in progress (last passed Oct 11)` — today's run hasn't finished yet
+
+Write the header status in plain words only — no emoji or glyphs. The `⌛` spinner and `✅`/`❌` marks belong in the trend-table cell, not the header.
+
+**Column alignment:** pad every label to the width of the longest (`hypershift-ocp-5.1-nightly:`) so the date header and all cells line up vertically.
+
+**Rendering note:** Slack renders `:loader:` as the spinner only in normal message text, **not** inside a ` ``` ` code block (there it shows the literal `:loader:`). So post the trend table as a normal monospace-aligned message rather than a fenced code block, or — if you must keep the fence for alignment — fall back to the unicode `⌛` in that cell. ✅/❌ are unicode and render fine either way.
 
 ### 5. Failure analysis (threaded replies — only when jobs are failing)
 
-**Skip this step entirely if all jobs are passing.** Only create threaded replies when a job has failed.
+**Skip this step entirely if all jobs are passing.** Only create threaded replies when a job has failed. This includes the two **OCP nightly e2e** periodics — if the latest run of either failed, create a threaded reply for it too.
 
 After your top-level summary (Step 4), emit `---THREAD_DETAILS---` on its own line. Everything after that delimiter becomes threaded replies (not part of the channel summary). Separate each threaded reply with `---THREAD_BREAK---` on its own line.
 
@@ -143,24 +184,41 @@ For each job whose **latest run failed**, produce a **separate threaded reply** 
 
 **S3 log handling:** Always extract tar.gz locally for full analysis. Clean up downloaded files immediately after analysis is complete — never leave S3 logs on disk between runs. See Step 5b in `.claude/agents/ci-troubleshooter.md` for the full procedure.
 
-Format each threaded reply like:
+**Write threaded replies to be read by a human skimming Slack on their phone.** Lead with a plain-English headline, keep sentences short, and use whitespace and bullets so the eye can jump to what matters. Depth lives in the bullets, not in one dense paragraph.
+
+**Slack formatting rules (mrkdwn — not full Markdown):**
+
+- Use `*bold*` for section labels. Slack does **not** render `#` headings or Markdown tables — never use them in a reply.
+- Separate sections with a blank line so they don't run together.
+- Use `•` bullets for lists. Keep each bullet to one line where possible.
+- Put log excerpts, errors, paths, and commit SHAs in `inline code`. Use a fenced block only for a multi-line excerpt that truly needs it.
+- Lead with the one-line headline; a reader should understand the failure from the first two lines without scrolling.
+- Prefer `·` or `:` as inline separators. Avoid stacking many facts on one line with `|`.
+
+Format each threaded reply like this (omit any section that doesn't apply — e.g. no `Streak` line on a first occurrence):
 
 ```text
-%EMOJI% *%JOB_NAME% -- %PASS%/10 (%RATE%%)*
+%STATUS_EMOJI% *%JOB_NAME%* · %CLASS_EMOJI% %CLASSIFICATION% · %PASS%/10 passing
 
-%CLASSIFICATION%: %SHORT_SUMMARY%
-Evidence: Prow ✅ | S3 Logs ✅/❌ | Git History ✅/❌ | Trend ✅
-%ROOT_CAUSE_ANALYSIS%
-S3 Log Evidence: %KEY_FINDINGS_FROM_S3_LOGS%
-Suspect Commits: %COMMITS_BETWEEN_LAST_GOOD_AND_CURRENT_BAD% (or "None — no relevant changes")
-%CROSS_DAY_ANALYSIS% (if consecutive failures)
+> %ONE_LINE_PLAIN_ENGLISH_HEADLINE — what broke, in human terms%
 
-Most recent failure: <%JOB_RUN_URL%|Build #%NUMBER%> (%DATE%)
-%CONSECUTIVE_STREAK% (if applicable)
-%FIX_PR_LINK% (if PR raised or updated)
+*What happened*
+%2-3 short sentences: the symptom, then the underlying cause.%
+
+*Evidence*
+• :mag: *Prow* — %failing step + key error, e.g. `e2e-tests` failed at `TestClusterCreation` timeout after 42m%
+• :package: *Cluster logs (S3)* — %key finding, e.g. `kube-applier` pod in CrashLoopBackOff, 47× `ResourceNotFoundException`% (or `:warning: not available — <reason>`)
+• :pushpin: *Commits* — %suspect commit `a1b2c3d` + why it's relevant, or `none between last pass and this run`%
+• :chart_with_upwards_trend: *Trend* — %e.g. 2nd day in a row, same signature / first occurrence in 10 runs%
+
+*Scope* %RC / MC / RC→MC% · *Failed phase* %phase% (%duration%)
+
+*Fix* %PR link + one-line what it changes / proposed fix awaiting confirmation / where a non-hyperfleet fix belongs%
+
+:link: <%JOB_RUN_URL%|Build #%NUMBER%> · %DATE%%  · failing since %SINCE_DATE% (%N% days) if streak%
 ```
 
-Use concise job names: "ephemeral", "integration", or "stage".
+Use concise job names: "ephemeral", "integration", "stage", or "ocp-5.x-nightly".
 
 ### 5a. Classify failure — genuine first
 
@@ -194,7 +252,9 @@ Include the cross-day comparison in the threaded reply so readers understand the
 
 Follow Step 10 in `.claude/agents/ci-troubleshooter.md` for the full procedure. The action differs by classification:
 
-**🔧 Genuine — raise PR directly:**
+**Hyperfleet-repo-only fix constraint (applies to ALL jobs):** Only propose/raise a fix PR when the fix lands in a **hyperfleet repo** — `rosa-hyperfleet`, `rosa-hyperfleet-api`, or `rosa-hyperfleet-cli`. This matters most for the **OCP nightly e2e** periodics, whose root cause may be in HyperShift or the OCP nightly payload itself. If the fix belongs in a non-hyperfleet repo (e.g. `openshift/hypershift`, `openshift/release`, or an OCP component), **do not raise a PR**. Instead report the root cause in the threaded reply, state where the fix belongs, and recommend manual follow-up. Still raise a PR normally when the genuine fix is in a hyperfleet repo.
+
+**🔧 Genuine — raise PR directly (only if the fix is in a hyperfleet repo, per the constraint above):**
 
 1. **First genuine failure**: share root cause, raise a PR with the fix against the appropriate repo (`rosa-hyperfleet`, `rosa-hyperfleet-api`, or `rosa-hyperfleet-cli`). Branch name: `chai-bot/fix-<job>-<short-description>`. Label: `chai-bot`.
 2. **Continued genuine failure (same root cause)**: find the existing open chai-bot PR and add a comment with today's failure URL and any new evidence. Do not create a duplicate PR.
@@ -243,62 +303,87 @@ Include the PR link, team prompt, or investigation request in the threaded reply
 ```text
 :large_yellow_circle: *CI Daily — Jun 30*
 :large_green_circle: ephemeral: passing (<url|run>)  |  :red_circle: integration: failing (<url|run>)  |  :large_green_circle: stage: passing (<url|run>)
+:large_green_circle: latest OCP nightly: 5.0 in progress (last passed Jun 29) (<url|run>)  |  5.1 in progress (last passed Jun 29) (<url|run>)
 
-              Jun21 Jun22 Jun23 Jun24 Jun25 Jun26 Jun27 Jun28 Jun29 Jun30
-ephemeral:     ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅   10/10 (100%)
-integration:   ✅    ✅    ❌    ✅    ✅    ✅    ✅    ✅    ❌    ❌    7/10 (70%)
-stage:         ✅    ✅    ✅    ✅    ✅    ❌    ✅    ✅    ✅    ✅    9/10 (90%)
+                            Jun21 Jun22 Jun23 Jun24 Jun25 Jun26 Jun27 Jun28 Jun29 Jun30
+ephemeral:                   ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅   10/10
+integration:                 ✅    ✅    ❌    ✅    ✅    ✅    ✅    ✅    ❌    ❌    7/10
+stage:                       ✅    ✅    ✅    ✅    ✅    ❌    ✅    ✅    ✅    ✅    9/10
+hypershift-ocp-5.0-nightly:  ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅   :loader:  9/9
+hypershift-ocp-5.1-nightly:  ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅    ✅   :loader:  9/9
 
 ---THREAD_DETAILS---
 
-:red_circle: *integration -- 7/10 (70%)*
+:red_circle: *integration* · 🔧 Genuine · 7/10 passing
 
-🔧 *Genuine* — E2E test `TestClusterCreation` timed out waiting for hosted cluster to become ready.
-Evidence: Prow ✅ | S3 Logs ✅ | Git History ✅ | Trend ✅
-Root cause: MC kube-applier pod in CrashLoopBackOff due to DynamoDB connectivity failure — incorrect table name in ArgoCD values.
-S3 Log Evidence: `kube-applier/pods/kube-applier-xyz/kube-applier/logs/current.log` — 47x `ResourceNotFoundException: Requested resource not found`; pod status: CrashLoopBackOff
-Suspect Commits: `a1b2c3d` — `feat(argocd): update kube-applier DynamoDB config` — touches `argocd/config/management-cluster/kube-applier/`
-Consecutive failures (2 days): same root cause as Jun 29 — kube-applier DynamoDB failure with identical error signature.
+> Hosted clusters never come up because the MC can't apply resources — kube-applier is crash-looping against a DynamoDB table that doesn't exist.
 
-Most recent failure: <url|Build #1234> (Jun 30)
-Failing since: Jun 29 (2 consecutive days)
-Fix PR: <https://github.com/openshift-online/rosa-hyperfleet/pull/700|#700> (updated with today's evidence)
+*What happened*
+The `TestClusterCreation` e2e test timed out waiting for the hosted cluster to become ready. On the MC, the kube-applier pod is in CrashLoopBackOff: it's pointed at a DynamoDB table name that was changed in a recent ArgoCD values edit, so every apply fails.
+
+*Evidence*
+• :mag: *Prow* — `e2e-tests` failed at `TestClusterCreation` timeout after 42m
+• :package: *Cluster logs (S3)* — `kube-applier/.../current.log`: 47× `ResourceNotFoundException: Requested resource not found`; pod in CrashLoopBackOff
+• :pushpin: *Commits* — `a1b2c3d` `feat(argocd): update kube-applier DynamoDB config` touches `argocd/config/management-cluster/kube-applier/`
+• :chart_with_upwards_trend: *Trend* — 2nd day in a row, identical error signature to Jun 29
+
+*Scope* RC→MC · *Failed phase* e2e-tests (after 42m)
+
+*Fix* <https://github.com/openshift-online/rosa-hyperfleet/pull/700|#700> — restore the correct table name in kube-applier values (updated today with this run's evidence)
+
+:link: <url|Build #1234> · Jun 30 · failing since Jun 29 (2 days)
 ```
 
 **Example — flake (ask team):**
 
 ```text
-:red_circle: *ephemeral -- 9/10 (90%)*
+:red_circle: *ephemeral* · 🔀 Flake · 9/10 passing
 
-🔀 *Flake* — provision-ephemeral timed out waiting for EKS API response.
-Evidence: Prow ✅ | S3 Logs ✅ | Git History ✅ | Trend ✅
-Single occurrence; Jun 29 and prior runs all passed. Error: `i/o timeout` during Terraform apply — consistent with transient AWS API throttling.
-S3 Log Evidence: All pods healthy, no CrashLoopBackOff, no persistent errors. RC logs show clean state after provision timeout.
-Suspect Commits: None — no commits between last passing run (Jun 29, `f4e5d6c`) and current run touch `terraform/` or `scripts/buildspec/`.
-Proposed fix: add retry with backoff to `scripts/buildspec/provision-infra-rc.sh` Terraform apply step.
+> One-off provision timeout that looks like transient AWS API throttling, not a code problem.
 
-Most recent failure: <url|Build #5678> (Jun 30)
+*What happened*
+`provision-ephemeral` timed out during Terraform apply waiting on the EKS API. The previous run and all earlier runs passed, and the cluster logs show no unhealthy state, so this reads as a transient hiccup rather than a regression.
 
-This appears to be a flake — proposed fix: add retry with backoff to Terraform apply in provision-infra-rc.sh.
-Should I raise a PR for this? Reply in this thread to confirm.
+*Evidence*
+• :mag: *Prow* — `provision-ephemeral` failed with `i/o timeout` during Terraform apply (matches known AWS API throttling)
+• :package: *Cluster logs (S3)* — all pods healthy, no CrashLoopBackOff, clean RC state after the timeout
+• :pushpin: *Commits* — none between last pass (Jun 29, `f4e5d6c`) and this run touch `terraform/` or `scripts/buildspec/`
+• :chart_with_upwards_trend: *Trend* — first failure in 10 runs, no pattern
+
+*Scope* RC · *Failed phase* provision-ephemeral
+
+*Fix* Proposed: add retry-with-backoff to the Terraform apply step in `scripts/buildspec/provision-infra-rc.sh` (not raised — flake needs confirmation)
+
+:link: <url|Build #5678> · Jun 30
+
+This looks like a flake. Proposed fix: add retry-with-backoff to the Terraform apply in `provision-infra-rc.sh`.
+Should I raise a PR? Reply in this thread to confirm.
 ```
 
 **Example — unclear (request manual investigation):**
 
 ```text
-:red_circle: *integration -- 8/10 (80%)*
+:red_circle: *integration* · ⚠️ Unclear · 8/10 passing
 
-⚠️ *Unclear* — E2E test `TestClusterScaling` failed with unexpected 500 response from platform-api.
-Evidence: Prow ✅ | S3 Logs ✅ | Git History ✅ | Trend ✅
-Checked: Prow build log (500 error, no stack trace), RC S3 logs (platform-api pod healthy, no errors in application logs, no restarts), MC S3 logs (all pods healthy).
-S3 Log Evidence: Broad namespace scan clean — no CrashLoopBackOff, no OOMKilled, no persistent errors across any namespace. platform-api logs show normal request patterns up to failure timestamp.
-Suspect Commits: `b2c3d4e` — `refactor(api): restructure scaling handler` — touches `rosa-hyperfleet-api` scaling path, but change appears cosmetic (rename only).
-Why Unclear: Evidence is contradictory — S3 logs show fully healthy cluster state, yet platform-api returned 500. Suspect commit exists but change is cosmetic. First occurrence with no matching pattern. Could be a transient race condition not captured in logs.
+> platform-api returned a 500 during scaling, but every log looks healthy — evidence points two ways.
 
-Most recent failure: <url|Build #9012> (Jun 30)
+*What happened*
+`TestClusterScaling` failed on an unexpected 500 from platform-api. The build log has no stack trace, and the cluster logs show the platform-api pod healthy with normal request patterns right up to the failure. Best guess is a race condition that didn't leave a trace, but the evidence isn't conclusive.
 
-⚠️ Unable to determine root cause with confidence. Likely cause: race condition in platform-api scaling handler.
-This needs manual investigation. Please share findings in this thread — if root cause is identified, I can raise a PR to update the CI troubleshooter to recognize this pattern in future runs.
+*Evidence*
+• :mag: *Prow* — `TestClusterScaling` got HTTP 500 from platform-api, no stack trace in the build log
+• :package: *Cluster logs (S3)* — broad scan clean: no CrashLoopBackOff, no OOMKilled, no restarts; platform-api logs normal to the failure timestamp
+• :pushpin: *Commits* — `b2c3d4e` `refactor(api): restructure scaling handler` touches the scaling path, but the change looks cosmetic (rename only)
+• :chart_with_upwards_trend: *Trend* — first occurrence in 10 runs, no matching prior pattern
+
+*Why unclear* Logs show a fully healthy cluster, yet the API returned 500. The one suspect commit is cosmetic. Most likely a transient race not captured in logs, but that can't be confirmed from the evidence.
+
+*Scope* RC · *Failed phase* e2e-tests
+
+:link: <url|Build #9012> · Jun 30
+
+⚠️ Can't pin the root cause with confidence. Likely a race condition in the platform-api scaling handler.
+Please share any findings in this thread — if we identify the cause, I can raise a PR to teach the CI troubleshooter this pattern.
 ```
 
 ## Constraints
