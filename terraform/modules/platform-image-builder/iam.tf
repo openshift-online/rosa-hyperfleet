@@ -63,11 +63,6 @@ resource "aws_iam_role_policy" "build_platform_image_policy" {
         Effect   = "Allow"
         Action   = "sts:GetServiceBearerToken"
         Resource = "*"
-        Condition = {
-          StringEquals = {
-            "sts:AWSServiceName" = "ecr-public.amazonaws.com"
-          }
-        }
       },
       {
         Sid    = "GitHubConnectionAccess"
