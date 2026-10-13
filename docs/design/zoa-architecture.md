@@ -1,6 +1,6 @@
 # Zero Operator Access (ZOA) — Architecture
 
-**Last Updated Date**: 2026-10-02
+**Last Updated Date**: 2026-10-13
 
 ## Summary
 
@@ -13,13 +13,13 @@ ZOA is independent of the Regional Cluster's Platform API or any Kubernetes work
 ## Context
 
 - **Problem Statement**: Traditional managed-service operations require operators to have standing access (kubeconfig, IAM roles, bastion hosts). This creates unaudited access paths, persistent credentials, no accountability, and compliance gaps. FedRAMP requires complete audit trails for all privileged operations.
-- **Failure Domain Minimization**: The tool used to fix the platform must not depend on the platform being healthy. For sync TAs (the common case), the execution path has 3 failure domains — all AWS-managed: Lambda, DynamoDB, EKS API server. No custom K8s workloads, no pods, no operators in the critical path. Lambdas deploy per-VPC to isolate failure domains — one cluster's ZOA outage cannot cascade to another.
+- **Failure Domain Minimization**: The tool used to fix the platform must not depend on the platform being healthy. The **TA execution path** (the common case) has 3 failure domains — all AWS-managed: Lambda, DynamoDB, EKS API server. The **session path** (operator access) adds ECS Fargate — also AWS-managed. No custom K8s workloads, no pods, no operators in the critical path. Lambdas and ECS tasks deploy per-VPC to isolate failure domains — one cluster's ZOA outage cannot cascade to another.
 - **Constraints**: Lambda only admits ECR as image source; Function URLs require IAM auth; cross-account access must use STS AssumeRole; all data encrypted at rest (KMS).
 - **Assumptions**: Each target VPC has an EKS cluster reachable from the Lambda's subnet. DynamoDB is the shared state store (regional, in RC account). CLI authenticates via SigV4.
 
 ## Architecture
 
-**Composite sync availability: 99.95%** (~22 min/month downtime budget). The sync execution path has only 3 failure domains — all AWS-managed: Lambda (99.95%), DynamoDB (99.999%), and EKS API (99.95%). No custom K8s workloads, no pods, no operators in the critical path.
+**Composite sync TA availability: 99.95%** (~22 min/month downtime budget). The TA execution path has only 3 failure domains — all AWS-managed: Lambda (99.95%), DynamoDB (99.999%), and EKS API (99.95%). The session path adds ECS Fargate (99.99%) — also AWS-managed. No custom K8s workloads, no pods, no operators in the critical path.
 
 Each target VPC (RC and every MC) gets an independent pair of Lambda functions from the same container image (`zoa-lambda`), differentiated by the `HANDLER_MODE` environment variable:
 
@@ -34,16 +34,18 @@ Both use `lambda.Start()` from `aws-lambda-go`. The API Lambda uses a native Go 
 ```mermaid
 graph TD
     subgraph laptop["SRE Laptop"]
-        L["$ kinit / rh-saml<br/>$ zoa run"]
+        L["$ kinit / rh-saml<br/>$ zoa session start"]
     end
 
     subgraph rc["RC Account"]
+        ACCESS["Access Lambda<br/>(session lifecycle, no VPC)"]
         DDB["DynamoDB + S3<br/>(centralized state)"]
         subgraph rc_vpc["RC VPC"]
             EB_RC["EventBridge"]
             API_RC["API Lambda<br/>(Function URL, streaming)"]
             WORKER_RC["Worker Lambda<br/>(self-invoke)"]
             EKS_RC["RC EKS"]
+            BOUNDARY_RC["ZOA Boundary<br/>(ECS Fargate)"]
         end
     end
 
@@ -53,11 +55,18 @@ graph TD
             API_MC["API Lambda<br/>(Function URL, streaming)"]
             WORKER_MC["Worker Lambda<br/>(self-invoke)"]
             EKS_MC["MC EKS"]
+            BOUNDARY_MC["ZOA Boundary<br/>(ECS Fargate)"]
         end
     end
 
-    L -->|"SigV4"| API_RC
-    L -->|"SigV4"| API_MC
+    L -->|"SigV4 (invoker role)"| ACCESS
+    ACCESS -->|"RunTask"| BOUNDARY_RC
+    ACCESS -->|"RunTask (cross-acct)"| BOUNDARY_MC
+    L -.->|"ECS Exec"| BOUNDARY_RC
+    L -.->|"ECS Exec"| BOUNDARY_MC
+
+    BOUNDARY_RC -->|"SigV4 (task role)"| API_RC
+    BOUNDARY_MC -->|"SigV4 (task role)"| API_MC
 
     EB_RC -->|"1m / 5m"| WORKER_RC
     EB_MC -->|"1m / 5m"| WORKER_MC
@@ -143,7 +152,7 @@ Both modes create per-execution K8s RBAC (ServiceAccount + Role + RoleBinding) t
 
 ### Per-VPC Isolation
 
-Each cluster's ZOA is fully independent. A failure in one VPC cannot cascade — no cross-VPC networking, no shared control plane in the execution path. Blast radius = 1 cluster.
+Each cluster's ZOA is fully independent — Lambdas, boundary ECS, and EventBridge are all VPC-scoped. A failure in one VPC cannot cascade — no cross-VPC networking, no shared control plane in the execution path. Blast radius = 1 cluster.
 
 ### Self-Invocation (Worker Fan-Out)
 
@@ -184,8 +193,12 @@ The API Lambda uses native Go response streaming (`LambdaFunctionURLStreamingRes
 terraform/modules/zoa/          → Regional data layer (one per region, lives in RC account)
                                   DynamoDB, S3, KMS, ECR, IAM roles
 
-terraform/modules/zoa-lambda/   → Per-VPC compute (one per target VPC: RC + each MC)
-                                  Lambdas, EventBridge, SQS DLQ, CloudWatch Logs, EKS access
+terraform/modules/zoa-lambda/   → Per-VPC compute + boundary (one per target VPC: RC + each MC)
+                                  Lambdas (API + Worker), ECS Fargate boundary, EventBridge,
+                                  SQS DLQ, CloudWatch Logs, EKS access, SSM target registration
+
+terraform/modules/zoa-access/   → Session control plane (RC only)
+                                  Access Lambda (Function URL), invoker role, SSM autodiscovery
 ```
 
 ### `modules/zoa/` — Regional Shared Data Layer
@@ -200,7 +213,11 @@ terraform/modules/zoa-lambda/   → Per-VPC compute (one per target VPC: RC + ea
 | IAM: zoa-uploader     | Scoped `s3:PutObject` + `kms:GenerateDataKey` for async runner K8s Jobs. Assumed via STS from runner pods.                                                                   |
 | IAM: zoa-data-access  | Cross-account role for MC Lambdas to reach RC's DynamoDB and S3. Trust policy scoped to MC account OU.                                                                       |
 
-### `modules/zoa-lambda/` — Per-VPC Compute
+### `modules/zoa-lambda/` — Per-VPC Compute + Boundary
+
+Each target VPC (RC and every MC) gets one instance of this module. It deploys the **TA plane** (API + Worker Lambdas) and the **boundary** (ECS Fargate) in a single apply graph so they share VPC, security groups, and CloudWatch config.
+
+**TA plane (Lambdas)**
 
 | Resource                    | Details                                                                                                                                                                          |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -210,32 +227,36 @@ terraform/modules/zoa-lambda/   → Per-VPC compute (one per target VPC: RC + ea
 | IAM: zoa-aws-read           | Per-TA scoped role for AWS read operations (EKS DescribeCluster, EC2 DescribeInstances/VPCs/Subnets/SecurityGroups). Assumed per-execution via STS.                              |
 | IAM: zoa-aws-write          | Per-TA scoped role for AWS write operations. Grows incrementally as write TAs are added.                                                                                         |
 | SQS DLQ                     | Dead letters for Worker async failures. SSE-SQS, 14-day retention. One per Lambda pair.                                                                                          |
-| CloudWatch Logs             | Log groups with 365-day retention, KMS-encrypted (customer-managed key, consistent with platform standard). JSON structured logging.                                             |
 | EKS access entry            | Grants Lambda execution role access to target EKS cluster with a Kubernetes group for RBAC binding.                                                                              |
 | Security group              | Egress to EKS API (443) and AWS service endpoints. No inbound rules (Function URL handles ingress).                                                                              |
 | EventBridge Scheduler       | Four schedules on Worker: reconciler (1m), GC (5m), boundary reaper (5m), plus self-invoke for TA execution. Reaper requires `sessions_table_name` and boundary ECS cluster ARN. |
 
-### `modules/zoa-access/` — Session control plane (RC)
-
-| Resource       | Details                                                                                                    |
-| -------------- | ---------------------------------------------------------------------------------------------------------- |
-| Access Lambda  | Same `zoa-lambda` image, `HANDLER_MODE=access`, no VPC. Function URL with `AWS_IAM` auth (no API Gateway). |
-| Invoker role   | Central-trusted role; SREs assume via Central Account to call the Function URL.                            |
-| SSM parameters | Publishes Access Function URL and deployment metadata for CLI autodiscovery.                               |
-
-### `modules/zoa-lambda/` — Per-VPC TA plane + boundary (RC + MC VPC)
-
-API + worker Lambdas, **boundary ECS**, SSM target registration, and (on RC) the **Access Lambda execution role shell** live in one module so API Function URL and boundary share a single apply graph.
+**Boundary (ECS Fargate)**
 
 | Resource                      | Details                                                                                                                                                                                   |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| API + Worker Lambda           | Function URL, VPC attachment, EKS access, reaper when sessions table is set.                                                                                                              |
-| ECS cluster + task definition | Fargate `zoa-boundary` image, ECS Exec, shared regional ZOA CMK (`kms_key_arn`).                                                                                                          |
+| ECS cluster + task definition | Fargate `zoa-boundary` image, ECS Exec enabled, shared regional ZOA CMK (`kms_key_arn`).                                                                                                  |
 | CloudWatch Logs               | `/ecs/<cluster_id>/zoa-boundary` + `.../ssm-sessions` (see [session logging](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/design/boundary-session-logging.md)). |
-| Bedrock                       | Boundary task IAM (`bedrock:InvokeModel`). Account agreements/budget: `modules/bedrock`.                                                                                                  |
-| RC only                       | `aws_iam_role.access_lambda` — trust target for boundary-access / exec-scoped; policies + Access function in `modules/zoa-access`.                                                        |
+| Bedrock IAM                   | Boundary task role gets `bedrock:InvokeModel`. Account agreements/budget: `modules/bedrock`.                                                                                               |
+| SSM target registration       | Writes per-cluster SSM parameter under `targets_ssm_prefix` for CLI autodiscovery.                                                                                                        |
 
-Operator workflows: [ZOA repo — Boundary](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/boundary/README.md).
+**RC-only resources**
+
+| Resource                    | Details                                                                                                                                              |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Access Lambda execution role | `aws_iam_role.access_lambda` — trust target for boundary-access and exec-scoped roles. Policies and Access Lambda function live in `modules/zoa-access`. |
+
+Operator workflows: [ZOA repo — Boundary](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/boundary/architecture.md).
+
+### `modules/zoa-access/` — Session Control Plane (RC only)
+
+| Resource                  | Details                                                                                                                                                          |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Access Lambda             | Same `zoa-lambda` image, `HANDLER_MODE=access`, **no VPC attachment**. Function URL with `AWS_IAM` auth (no API Gateway). Manages sessions, RunTask, discovery.  |
+| Invoker role              | Central-account-trusted role; SREs assume via Central Account to call the Function URL.                                                                          |
+| SSM parameters            | Publishes Access Function URL and deployment metadata to Central Account SSM for CLI autodiscovery.                                                               |
+
+The Access Lambda execution role (`aws_iam_role.access_lambda`) is **created** in `zoa-lambda` (RC instance) and **used** by `zoa-access` — this split keeps the trust relationship in the same apply graph as the boundary task definitions it needs to reference.
 
 ### RC/MC Config Wiring
 
@@ -251,21 +272,35 @@ Access Lambda sets **`Component`** and **`function`** on boundary **ECS tasks** 
 
 ## Tunable Parameters
 
-All configuration is via Terraform variables that map to Lambda environment variables — no code changes or redeployment required beyond `terraform apply`:
+All configuration is via Terraform variables that map to Lambda environment variables or ECS task configuration — no code changes or redeployment required beyond `terraform apply`.
 
-| Variable                      | Default | Lambda Env Var                | Purpose                                             |
-| ----------------------------- | ------- | ----------------------------- | --------------------------------------------------- |
-| `lambda_api_timeout`          | 300     | (Lambda config)               | API Lambda hard ceiling (seconds)                   |
-| `lambda_worker_timeout`       | 300     | (Lambda config)               | Worker Lambda hard ceiling (seconds)                |
-| `lambda_api_concurrency`      | 50      | (Lambda config)               | Max concurrent API invocations                      |
-| `lambda_worker_concurrency`   | 10      | (Lambda config)               | Max concurrent Worker invocations                   |
-| `reconciler_deadline_seconds` | 55      | `RECONCILER_DEADLINE_SECONDS` | Code-level deadline for reconciler/GC ticks         |
-| `max_batch_per_tick`          | 30      | `MAX_BATCH_PER_TICK`          | Items processed per scheduled phase per tick        |
-| `lambda_memory_size`          | 512     | (Lambda config)               | Memory in MB (CPU scales proportionally)            |
-| `dynamodb_ttl_days`           | 365     | `DYNAMODB_TTL_DAYS`           | Record retention (FedRAMP: minimum 365 days)        |
-| `write_cooldown_seconds`      | 300     | `WRITE_COOLDOWN_SECONDS`      | Per-target rate limit between same write TA         |
-| `max_concurrent_per_target`   | 10      | `MAX_CONCURRENT_PER_TARGET`   | Max parallel pending+running executions per target  |
-| `log_level`                   | info    | `LOG_LEVEL`                   | Structured log verbosity (debug, info, warn, error) |
+### `modules/zoa-lambda` — Per-VPC (API + Worker Lambdas, Boundary ECS)
+
+| Variable                          | Default | Lambda Env Var / Config         | Applies to      | Purpose                                                  |
+| --------------------------------- | ------- | ------------------------------- | --------------- | -------------------------------------------------------- |
+| `lambda_api_timeout`              | 300     | Lambda timeout config           | API Lambda      | Hard ceiling (seconds) for sync TA execution + streaming |
+| `lambda_worker_timeout`           | 300     | Lambda timeout config           | Worker Lambda   | Hard ceiling — real deadlines via env vars below          |
+| `lambda_api_concurrency`          | 50      | Reserved concurrency            | API Lambda      | Max concurrent API invocations                           |
+| `lambda_worker_concurrency`       | 10      | Reserved concurrency            | Worker Lambda   | Max concurrent (1 reconciler + N TAs)                    |
+| `lambda_memory_size`              | 512     | Lambda memory config            | API + Worker    | Memory in MB (CPU scales proportionally)                 |
+| `reconciler_deadline_seconds`     | 55      | `RECONCILER_DEADLINE_SECONDS`   | Worker Lambda   | Code-level deadline for reconciler/GC ticks              |
+| `max_batch_per_tick`              | 30      | `MAX_BATCH_PER_TICK`            | Worker Lambda   | Items processed per scheduled phase per tick             |
+| `dynamodb_ttl_days`               | 365     | `DYNAMODB_TTL_DAYS`             | API + Worker    | Record retention (FedRAMP: minimum 365 days)             |
+| `write_cooldown_seconds`          | 300     | `WRITE_COOLDOWN_SECONDS`        | API Lambda      | Per-target rate limit between same write TA              |
+| `max_concurrent_per_target`       | 10      | `MAX_CONCURRENT_PER_TARGET`     | API Lambda      | Max parallel pending+running executions per target       |
+| `async_scheduling_overhead_seconds` | 180   | `ASYNC_SCHEDULING_OVERHEAD_SECONDS` | Worker Lambda | Extra overhead for async deadline check (GSI + reconciler + Job scheduling) |
+| `log_level`                       | info    | `LOG_LEVEL`                     | API + Worker    | Structured log verbosity (debug, info, warn, error)      |
+| `session_idle_timeout_seconds`    | 3600    | `SESSION_IDLE_TIMEOUT_SECONDS`  | Worker (reaper) | Inactivity before reaper stops a boundary task           |
+| `boundary_cpu`                    | 512     | ECS task definition             | Boundary ECS    | Fargate CPU units (256–4096)                             |
+| `boundary_memory`                 | 1024    | ECS task definition             | Boundary ECS    | Fargate memory in MB                                     |
+| `boundary_log_retention_days`     | 30      | CloudWatch log group            | Boundary ECS    | Retention for boundary container + Exec logs             |
+
+### `modules/zoa-access` — Session Control Plane (RC only)
+
+| Variable                        | Default | Lambda Env Var / Config          | Purpose                                                    |
+| ------------------------------- | ------- | -------------------------------- | ---------------------------------------------------------- |
+| `session_max_duration_hours`    | 4       | `SESSION_MAX_DURATION_HOURS`     | Default and max session deadline (hours)                   |
+| `session_idle_timeout_seconds`  | 3600    | `SESSION_IDLE_TIMEOUT_SECONDS`   | Passed to boundary task env (mirrors zoa-lambda value)     |
 
 ## Security Model
 
@@ -273,12 +308,16 @@ All configuration is via Terraform variables that map to Lambda environment vari
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | API authentication     | Function URL with `AWS_IAM` auth type — requires valid SigV4 signature from caller                                                                                                                                                      |
 | Caller identity        | Extracted from SigV4: Account ID, Caller ARN, operator name (from session name). Recorded on every execution.                                                                                                                           |
-| Network isolation      | Lambda runs inside the target VPC (private subnets only). No public endpoints.                                                                                                                                                          |
+| Identity bridge        | Boundary callers: ECS task ARN → DynamoDB session lookup → human operator. Ensures TA audit attributes the person, not the task role.                                                                                                    |
+| Session isolation      | ABAC on ECS Exec: `aws:PrincipalTag/username` must match the task's `username` tag (propagated from Keycloak JWT via STS TagSession). One SRE cannot exec into another's session.                                                        |
+| Network isolation      | Lambda runs inside the target VPC (private subnets only). Boundary ECS in same VPC. No public endpoints.                                                                                                                                |
 | Cross-account data     | STS AssumeRole (identity-based) + resource-based policies on DynamoDB/S3 (defense in depth)                                                                                                                                             |
 | TA-scoped permissions  | Separate `zoa-aws-read` and `zoa-aws-write` IAM roles assumed per execution via STS session policy                                                                                                                                      |
 | K8s RBAC per execution | Per-execution ServiceAccount (`zoa-runner-<exec-id>`) with minimal Role from TA template                                                                                                                                                |
 | Encryption at rest     | KMS for DynamoDB + S3 + CloudWatch Logs; SQS server-side encryption (SSE-SQS) for DLQ                                                                                                                                                   |
-| Audit trail            | Every API call → DynamoDB audit table. Every execution → DynamoDB executions table. Logs → CloudWatch (365d).                                                                                                                           |
+| Session audit          | ECS Exec transcripts → CloudWatch `/ecs/<cluster>/zoa-boundary/ssm-sessions` (KMS-encrypted). Container stdout → `/ecs/<cluster>/zoa-boundary`.                                                                                         |
+| TA audit trail         | Every API call → DynamoDB audit table. Every execution → DynamoDB executions table. Logs → CloudWatch (365d).                                                                                                                           |
+| Session enforcement    | Worker reaper terminates tasks past deadline or idle timeout. Deadlines set at session start, not modifiable from inside the container.                                                                                                   |
 | Jira enforcement       | Every execution requires a Jira ticket ID. Validated at API level (format: `PROJECT-123`).                                                                                                                                              |
 | EKS circuit breaker    | Trips after 3 consecutive EKS API failures within 30s; fast-fails for 60s to prevent timeout exhaustion. See [`circuit_breaker.go`](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/pkg/executor/circuit_breaker.go). |
 
@@ -287,19 +326,23 @@ For the full security model (threat model, SA isolation strategies, RBAC design)
 ## Deployment Flow
 
 ```
-Konflux/Tekton → builds container image (x86_64, UBI-minimal)
+Konflux/Tekton → builds 3 container images (x86_64, UBI-minimal/UBI9)
+     │
+     ├── zoa-lambda   (Containerfile — Lambda handler, UBI-minimal)
+     ├── zoa-runner   (Containerfile.runner — async K8s Jobs, UBI9)
+     └── zoa-boundary (Containerfile.boundary — SRE shell + tools, UBI9)
      │
      ▼
-Quay registry (quay.io/redhat-user-workloads/rosa-tenant/zoa-lambda:<commit-sha>)
+Quay registry (quay.io/redhat-user-workloads/rosa-tenant/zoa-{lambda,runner,boundary}:<commit-sha>)
      │
      ▼ (pipeline step: skopeo mirror — temporary until Konflux pushes to ECR directly)
 ECR repository (in RC account, cross-account pull policy for MC accounts)
      │
-     ▼ (Terraform variables: zoa_lambda_image_tag / zoa_runner_image_tag)
-terraform apply → updates Lambda functions and K8s Job runner to use new images
+     ▼ (Terraform variables: zoa_lambda_image_tag / zoa_runner_image_tag / zoa_boundary_image_tag)
+terraform apply → updates Lambda functions, K8s Job runner, and ECS task definition
 ```
 
-**Rollback**: Set `zoa_lambda_image_tag` (and/or `zoa_runner_image_tag`) to a previous commit SHA and `terraform apply`. Lambda picks up the ECR image immediately on next cold start. No draining, no rolling update — existing warm instances continue until their next invocation timeout.
+**Rollback**: Set `zoa_lambda_image_tag`, `zoa_runner_image_tag`, or `zoa_boundary_image_tag` to a previous commit SHA and `terraform apply`. Lambda picks up the new image on next cold start; ECS tasks use the new task definition on next `session start`. No draining, no rolling update.
 
 ## Observability
 
@@ -329,15 +372,17 @@ Two Grafana dashboards: **Lambda** (infrastructure) and **ZOA** (unified service
 
 ## Cost
 
-| Component             | Pricing model                                         | Estimate (per cluster, moderate use) |
-| --------------------- | ----------------------------------------------------- | ------------------------------------ |
-| Lambda (API + Worker) | Per-ms execution + per-request ($0.20/1M). Zero idle. | < $5/month                           |
-| DynamoDB (on-demand)  | $1.25/1M writes, $0.25/1M reads                       | < $2/month                           |
-| S3 (artifacts)        | Standard + Intelligent-Tiering (30d) + expire (365d)  | < $1/month                           |
-| EventBridge Scheduler | Free tier covers all schedules                        | $0                                   |
-| CloudWatch Logs       | $0.50/GB ingested                                     | < $3/month                           |
-| ECR                   | $0.10/GB stored                                       | < $0.50/month                        |
-| **Total per VPC**     |                                                       | **< $12/month**                      |
+| Component               | Pricing model                                         | Estimate (per cluster, moderate use) |
+| ----------------------- | ----------------------------------------------------- | ------------------------------------ |
+| Lambda (API + Worker)   | Per-ms execution + per-request ($0.20/1M). Zero idle. | < $5/month                           |
+| Lambda (Access, RC)     | Per-ms execution. Very low volume.                    | < $0.50/month                        |
+| ECS Fargate (boundary)  | Per-vCPU-hour + per-GB-hour. Zero idle (ephemeral).   | < $3/month (scales with session use) |
+| DynamoDB (on-demand)    | $1.25/1M writes, $0.25/1M reads                       | < $2/month                           |
+| S3 (artifacts)          | Standard + Intelligent-Tiering (30d) + expire (365d)  | < $1/month                           |
+| EventBridge Scheduler   | Free tier covers all schedules                        | $0                                   |
+| CloudWatch Logs         | $0.50/GB ingested                                     | < $3/month                           |
+| ECR                     | $0.10/GB stored                                       | < $0.50/month                        |
+| **Total per VPC**       |                                                       | **< $15/month**                      |
 
 Graviton/arm64 migration planned for ~20% Lambda cost reduction.
 
@@ -403,15 +448,4 @@ sequenceDiagram
 
 ### In [`rosa-hyperfleet-zoa`](https://github.com/openshift-online/rosa-hyperfleet-zoa)
 
-- [README](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/README.md) — Component overview, quick start, container images
-- [Lambda Model](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/architecture/lambda-model.md) — Handler modes, invoke modes, execution flow
-- [Implementation Details](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/architecture/implementation.md) — Streaming adapter, async execution, K8s Jobs, SA isolation
-- [CLI Reference](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/cli-reference.md) — All `zoa` CLI commands, flags, and usage examples
-- [Trusted Actions Guide](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/trusted-actions.md) — TA template format, CLI commands, API endpoints
-- [Development Guide](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/development.md) — Building, testing, local development
-- [E2E Testing](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/e2e-testing.md) — Functional and monitoring E2E suites, smoke vs full, CI integration
-- [Observability](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/observability.md) — EMF metrics catalog, cost model, Lambda logs, Grafana Explorer
-- [API Reference](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/api-reference.md) — Lambda Function URL HTTP API endpoints
-- [ZOA Boundary documentation](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/boundary/README.md) — architecture, SRE access, container image (source of truth)
-- [Boundary session logging](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/design/boundary-session-logging.md) — CloudWatch log groups for container vs ECS Exec
-- [Konflux](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/konflux.md) — Container image build pipeline
+- [Documentation index](https://github.com/openshift-online/rosa-hyperfleet-zoa/blob/main/docs/README.md) — operator workflow, TA authoring, API/CLI reference, architecture, boundary, and engineering guides

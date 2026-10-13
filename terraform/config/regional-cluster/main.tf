@@ -521,7 +521,8 @@ module "zoa_lambda" {
 # Future: call module.bedrock from dedicated per-account Terraform only.
 
 module "bedrock" {
-  source = "../../modules/bedrock"
+  source      = "../../modules/bedrock"
+  environment = var.environment
 }
 
 # =============================================================================
@@ -550,8 +551,9 @@ module "zoa_access" {
   targets_ssm_prefix         = "/zoa/targets/${var.deployment_name}"
   kms_key_arn                = module.zoa.kms_key_arn
   deployment_name            = var.deployment_name
-  boundary_ecs_cluster_arn   = module.zoa_lambda.boundary_ecs_cluster_arn
-  boundary_ecs_exec_command  = module.zoa_lambda.boundary_ecs_exec_interactive_command
+  boundary_ecs_cluster_arn              = module.zoa_lambda.boundary_ecs_cluster_arn
+  boundary_task_definition_arn_prefix   = module.zoa_lambda.boundary_task_definition_arn_prefix
+  boundary_ecs_exec_command             = module.zoa_lambda.boundary_ecs_exec_interactive_command
   exec_scoped_role_arn       = module.zoa_lambda.boundary_exec_scoped_role_arn
   lambda_execution_role_arn  = module.zoa_lambda.access_lambda_role_arn
   lambda_execution_role_name = module.zoa_lambda.access_lambda_role_name

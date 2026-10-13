@@ -188,7 +188,8 @@ module "zoa_lambda" {
 # =============================================================================
 
 module "bedrock" {
-  source = "../../modules/bedrock"
+  source      = "../../modules/bedrock"
+  environment = var.environment
 }
 
 # =============================================================================

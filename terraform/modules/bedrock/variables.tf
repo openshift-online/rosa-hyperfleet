@@ -1,3 +1,9 @@
+variable "environment" {
+  description = "Deployment environment name (e.g. 'ephemeral', 'integration', 'production'). When 'ephemeral', data.external probes skip-if-exists to avoid state ownership conflicts in shared pool accounts."
+  type        = string
+  default     = "ephemeral"
+}
+
 variable "enable_bedrock_model_agreements" {
   description = "Create aws_bedrock_foundation_model_agreement for each non-empty entry in model_agreements when not already AVAILABLE in this account/Region."
   type        = bool

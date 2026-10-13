@@ -5,6 +5,13 @@
 # added to Terraform state — cluster stack destroy does not remove them.
 set -euo pipefail
 
+for cmd in aws jq; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "{\"exists\":\"false\"}"
+    exit 0
+  fi
+done
+
 query="$(cat)"
 check="$(echo "$query" | jq -r '.check')"
 
