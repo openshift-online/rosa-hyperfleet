@@ -13,13 +13,13 @@ variable "cluster_id" {
   type        = string
 }
 
-variable "deployment_target" {
+variable "target_type" {
   description = "ZOA target type for this Lambda: rc (regional cluster) or mc (management cluster). Passed to the runtime as ZOA_TARGET_TYPE."
   type        = string
 
   validation {
-    condition     = contains(["rc", "mc"], var.deployment_target)
-    error_message = "deployment_target must be \"rc\" or \"mc\"."
+    condition     = contains(["rc", "mc"], var.target_type)
+    error_message = "target_type must be \"rc\" or \"mc\"."
   }
 }
 
@@ -271,16 +271,16 @@ variable "boundary_image" {
 }
 
 variable "access_lambda_role_arn" {
-  description = "ARN of the RC ZOA Access Lambda execution role for boundary trust policies. Required when deployment_target is mc; ignored on rc (role is created in this module)."
+  description = "ARN of the RC ZOA Access Lambda execution role for boundary trust policies. Required when target_type is mc; ignored on rc (role is created in this module)."
   type        = string
   default     = ""
 
   validation {
     condition = (
-      var.deployment_target == "rc" ||
+      var.target_type == "rc" ||
       can(regex("^arn:aws:iam::[0-9]{12}:role/", var.access_lambda_role_arn))
     )
-    error_message = "access_lambda_role_arn must be a valid IAM role ARN when deployment_target is mc."
+    error_message = "access_lambda_role_arn must be a valid IAM role ARN when target_type is mc."
   }
 }
 

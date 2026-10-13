@@ -150,7 +150,7 @@ module "zoa_lambda" {
   }
 
   cluster_id        = var.management_id
-  deployment_target = "mc"
+  target_type = "mc"
 
   lambda_image_uri = "${var.zoa_lambda_ecr_url}:${var.zoa_lambda_image_tag}"
   job_image_uri    = "${var.zoa_runner_source_image}:${var.zoa_runner_image_tag}"

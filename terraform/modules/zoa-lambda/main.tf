@@ -35,7 +35,7 @@ locals {
     KMS_KEY_ARN                       = var.kms_key_arn
     JOB_IMAGE                         = var.job_image_uri
     ZOA_JOBS_NAMESPACE                = var.zoa_jobs_namespace
-    ZOA_TARGET_TYPE                   = var.deployment_target
+    ZOA_TARGET_TYPE                   = var.target_type
     DYNAMODB_TTL_DAYS                 = tostring(var.dynamodb_ttl_days)
     TARGET_CLUSTER                    = var.cluster_id
     UPLOADER_ROLE_ARN                 = var.uploader_role_arn
@@ -834,7 +834,7 @@ resource "aws_ssm_parameter" "zoa_target" {
   value = jsonencode({
     target_id           = var.cluster_id
     deployment_name     = var.deployment_name
-    target_type         = var.deployment_target
+    target_type         = var.target_type
     vpc_id              = var.vpc_id
     subnet_ids          = join(",", var.private_subnet_ids)
     security_group_id   = aws_security_group.boundary.id

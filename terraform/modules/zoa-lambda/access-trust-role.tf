@@ -7,7 +7,7 @@
 # Destroy order: zoa-access first, then this role in zoa-lambda.
 
 resource "aws_iam_role" "access_lambda" {
-  count = var.deployment_target == "rc" ? 1 : 0
+  count = var.target_type == "rc" ? 1 : 0
 
   name        = "${var.cluster_id}-zoa-access-lambda"
   description = "Execution role for ZOA Access Lambda in ${var.cluster_id}"
@@ -29,5 +29,5 @@ resource "aws_iam_role" "access_lambda" {
 }
 
 locals {
-  access_lambda_role_arn = var.deployment_target == "rc" ? aws_iam_role.access_lambda[0].arn : var.access_lambda_role_arn
+  access_lambda_role_arn = var.target_type == "rc" ? aws_iam_role.access_lambda[0].arn : var.access_lambda_role_arn
 }

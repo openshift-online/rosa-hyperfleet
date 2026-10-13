@@ -8,7 +8,7 @@ One IAM role in AWS; two Terraform owners by design (apply order, not naming hac
 
 | Layer                      | Module                                                               | What it manages                                                                                                                                                                 |
 | -------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Role shell**             | `zoa-lambda` (`access-trust-role.tf`, RC `deployment_target = "rc"`) | `aws_iam_role` with Lambda trust only. Boundary `boundary-access` / `exec-scoped` roles trust this **ARN** in the same module.                                                  |
+| **Role shell**             | `zoa-lambda` (`access-trust-role.tf`, RC `target_type = "rc"`) | `aws_iam_role` with Lambda trust only. Boundary `boundary-access` / `exec-scoped` roles trust this **ARN** in the same module.                                                  |
 | **Permissions + function** | **`zoa-access`** (this module)                                       | Inline policies (DynamoDB sessions/audit, ECS RunTask, STS to boundary roles, SSM, KMS, ECR), `AWSLambdaBasicExecutionRole`, `aws_lambda_function`, Function URL, invoker role. |
 
 RC stack order: `module.zoa_lambda` → `module.zoa_access` (one-way; no constructed IAM ARNs).

@@ -29,7 +29,7 @@ module "zoa_lambda" {
   source = "../modules/zoa-lambda"
 
   cluster_id                = "eph-abc123-regional"
-  deployment_target         = "rc" # or "mc" for management-cluster ZOA
+  target_type         = "rc" # or "mc" for management-cluster ZOA
   lambda_image_uri          = "123456789.dkr.ecr.us-east-1.amazonaws.com/zoa-lambda:abc123"
   job_image_uri             = "123456789.dkr.ecr.us-east-1.amazonaws.com/zoa-runner:abc123"
   private_subnet_ids        = module.vpc.private_subnet_ids
@@ -61,8 +61,8 @@ MC deployments set `data_access_role_arn` to assume a role in the RC account for
 
 Boundary target metadata (`aws_ssm_parameter.zoa_target`) must live in the **RC account** under `/zoa/targets/<deployment>/<cluster>`. Callers must pass the `aws.targets_ssm` provider alias:
 
-- **RC** (`deployment_target = "rc"`): `aws.targets_ssm = aws` (same account).
-- **MC** (`deployment_target = "mc"`): `aws.targets_ssm = aws.zoa_targets` where that provider assumes `zoa_data_access_role_arn` in the RC account (see `terraform/config/management-cluster/main.tf`).
+- **RC** (`target_type = "rc"`): `aws.targets_ssm = aws` (same account).
+- **MC** (`target_type = "mc"`): `aws.targets_ssm = aws.zoa_targets` where that provider assumes `zoa_data_access_role_arn` in the RC account (see `terraform/config/management-cluster/main.tf`).
 
 ## Timeout Hierarchy
 

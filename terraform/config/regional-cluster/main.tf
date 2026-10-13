@@ -505,7 +505,7 @@ module "zoa_lambda" {
   }
 
   cluster_id        = var.regional_id
-  deployment_target = "rc"
+  target_type = "rc"
 
   lambda_image_uri = module.zoa.lambda_image_uri
   job_image_uri    = module.zoa.runner_image_uri

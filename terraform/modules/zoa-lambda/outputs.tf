@@ -56,7 +56,7 @@ output "access_lambda_role_arn" {
 
 output "access_lambda_role_name" {
   description = "Name of the ZOA Access Lambda execution role"
-  value       = var.deployment_target == "rc" ? aws_iam_role.access_lambda[0].name : element(split("/", local.access_lambda_role_arn), length(split("/", local.access_lambda_role_arn)) - 1)
+  value       = var.target_type == "rc" ? aws_iam_role.access_lambda[0].name : element(split("/", local.access_lambda_role_arn), length(split("/", local.access_lambda_role_arn)) - 1)
 }
 
 # --- Boundary (ECS) ---
