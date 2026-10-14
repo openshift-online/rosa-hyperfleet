@@ -33,7 +33,7 @@
   "hyperfleet_db_skip_final_snapshot": true,
   "hyperfleet_db_performance_insights_enabled": false,
   "hyperfleet_db_monitoring_interval": 0,
-  "zoa_lambda_image_tag": "f8e1828",
+  "zoa_lambda_image_tag": "6457135",
   "zoa_runner_image_tag": "f8e1828",
   "zoa_lambda_source_image": "quay.io/rrp-dev-ci/zoa-lambda",
   "zoa_runner_source_image": "quay.io/rrp-dev-ci/zoa-runner",
