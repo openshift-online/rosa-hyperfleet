@@ -285,9 +285,9 @@ variable "access_lambda_role_arn" {
 }
 
 variable "boundary_log_retention_days" {
-  description = "CloudWatch retention for boundary logs. US regions enforce at least 365 days."
+  description = "CloudWatch retention for boundary logs. Terraform applies max(365, value) for FedRAMP alignment."
   type        = number
-  default     = 30
+  default     = 365
 }
 
 variable "boundary_cpu" {

@@ -4,11 +4,16 @@ Manages the shared ZOA data layer deployed once per region in the Regional Clust
 
 ## Resources
 
-- **DynamoDB** — Executions table (with GSIs: `status-index`, `target-status-index`) and audit log table
+- **DynamoDB** — Three tables (all KMS-encrypted, TTL default 365d via `DYNAMODB_TTL_DAYS` on writers):
+  - **Executions** — PK `executionId`; GSIs `target-status-index`, `date-bucket-index`
+  - **Audit** — PK `accountId`, SK `timestamp`; GSI `date-bucket-index`
+  - **Boundary sessions** — PK `sessionId`; GSIs `task-id-index`, `status-deadline-index`, `date-bucket-index`
 - **S3** — Artifact bucket for TA output, logs, and large files
-- **KMS** — Encryption key for DynamoDB and S3
+- **KMS** — Regional CMK for DynamoDB, S3, boundary/Lambda CloudWatch Logs, and ECS Exec encryption (see `kms.tf`)
 - **IAM** — Uploader role (for async Job S3 uploads), data-access role (for MC cross-account access)
 - **ECR** — Container image repositories for Lambda and runner images
+
+Boundary **targets** (VPC, subnets, ECS ARNs, API Function URL) are registered in SSM by `modules/zoa-lambda`, not in this module. See the comment block at the end of `dynamodb.tf`.
 
 ## Cross-Account Access Model
 
