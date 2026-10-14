@@ -11,8 +11,8 @@
 #   - Worker Lambda: Standard handler. Handles all scheduled work (reconciler,
 #     GC, reaper) and async TA execution via self-invocation from reconciler.
 #
-# Data layer (DynamoDB, S3, KMS) lives in the RC account. MC deployments use
-# cross-account IAM policies on those resources.
+# Data layer (DynamoDB, S3, KMS) lives in the RC account. MC deployments assume
+# the RC data_access role (DATA_STORE_ROLE_ARN) for DynamoDB and S3.
 #
 # Design decisions:
 #   - Lambda timeout (300s) is a safety net ceiling. Real deadlines are enforced
@@ -106,12 +106,7 @@ resource "aws_iam_role_policy" "lambda_dynamodb" {
   name = "${local.function_prefix}-dynamodb"
   role = aws_iam_role.lambda.id
 
-  # Cross-account DynamoDB access: when calling DynamoDB with a table name,
-  # the service initially resolves the resource ARN using the CALLER's account ID.
-  # If the identity policy only allows the remote account's ARN, IAM denies the
-  # request before it reaches the resource-based policy. Using wildcard account (*)
-  # lets the IAM check pass, after which DynamoDB routes to the correct table via
-  # the resource-based policy on the target account.
+  # Table names from RC; MC callers use credentials from assumed data_access.
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{

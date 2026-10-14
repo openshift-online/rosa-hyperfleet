@@ -104,9 +104,6 @@ resource "aws_dynamodb_table" "executions" {
   )
 }
 
-# MC cross-account DynamoDB: MC Lambdas assume module.zoa data_access in RC (see iam.tf).
-# No table resource policies — same model as boundary_sessions.
-
 # =============================================================================
 # DynamoDB Table for ZOA Audit Log
 # =============================================================================

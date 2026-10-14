@@ -19,7 +19,7 @@ Boundary **targets** (VPC, subnets, ECS ARNs, API Function URL) are registered i
 
 MC Lambdas access RC data via IAM roles with OU-scoped trust policies:
 
-- `data_access` role: MC Lambdas assume this for DynamoDB (executions, audit, sessions) + S3 + KMS. Table names in Lambda env; no DynamoDB table resource policies.
+- `data_access` role: MC Lambdas assume this for DynamoDB (executions, audit, sessions), S3, and KMS. Lambdas receive table names via environment variables.
 - `uploader` role: MC Lambdas assume this for scoped S3 upload credentials in async Jobs
 
 Trust policies use `aws:PrincipalOrgPaths` — no MC account IDs are hardcoded. Any new MC account within the OU automatically gets access on first execution.

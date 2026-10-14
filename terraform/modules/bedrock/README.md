@@ -5,9 +5,7 @@ Generic Terraform for **per AWS account + Region** Bedrock onboarding:
 - Foundation model **agreements** (PUBLIC offers)
 - Monthly **cost budget** (alerts only)
 
-Not tied to ZOA or boundary. HyperFleet calls this module from regional and management cluster stacks today; move the same module to dedicated per-account bootstrap Terraform when that exists.
-
-**Model invocation logging** (Bedrock → CloudWatch metadata) is intentionally **not** managed here. Boundary workloads get `bedrock:InvokeModel` from `modules/zoa-lambda`; add account-level logging later via dedicated account bootstrap TF if compliance requires it.
+Not tied to ZOA or boundary. HyperFleet calls this module from regional and management cluster stacks today; move the same module to dedicated per-account bootstrap Terraform when that exists. Boundary `bedrock:InvokeModel` IAM lives in `modules/zoa-lambda`.
 
 ## Environment gating
 
