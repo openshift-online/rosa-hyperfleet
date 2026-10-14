@@ -107,9 +107,7 @@ else
 
     # ZOA Lambda data-layer outputs (DynamoDB tables + uploader role in RC account)
     export TF_VAR_zoa_table_name=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_table_name 2>/dev/null || echo "")
-    export TF_VAR_zoa_table_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_table_arn 2>/dev/null | grep -E '^arn:' || echo "")
     export TF_VAR_zoa_audit_table_name=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_audit_table_name 2>/dev/null || echo "")
-    export TF_VAR_zoa_audit_table_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_audit_table_arn 2>/dev/null | grep -E '^arn:' || echo "")
     export TF_VAR_zoa_sessions_table_name=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_sessions_table_name 2>/dev/null || echo "")
     export TF_VAR_zoa_uploader_role_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_uploader_role_arn 2>/dev/null | grep -E '^arn:' || echo "")
     export TF_VAR_zoa_data_access_role_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_data_access_role_arn 2>/dev/null | grep -E '^arn:' || echo "")

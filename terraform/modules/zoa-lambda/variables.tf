@@ -71,18 +71,8 @@ variable "dynamodb_table_name" {
   type        = string
 }
 
-variable "dynamodb_table_arn" {
-  description = "ARN of the DynamoDB executions table (for IAM policy)"
-  type        = string
-}
-
 variable "audit_table_name" {
   description = "Name of the DynamoDB audit table"
-  type        = string
-}
-
-variable "audit_table_arn" {
-  description = "ARN of the DynamoDB audit table (for IAM policy)"
   type        = string
 }
 

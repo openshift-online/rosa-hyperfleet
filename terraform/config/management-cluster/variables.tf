@@ -159,20 +159,8 @@ variable "zoa_table_name" {
   default     = ""
 }
 
-variable "zoa_table_arn" {
-  description = "DynamoDB executions table ARN (in RC account, for IAM policy)"
-  type        = string
-  default     = ""
-}
-
 variable "zoa_audit_table_name" {
   description = "DynamoDB audit table name (in RC account)"
-  type        = string
-  default     = ""
-}
-
-variable "zoa_audit_table_arn" {
-  description = "DynamoDB audit table ARN (in RC account, for IAM policy)"
   type        = string
   default     = ""
 }

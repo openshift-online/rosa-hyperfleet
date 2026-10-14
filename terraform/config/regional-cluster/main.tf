@@ -518,9 +518,7 @@ module "zoa_lambda" {
   eks_cluster_name     = module.regional_cluster.cluster_name
 
   dynamodb_table_name  = module.zoa.table_name
-  dynamodb_table_arn   = module.zoa.table_arn
   audit_table_name     = module.zoa.audit_table_name
-  audit_table_arn      = module.zoa.audit_table_arn
   artifact_bucket_name = module.zoa.bucket_name
   artifact_bucket_arn  = module.zoa.bucket_arn
   kms_key_arn          = module.zoa.kms_key_arn

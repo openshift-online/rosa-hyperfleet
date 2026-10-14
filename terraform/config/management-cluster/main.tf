@@ -163,9 +163,7 @@ module "zoa_lambda" {
   eks_cluster_name     = module.management_cluster.cluster_name
 
   dynamodb_table_name  = var.zoa_table_name
-  dynamodb_table_arn   = var.zoa_table_arn
   audit_table_name     = var.zoa_audit_table_name
-  audit_table_arn      = var.zoa_audit_table_arn
   artifact_bucket_name = try(split(":", var.zoa_outputs_bucket_arn)[5], "")
   artifact_bucket_arn  = var.zoa_outputs_bucket_arn
   kms_key_arn          = var.zoa_kms_key_arn

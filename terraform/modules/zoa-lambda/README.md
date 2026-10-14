@@ -37,10 +37,8 @@ module "zoa_lambda" {
   eks_cluster_endpoint      = module.eks.cluster_endpoint
   eks_cluster_ca            = module.eks.cluster_certificate_authority_data
   eks_cluster_name          = module.eks.cluster_name
-  dynamodb_table_name       = module.zoa.executions_table_name
-  dynamodb_table_arn        = module.zoa.executions_table_arn
+  dynamodb_table_name       = module.zoa.table_name
   audit_table_name          = module.zoa.audit_table_name
-  audit_table_arn           = module.zoa.audit_table_arn
   artifact_bucket_name      = module.zoa.artifact_bucket_name
   artifact_bucket_arn       = module.zoa.artifact_bucket_arn
   kms_key_arn               = module.zoa.kms_key_arn

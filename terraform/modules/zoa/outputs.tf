@@ -25,16 +25,6 @@ output "kms_key_arn" {
 
 # Lambda outputs
 
-output "table_arn" {
-  description = "DynamoDB executions table ARN (for cross-account policies)"
-  value       = aws_dynamodb_table.executions.arn
-}
-
-output "audit_table_arn" {
-  description = "DynamoDB audit log table ARN (for cross-account policies)"
-  value       = aws_dynamodb_table.audit_log.arn
-}
-
 output "uploader_role_arn" {
   description = "ARN of the uploader IAM role (Lambda assumes this for scoped S3 creds)"
   value       = aws_iam_role.uploader.arn

@@ -432,16 +432,6 @@ output "zoa_kms_key_arn" {
   value       = module.zoa.kms_key_arn
 }
 
-output "zoa_table_arn" {
-  description = "DynamoDB executions table ARN (for MC Lambda cross-account access)"
-  value       = module.zoa.table_arn
-}
-
-output "zoa_audit_table_arn" {
-  description = "DynamoDB audit table ARN (for MC Lambda cross-account access)"
-  value       = module.zoa.audit_table_arn
-}
-
 output "zoa_uploader_role_arn" {
   description = "ARN of the ZOA uploader role (MC Lambdas assume this for scoped S3 creds)"
   value       = module.zoa.uploader_role_arn
