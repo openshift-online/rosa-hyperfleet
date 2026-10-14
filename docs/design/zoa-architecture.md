@@ -312,7 +312,7 @@ All configuration is via Terraform variables that map to Lambda environment vari
 
 | Variable                       | Default | Lambda Env Var / Config        | Purpose                                                                                                                 |
 | ------------------------------ | ------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| `lambda_access_concurrency`    | 10      | Reserved concurrency           | Max concurrent Access invocations (session plane); 0 = unreserved account pool                                        |
+| `lambda_access_concurrency`    | 10      | Reserved concurrency           | Max concurrent Access invocations (session plane); must be ≥ 1 (same pattern as Worker).                              |
 | _(Lambda timeout)_             | 30      | Lambda timeout config          | Hard ceiling per Access HTTP request (not session length). Not yet a Terraform variable.                                |
 | `session_max_duration_hours`   | 4       | `SESSION_MAX_DURATION_HOURS`   | Default and max session deadline (hours)                                                                                |
 | `session_idle_timeout_seconds` | 3600    | `SESSION_IDLE_TIMEOUT_SECONDS` | Access Lambda env; same value as Worker (reaper). RunTask sets `ZOA_SESSION_IDLE_TIMEOUT_SECONDS` on the boundary task. |
