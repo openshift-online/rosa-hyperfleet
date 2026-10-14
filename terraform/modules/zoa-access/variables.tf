@@ -90,6 +90,17 @@ variable "session_idle_timeout_seconds" {
   default     = 3600
 }
 
+variable "lambda_access_concurrency" {
+  description = "Reserved concurrency for the Access Lambda. Keeps session start/join/list callable under heavy TA load. Must be >= 1 (AWS treats 0 as disable)."
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.lambda_access_concurrency >= 1
+    error_message = "lambda_access_concurrency must be >= 1."
+  }
+}
+
 variable "boundary_ecs_exec_command" {
   description = "Interactive ecs:ExecuteCommand shell for boundary join (must match module.zoa-lambda boundary_ecs_exec_interactive_command / task env ZOA_ECS_EXEC_COMMAND)."
   type        = string

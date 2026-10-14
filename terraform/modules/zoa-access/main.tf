@@ -74,6 +74,8 @@ resource "aws_lambda_function" "access" {
   timeout       = 30
   memory_size   = 256
 
+  reserved_concurrent_executions = var.lambda_access_concurrency
+
   environment {
     variables = {
       HANDLER_MODE                     = "access"

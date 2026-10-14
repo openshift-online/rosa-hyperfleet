@@ -27,7 +27,9 @@ Each target VPC (RC and every MC) gets **API** and **Worker** Lambdas from the s
 | ---------- | ----------------- | ----------------------------------- | ----------------------------------------------------------------- | ------- | ----------- |
 | **API**    | `RESPONSE_STREAM` | Function URL (IAM auth)             | HTTP handler for CLI, sync TA execution, streaming responses      | 300s    | 50          |
 | **Worker** | `BUFFERED`        | EventBridge Scheduler + self-invoke | Reconciler (1m), GC (5m), boundary reaper (5m), async/approved TA | 300s    | 10          |
-| **Access** | `BUFFERED`        | Function URL (IAM auth)             | Boundary session lifecycle, target discovery (RC, no VPC)         | 300s    | (module)    |
+| **Access** | `BUFFERED`        | Function URL (IAM auth)             | Boundary session lifecycle, target discovery (RC, no VPC)         | 30s     | 10          |
+
+API and Worker timeouts/concurrency are tunable via `modules/zoa-lambda` (defaults 300s / 50 / 10). **Access** is deployed only from `modules/zoa-access`: Lambda **timeout is 30s** (one HTTP request per session API call; `RunTask` is async). **Reserved concurrency defaults to 10** (`lambda_access_concurrency`) so session APIs keep capacity during incidents when TA/API/Worker load is high; reserved concurrency has **no extra AWS charge** (unlike provisioned concurrency). Long-lived work happens in the boundary ECS task (`session_max_duration_hours`, reaper idle timeout), not inside the Access invocation.
 
 Both use `lambda.Start()` from `aws-lambda-go`. The API Lambda uses a native Go streaming adapter (`LambdaFunctionURLStreamingResponse`) supporting responses up to 200MB — no external proxy or sidecar. The Worker uses standard JSON responses for EventBridge and self-invocation events.
 
@@ -310,6 +312,8 @@ All configuration is via Terraform variables that map to Lambda environment vari
 
 | Variable                       | Default | Lambda Env Var / Config        | Purpose                                                                                                                 |
 | ------------------------------ | ------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `lambda_access_concurrency`    | 10      | Reserved concurrency           | Max concurrent Access invocations (session plane); 0 = unreserved account pool                                        |
+| _(Lambda timeout)_             | 30      | Lambda timeout config          | Hard ceiling per Access HTTP request (not session length). Not yet a Terraform variable.                                |
 | `session_max_duration_hours`   | 4       | `SESSION_MAX_DURATION_HOURS`   | Default and max session deadline (hours)                                                                                |
 | `session_idle_timeout_seconds` | 3600    | `SESSION_IDLE_TIMEOUT_SECONDS` | Access Lambda env; same value as Worker (reaper). RunTask sets `ZOA_SESSION_IDLE_TIMEOUT_SECONDS` on the boundary task. |
 
