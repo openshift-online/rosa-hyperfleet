@@ -353,14 +353,9 @@ generate_pipeline_file_paths() {
             --arg region "$region_deployment" \
             '[
                 ("deploy/" + $env + "/" + $region + "/codebuild-regional-cluster-inputs/**"),
-                "terraform/config/codebuild-regional-cluster/**",
-                "terraform/config/pipeline-regional-cluster/**",
-                "terraform/config/regional-cluster/**",
-                "terraform/modules/**",
-                "scripts/buildspec/provision-infra-rc.sh",
-                "scripts/buildspec/build-zoa-lambda.sh",
-                "scripts/pipeline-common/**",
-                "scripts/provision-cluster-resources.sh"
+                ("deploy/" + $env + "/" + $region + "/argocd-{values-regional-cluster.yaml,bootstrap-regional-cluster/**}"),
+                "argocd/config/{regional-cluster,shared}/**",
+                "terraform/config/regional-cluster/**"
             ]'
     elif [ "$cluster_type" = "management" ]; then
         jq -n \
@@ -369,14 +364,9 @@ generate_pipeline_file_paths() {
             --arg mc_id "$cluster_id" \
             '[
                 ("deploy/" + $env + "/" + $region + "/codebuild-management-cluster-" + $mc_id + "-inputs/**"),
-                "terraform/config/codebuild-management-cluster/**",
-                "terraform/config/pipeline-management-cluster/**",
-                "terraform/config/management-cluster/**",
-                "terraform/config/kube-applier-dynamodb-provisioning/**",
-                "terraform/modules/**",
-                "scripts/buildspec/provision-infra-mc.sh",
-                "scripts/pipeline-common/**",
-                "scripts/provision-cluster-resources.sh"
+                ("deploy/" + $env + "/" + $region + "/argocd-{values-management-cluster.yaml,bootstrap-management-cluster/**}"),
+                "argocd/config/{management-cluster,shared}/**",
+                "terraform/config/{management-cluster,kube-applier-dynamodb-provisioning}/**"
             ]'
     fi
 }
