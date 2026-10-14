@@ -40,13 +40,6 @@ case "$check" in
       exists="true"
     fi
     ;;
-  invocation_logging)
-    region="$(echo "$query" | jq -r '.region')"
-    if aws bedrock get-model-invocation-logging-configuration \
-      --region "$region" >/dev/null 2>&1; then
-      exists="true"
-    fi
-    ;;
   *)
     echo "unknown check: $check" >&2
     exit 1

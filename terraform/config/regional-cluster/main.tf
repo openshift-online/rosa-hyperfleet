@@ -545,7 +545,7 @@ module "zoa_lambda" {
 }
 
 # =============================================================================
-# Bedrock account primitives (agreements, budget; optional logging)
+# Bedrock account primitives (agreements, budget)
 # =============================================================================
 # Per-account resources; skip-if-exists for shared pool accounts. Not wired to ZOA.
 # Future: call module.bedrock from dedicated per-account Terraform only.

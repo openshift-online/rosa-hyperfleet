@@ -458,7 +458,7 @@ sequenceDiagram
 ### In this repository
 
 - Terraform modules: [`terraform/modules/zoa/`](../../terraform/modules/zoa/), [`terraform/modules/zoa-lambda/`](../../terraform/modules/zoa-lambda/), [`terraform/modules/zoa-access/`](../../terraform/modules/zoa-access/), [`terraform/modules/bedrock/`](../../terraform/modules/bedrock/)
-- RC config: [`terraform/config/regional-cluster/`](../../terraform/config/regional-cluster/) — `module.zoa` (data layer), `module.zoa_lambda` (RC VPC API/Worker + boundary ECS), `module.zoa_access` (Access Lambda + central SSM discovery). Also `module.bedrock` (account Bedrock agreements/logging primitives; boundary task role consumes in-region invoke).
+- RC config: [`terraform/config/regional-cluster/`](../../terraform/config/regional-cluster/) — `module.zoa` (data layer), `module.zoa_lambda` (RC VPC API/Worker + boundary ECS), `module.zoa_access` (Access Lambda + central SSM discovery). Also `module.bedrock` (account Bedrock agreements and budget; boundary task role in `zoa-lambda` gets in-region invoke).
 - MC config: [`terraform/config/management-cluster/`](../../terraform/config/management-cluster/) — `module.zoa_lambda` only (MC VPC API/Worker + boundary; consumes RC `module.zoa` outputs via variables)
 
 ### In [`rosa-hyperfleet-zoa`](https://github.com/openshift-online/rosa-hyperfleet-zoa)

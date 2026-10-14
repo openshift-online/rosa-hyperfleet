@@ -52,26 +52,3 @@ locals {
     var.environment != "ephemeral" || !local.bedrock_budget_already_exists
   )
 }
-
-# --- Bedrock model invocation logging (account singleton when enabled) ---------
-
-data "external" "bedrock_invocation_logging_exists" {
-  count = var.enable_invocation_logging && var.environment == "ephemeral" ? 1 : 0
-
-  program = local.account_primitive_check_program
-
-  query = {
-    check  = "invocation_logging"
-    region = data.aws_region.current.name
-  }
-}
-
-locals {
-  bedrock_invocation_logging_already_exists = length(data.external.bedrock_invocation_logging_exists) > 0 && (
-    data.external.bedrock_invocation_logging_exists[0].result.exists == "true"
-  )
-  # Ephemeral: skip if probe says exists. Non-ephemeral: create if enabled.
-  create_bedrock_invocation_logging = var.enable_invocation_logging && (
-    var.environment != "ephemeral" || !local.bedrock_invocation_logging_already_exists
-  )
-}

@@ -7,7 +7,7 @@
 # Shared ephemeral/CI pool accounts: skip create when AWS already has the object
 # (data.external probes). Skipped resources are NOT imported into cluster state —
 # janitor destroy of one ephemeral stack does not remove account-wide agreements,
-# budget, or logging that other stacks rely on.
+# budget that other stacks rely on.
 
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
@@ -18,8 +18,6 @@ locals {
     ManagedBy = "terraform"
     module    = "bedrock"
   })
-
-  effective_log_retention_days = max(365, var.invocation_log_retention_days)
 
   account_primitive_check_program = [
     "${path.module}/scripts/check_account_primitive.sh",

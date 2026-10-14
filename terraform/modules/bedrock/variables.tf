@@ -52,30 +52,6 @@ variable "budget_notification_email" {
   }
 }
 
-variable "enable_invocation_logging" {
-  description = "Enable Bedrock model invocation logging to CloudWatch (metadata only; no prompt/response payload)."
-  type        = bool
-  default     = false
-}
-
-variable "invocation_log_group_name" {
-  description = "CloudWatch log group for account-wide Bedrock invocation metadata."
-  type        = string
-  default     = "/aws/bedrock/model-invocations"
-}
-
-variable "invocation_logging_role_name" {
-  description = "IAM role name that the Bedrock service assumes to write invocation logs."
-  type        = string
-  default     = "bedrock-invocation-logging"
-}
-
-variable "invocation_log_retention_days" {
-  description = "CloudWatch retention for invocation logs. US regions use at least 365 days for compliance."
-  type        = number
-  default     = 365
-}
-
 variable "tags" {
   description = "Additional tags applied to Bedrock module resources."
   type        = map(string)

@@ -184,7 +184,7 @@ module "zoa_lambda" {
 }
 
 # =============================================================================
-# Bedrock account primitives (agreements, budget; optional logging)
+# Bedrock account primitives (agreements, budget)
 # =============================================================================
 
 module "bedrock" {
