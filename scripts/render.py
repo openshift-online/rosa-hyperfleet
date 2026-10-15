@@ -328,6 +328,9 @@ def build_context(
     # Resolve templated config values that other templates depend on
     aws = ctx.get("aws", {})
     ctx["account_id"] = resolve_templates(aws.get("account_id", ""), ctx)
+    # CI enrollment must resolve before rendering, or runtime substitution can duplicate an account.
+    if ci and (not isinstance(ctx["account_id"], str) or not re.fullmatch(r"[0-9]{12}", ctx["account_id"])):
+        raise ValueError("CI ephemeral rendering requires a resolved 12-digit RC account from the provisioner")
     ctx["child_admin_role_name"] = resolve_templates(
         aws.get("child_admin_role_name", "OrganizationAccountAccessRole"), ctx
     )

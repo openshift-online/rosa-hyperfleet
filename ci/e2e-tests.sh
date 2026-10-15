@@ -86,6 +86,10 @@ fi
 export AWS_PROFILE="rrp-rc"
 export AWS_DEFAULT_REGION="${AWS_REGION:-us-east-1}"
 
+# Print the real signing principal, not credentials, to diagnose grant mismatches.
+echo "Regional API caller (rrp-rc):"
+aws sts get-caller-identity --profile rrp-rc --query '{Account:Account,Arn:Arn}' --output json
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export REPO_ROOT
 export PATH="/usr/local/sessionmanagerplugin/bin:/usr/bin:/usr/local/bin:${PATH}"
@@ -107,8 +111,10 @@ else
     echo "WARNING: no ${CREDS_DIR}/api_url and BUILD_ID not set — CLUSTER_PREFIX unset, log collection disabled" >&2
 fi
 
-E2E_REF="${E2E_REF:-main}"
-E2E_REPO="${E2E_REPO:-https://github.com/openshift-online/rosa-hyperfleet-api.git}"
+# Epic branch only: pair e2e helpers with the pinned API image. Revert to
+# main / openshift-online before landing this PR on main.
+E2E_REF="${E2E_REF:-feature/cedar-authorization}"
+E2E_REPO="${E2E_REPO:-https://github.com/Alcamech/rosa-hyperfleet-api.git}"
 CLI_REF="${CLI_REF:-main}"
 CLI_REPO="${CLI_REPO:-https://github.com/openshift-online/rosa-hyperfleet-cli.git}"
 ROSA_REPO_URL="${ROSA_REPO_URL:-https://github.com/openshift/rosa}"
@@ -203,7 +209,12 @@ if [[ "${E2E_SKIP_PLATFORM_API}" == "true" ]]; then
   echo "=== Platform API Tests ==="
   echo "Skipped (E2E_SKIP_PLATFORM_API=${E2E_SKIP_PLATFORM_API})"
 else
-  make test-e2e-api || platform_rc=$?
+  source "${SCRIPT_DIR}/setup-service-operator-profile.sh"
+  if setup_operator_profile "${WORK_DIR}/aws_config"; then
+    make test-e2e-api || platform_rc=$?
+  else
+    platform_rc=1
+  fi
 fi
 
 # ZOA e2e coverage: rosa-hyperfleet-zoa owns its own e2e suite (test/e2e/).
@@ -261,6 +272,8 @@ if [[ $platform_rc -ne 0 ]]; then
 elif aws configure export-credentials --profile rrp-customer --format process &>/dev/null; then
   export CUSTOMER_AWS_PROFILE="rrp-customer"
   echo "Customer profile rrp-customer is available"
+  echo "Customer API caller (rrp-customer):"
+  aws sts get-caller-identity --profile rrp-customer --query '{Account:Account,Arn:Arn}' --output json
 
   if [[ -z "${E2E_CUSTOMER_ACCOUNT_ID:-}" ]]; then
     export E2E_CUSTOMER_ACCOUNT_ID="$(aws sts get-caller-identity --profile rrp-customer --query Account --output text)"

@@ -230,6 +230,63 @@ applications:
     # @used-by applications.regional-cluster.baseDomain _context
     baseDomain: "{% if dns.domain %}{{ deployment_name }}.{{ dns.domain }}{% endif %}"
     platformApi:
+      authz:
+        # @doc applications.regional-cluster.platformApi.authz.config Complete serialized v1 authorization bundle. Customer arrays deny customer operations; explicit RC provisioning grants use validated bootstrap account/region markers. Overrides replace the entire bundle.
+        # @used-by applications.regional-cluster.platformApi.authz.config _context
+        config: |
+          {% set operator_account = account_id if account_id is string and account_id | length == 12 and account_id.isascii() and account_id.isdigit() else "@@AWS_ACCOUNT_ID@@" -%}
+          {% set registered_accounts = ["720644165472", "313828097858"] if ci else [] -%}
+          formatVersion: 1
+
+          registeredAccounts: {{ (registered_accounts + [operator_account]) | unique | list | tojson }}
+          {% if ci -%}
+          policies:
+            - id: ci-read-clusters-720644165472
+              ownerAccountID: "720644165472"
+              content: |
+                permit(principal, action in HyperFleet::Action::"AllActions", resource)
+                when { context.accountId == "720644165472" && context.region == "us-east-1" };
+            - id: ci-read-clusters-313828097858
+              ownerAccountID: "313828097858"
+              content: |
+                permit(principal, action in HyperFleet::Action::"AllActions", resource)
+                when { context.accountId == "313828097858" && context.region == "us-east-1" };
+          attachments:
+            - id: ci-readers-720644165472
+              policyID: ci-read-clusters-720644165472
+              principalARN: arn:aws:iam::720644165472:role/{{ aws.child_admin_role_name }}
+              scope: regional
+              region: us-east-1
+            - id: ci-readers-313828097858
+              policyID: ci-read-clusters-313828097858
+              principalARN: arn:aws:iam::313828097858:role/{{ aws.child_admin_role_name }}
+              scope: regional
+              region: us-east-1
+            - id: ci-e2e-720644165472
+              policyID: ci-read-clusters-720644165472
+              principalARN: arn:aws:iam::720644165472:user/e2e
+              scope: regional
+              region: us-east-1
+            - id: ci-e2e-313828097858
+              policyID: ci-read-clusters-313828097858
+              principalARN: arn:aws:iam::313828097858:user/rrp-hcp-customer
+              scope: regional
+              region: us-east-1
+          {% else -%}
+          policies: []
+          attachments: []
+          {% endif %}
+          serviceOperatorPolicies:
+            - id: provision-management-clusters
+              ownerAccountID: "{{ operator_account }}"
+              content: |
+                permit(principal, action in [HyperFleet::Action::"CreateManagementCluster", HyperFleet::Action::"ListManagementClusters", HyperFleet::Action::"DescribeManagementCluster"], resource);
+          serviceOperatorAttachments:
+            - id: regional-provisioner
+              policyID: provision-management-clusters
+              principalARN: arn:aws:iam::{{ operator_account }}:role/{{ child_admin_role_name }}
+              scope: regional
+              region: "{{ aws_region }}"
       app:
         args:
           # @doc applications.regional-cluster.platformApi.app.args.defaultClusterExpiration Maps cluster_lifecycle.default_expiration into the platform-api --default-cluster-expiration flag.

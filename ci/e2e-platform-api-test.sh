@@ -2,14 +2,13 @@
 # This is a simple e2e platform api test script.
 # It verifies the platform api endpoints.
 # It creates a management cluster.
-# It is meant to be run from the regional account.
+# Supply already assumed credentials for an explicitly authorized service-operator
+# role in the RC account. Account enrollment alone is not an operator grant.
+# API_URL is the full invoke base (including any /prod stage).
 # It requires the following tools:
 # - aws
 # - jq
-# - awscurl
-# - date
-# - cat
-# - echo
+# - curl (with --aws-sigv4 support)
 
 set -euo pipefail
 
@@ -45,20 +44,30 @@ test_platform_api() {
 
   local API_URL="${1}"
   local MANAGEMENT_CLUSTER="${2:-mc01}"
-  
+  : "${AWS_ACCESS_KEY_ID:?Export assumed operator credentials}"
+  : "${AWS_SECRET_ACCESS_KEY:?Export assumed operator credentials}"
+  local ACCOUNT_ID
+  ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+  API_URL="${API_URL%/}"
+  local SECURITY_TOKEN_HEADER=()
+  if [ -n "${AWS_SESSION_TOKEN:-}" ]; then
+    SECURITY_TOKEN_HEADER=(-H "x-amz-security-token: ${AWS_SESSION_TOKEN}")
+  fi
+
   log_section "Testing Platform API"
   
   log_msg "Testing API URL: $API_URL with region: $REGION"
   # Test basic API endpoints
   log_section "Testing API Health Endpoints"
   
-  set +e # allow awscurl to fail without exiting (disable errexit)
-  counter=0
+  local counter=0 HTTP_CODE RESPONSE BODY PAYLOAD
   while true; do
-    log_msg "Testing API URL: $API_URL/prod/v0/live"
-    awscurl --fail-with-body --service execute-api --region "$REGION" "$API_URL/prod/v0/live"
-    r=$?
-    if [ "$r" -eq 0 ]; then
+    log_msg "Testing API URL: $API_URL/api/v0/live"
+    if HTTP_CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
+      --connect-timeout 10 --max-time 30 \
+      --aws-sigv4 "aws:amz:${REGION}:execute-api" \
+      --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
+      "${SECURITY_TOKEN_HEADER[@]}" "$API_URL/api/v0/live") && [ "$HTTP_CODE" = "200" ]; then
       log_success "API is healthy"
       break
     else
@@ -71,38 +80,52 @@ test_platform_api() {
       fi
     fi
   done
-  set -e # re-enable exit on error (errexit)
-
-  awscurl --fail-with-body --service execute-api --region "$REGION" "$API_URL/prod/v0/ready"
-  awscurl --fail-with-body --service execute-api --region "$REGION" "$API_URL/prod/api/v0/management_clusters"
-  awscurl --fail-with-body --service execute-api --region "$REGION" "$API_URL/prod/api/v0/resource_bundles"
-  # awscurl --fail-with-body --service execute-api --region "$REGION" "$API_URL/api/v0/work"
-  # awscurl --fail-with-body --service execute-api --region "$REGION" "$API_URL/api/v0/clusters"
+  local path
+  for path in ready management_clusters; do
+    if ! RESPONSE=$(curl -sS -w '\n%{http_code}' \
+      --connect-timeout 10 --max-time 30 \
+      --aws-sigv4 "aws:amz:${REGION}:execute-api" \
+      --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
+      "${SECURITY_TOKEN_HEADER[@]}" "$API_URL/api/v0/$path"); then
+      log_error "Transport failure testing $path"
+      return 1
+    fi
+    HTTP_CODE="${RESPONSE##*$'\n'}"
+    BODY="${RESPONSE%$'\n'*}"
+    if [ "$HTTP_CODE" != "200" ]; then
+      log_error "$path returned HTTP $HTTP_CODE"
+      echo "$BODY"
+      return 1
+    fi
+    echo "$BODY"
+  done
   # Create or verify management cluster
   log_section "Creating/Verifying Management Cluster"
-  local RESPONSE=$(awscurl --fail-with-body -X POST "$API_URL/prod/api/v0/management_clusters" \
-    --service execute-api \
-    --region "$REGION" \
-    -H "Content-Type: application/json" \
-    -d '{"name": "'$MANAGEMENT_CLUSTER'", "labels": {"cluster_type": "management", "cluster_id": "'$MANAGEMENT_CLUSTER'"}}' \
-    2>&1)
-  local EXIT_CODE=$?
-
-  # Check if the consumer already exists (this is acceptable)
-  if echo "$RESPONSE" | grep -qiE '"reason":"This Consumer already exists"'; then
-    log_info "Management cluster already exists (this is acceptable)"
-    echo "Response: $RESPONSE"
-  elif [ $EXIT_CODE -ne 0 ]; then
-    log_error "Failed to create management cluster (exit code: $EXIT_CODE)"
-    echo "Response: $RESPONSE"
+  PAYLOAD=$(jq -n --arg id "$MANAGEMENT_CLUSTER" --arg region "$REGION" --arg account "$ACCOUNT_ID" \
+    '{id: $id, region: $region, accountId: $account}')
+  if ! RESPONSE=$(curl -sS -w '\n%{http_code}' -X POST "$API_URL/api/v0/management_clusters" \
+    --connect-timeout 10 --max-time 30 \
+    --aws-sigv4 "aws:amz:${REGION}:execute-api" \
+    --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
+    "${SECURITY_TOKEN_HEADER[@]}" \
+    -H "Content-Type: application/json" -d "$PAYLOAD"); then
+    log_error "Registration transport failure"
     return 1
-  elif echo "$RESPONSE" | grep -qiE '(error|failed|exception|invalid)'; then
-    log_error "API returned an error response"
-    echo "Response: $RESPONSE"
+  fi
+  HTTP_CODE="${RESPONSE##*$'\n'}"
+  BODY="${RESPONSE%$'\n'*}"
+
+  # Only the actual HTTP 409 with the API's typed conflict is idempotent success.
+  if [ "$HTTP_CODE" = "409" ] && echo "$BODY" | jq -e '.kind == "Status" and .reason == "Conflict" and .code == 409 and (.message | startswith("MC-MGMT-CREATE-005:"))' >/dev/null 2>&1; then
+    log_info "Management cluster already exists (this is acceptable)"
+    echo "Response: $BODY"
+  elif [ "$HTTP_CODE" != "201" ]; then
+    log_error "Failed to create management cluster (HTTP $HTTP_CODE)"
+    echo "Response: $BODY"
     return 1
   else
     log_success "Management cluster created successfully"
-    echo "Response: $RESPONSE"
+    echo "Response: $BODY"
   fi
   echo ""
 }

@@ -230,6 +230,25 @@ applications:
     # @used-by applications.regional-cluster.baseDomain _context
     baseDomain: "{% if dns.domain %}{{ deployment_name }}.{{ dns.domain }}{% endif %}"
     platformApi:
+      authz:
+        # @doc applications.regional-cluster.platformApi.authz.config Complete serialized v1 authorization bundle. Customer arrays deny customer operations; explicit RC provisioning grants use validated bootstrap account/region markers. Overrides replace the entire bundle.
+        # @used-by applications.regional-cluster.platformApi.authz.config _context
+        config: |
+          formatVersion: 1
+          registeredAccounts: ["@@AWS_ACCOUNT_ID@@"]
+          policies: []
+          attachments: []
+          serviceOperatorPolicies:
+            - id: provision-management-clusters
+              ownerAccountID: "@@AWS_ACCOUNT_ID@@"
+              content: |
+                permit(principal, action in [HyperFleet::Action::"CreateManagementCluster", HyperFleet::Action::"ListManagementClusters", HyperFleet::Action::"DescribeManagementCluster"], resource);
+          serviceOperatorAttachments:
+            - id: regional-provisioner
+              policyID: provision-management-clusters
+              principalARN: arn:aws:iam::@@AWS_ACCOUNT_ID@@:role/{{ child_admin_role_name }}
+              scope: regional
+              region: "@@AWS_REGION@@"
       app:
         args:
           # @doc applications.regional-cluster.platformApi.app.args.defaultClusterExpiration Maps cluster_lifecycle.default_expiration into the platform-api --default-cluster-expiration flag.

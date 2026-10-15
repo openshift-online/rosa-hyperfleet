@@ -1,4 +1,4 @@
-.PHONY: help terraform-fmt terraform-init terraform-validate terraform-upgrade terraform-output-management terraform-output-regional helm-lint check-rendered-files promtool-test check-session-manager-plugin ephemeral-provision ephemeral-teardown ephemeral-resync ephemeral-list ephemeral-shell ephemeral-bastion-rc ephemeral-bastion-mc ephemeral-post-account-shell ephemeral-port-forward-rc ephemeral-port-forward-mc ephemeral-port-forward-rc-all ephemeral-port-forward-mc-all ephemeral-sre-ui ephemeral-e2e ephemeral-dump-env int-shell int-bastion-rc int-bastion-mc int-port-forward-rc int-port-forward-mc int-port-forward-rc-all int-port-forward-mc-all int-e2e int-dump-env stage-shell stage-bastion-rc stage-bastion-mc stage-port-forward-rc stage-port-forward-mc stage-port-forward-rc-all stage-port-forward-mc-all stage-e2e stage-dump-env check-docs check-default-tags pre-push render
+.PHONY: help terraform-fmt terraform-init terraform-validate terraform-upgrade terraform-output-management terraform-output-regional helm-lint check-rendered-files promtool-test check-session-manager-plugin ephemeral-provision ephemeral-teardown ephemeral-resync ephemeral-list ephemeral-shell ephemeral-bastion-rc ephemeral-bastion-mc ephemeral-port-forward-rc ephemeral-port-forward-mc ephemeral-port-forward-rc-all ephemeral-port-forward-mc-all ephemeral-sre-ui ephemeral-e2e ephemeral-dump-env int-shell int-bastion-rc int-bastion-mc int-port-forward-rc int-port-forward-mc int-port-forward-rc-all int-port-forward-mc-all int-e2e int-dump-env stage-shell stage-bastion-rc stage-bastion-mc stage-port-forward-rc stage-port-forward-mc stage-port-forward-rc-all stage-port-forward-mc-all stage-e2e stage-dump-env check-docs check-default-tags pre-push render
 
 # =============================================================================
 # Local tool management
@@ -236,9 +236,6 @@ ephemeral-shell: ## Interactive shell for Platform API access (ephemeral)
 
 ephemeral-bastion-rc: ## Connect to RC bastion in an ephemeral env
 	@ID="$(ID)" ./scripts/dev/ephemeral-env.sh bastion --cluster-type regional
-
-ephemeral-post-account-shell: ## Register a customer AWS account with the platform API via the ephemeral shell (ACCOUNT_ID=<12-digit-id> required)
-	@ID="$(ID)" ACCOUNT_ID="$(ACCOUNT_ID)" ./scripts/dev/ephemeral-env.sh post-account
 
 ephemeral-bastion-mc: ## Connect to MC bastion in an ephemeral env
 	@ID="$(ID)" ./scripts/dev/ephemeral-env.sh bastion --cluster-type management
