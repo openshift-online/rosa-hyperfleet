@@ -24,6 +24,14 @@ locals {
 
   # Repository URL constructed from github_repository variable
   repository_url = "https://github.com/${var.github_repository}.git"
+
+  # RC Terraform (zoa_access) writes deployment discovery to Central SSM in both regions.
+  zoa_central_deployments_ssm_parameter_arns = [
+    for region in distinct([
+      var.zoa_central_deployments_primary_region,
+      var.zoa_central_deployments_replica_region,
+    ]) : "arn:aws:ssm:${region}:${data.aws_caller_identity.current.account_id}:parameter/zoa/deployments/*"
+  ]
 }
 
 # Use shared GitHub Connection (passed from pipeline-provisioner)
@@ -93,7 +101,7 @@ resource "aws_iam_role_policy" "codebuild_policy" {
           "ssm:RemoveTagsFromResource",
           "ssm:ListTagsForResource",
         ]
-        Resource = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/zoa/deployments/*"
+        Resource = local.zoa_central_deployments_ssm_parameter_arns
       },
       {
         Effect   = "Allow"

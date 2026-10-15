@@ -85,3 +85,17 @@ variable "slack_webhook_ssm_param" {
   description = "SSM Parameter Store path containing the Slack webhook URL (only required for staging, production, integration environments)"
   default     = "/rosa-regional/slack/webhook-url"
 }
+
+# Central account regions for ZOA deployment discovery SSM (module.zoa_access primary + replica).
+# RC apply runs from this CodeBuild role and writes /zoa/deployments/* in both regions.
+variable "zoa_central_deployments_primary_region" {
+  type        = string
+  description = "Central SSM region for primary /zoa/deployments/* (must match regional-cluster)."
+  default     = "us-east-1"
+}
+
+variable "zoa_central_deployments_replica_region" {
+  type        = string
+  description = "Central SSM region for replica /zoa/deployments/* (must match regional-cluster)."
+  default     = "eu-west-1"
+}
