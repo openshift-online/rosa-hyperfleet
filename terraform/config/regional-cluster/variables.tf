@@ -538,6 +538,18 @@ variable "zoa_boundary_session_max_duration_hours" {
   }
 }
 
+variable "zoa_central_deployments_primary_region" {
+  description = "Central account SSM region for primary /zoa/deployments/* (must match rosa-hyperfleet-zoa accessclient.DefaultDeploymentsSSMRegion)."
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "zoa_central_deployments_replica_region" {
+  description = "Central account SSM region for replica /zoa/deployments/* (must match rosa-hyperfleet-zoa accessclient.ReplicaDeploymentsSSMRegion)."
+  type        = string
+  default     = "eu-west-1"
+}
+
 variable "worker_node_ami_id" {
   description = "Custom AMI ID for the Karpenter bootstrap managed node group. Empty (default) uses the EKS-optimized AL2023 AMI. When set, the node group switches to a CUSTOM AMI and the launch template supplies nodeadm bootstrap user_data (assumes a nodeadm-compatible image, e.g. RHEL/AL2023)."
   type        = string

@@ -58,6 +58,46 @@ data "aws_caller_identity" "central" {
   provider = aws.central
 }
 
+# Central account providers for ZOA deployment SSM (/zoa/deployments/*).
+# Primary + replica regions; CLI defaults to primary with automatic replica failover.
+provider "aws" {
+  alias             = "central_deployments"
+  region            = var.zoa_central_deployments_primary_region
+  profile           = var.central_aws_profile != "" ? var.central_aws_profile : null
+  use_fips_endpoint = can(regex("^(us|us-gov)-", var.zoa_central_deployments_primary_region)) ? true : false
+
+  default_tags {
+    tags = merge(
+      {
+        app-code      = var.app_code
+        service-phase = var.service_phase
+        cost-center   = var.cost_center
+        environment   = var.environment
+      },
+      var.eph_prefix != "" ? { ephemeral-prefix = var.eph_prefix } : {}
+    )
+  }
+}
+
+provider "aws" {
+  alias             = "central_deployments_replica"
+  region            = var.zoa_central_deployments_replica_region
+  profile           = var.central_aws_profile != "" ? var.central_aws_profile : null
+  use_fips_endpoint = can(regex("^(us|us-gov)-", var.zoa_central_deployments_replica_region)) ? true : false
+
+  default_tags {
+    tags = merge(
+      {
+        app-code      = var.app_code
+        service-phase = var.service_phase
+        cost-center   = var.cost_center
+        environment   = var.environment
+      },
+      var.eph_prefix != "" ? { ephemeral-prefix = var.eph_prefix } : {}
+    )
+  }
+}
+
 # When PagerDuty is disabled, a dummy token lets the provider initialize
 # without PAGERDUTY_TOKEN. When enabled, null falls through to the env var.
 provider "pagerduty" {
@@ -561,8 +601,9 @@ module "zoa_access" {
   source = "../../modules/zoa-access"
 
   providers = {
-    aws         = aws
-    aws.central = aws.central
+    aws                       = aws
+    aws.central_deployments         = aws.central_deployments
+    aws.central_deployments_replica = aws.central_deployments_replica
   }
 
   depends_on = [module.zoa, module.zoa_lambda]
