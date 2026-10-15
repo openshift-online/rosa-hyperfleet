@@ -149,7 +149,7 @@ module "zoa_lambda" {
     aws.targets_ssm = aws.zoa_targets
   }
 
-  cluster_id        = var.management_id
+  cluster_id  = var.management_id
   target_type = "mc"
 
   lambda_image_uri = "${var.zoa_lambda_ecr_url}:${var.zoa_lambda_image_tag}"

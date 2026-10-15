@@ -101,6 +101,16 @@ resource "aws_iam_role" "exec_scoped" {
   })
 }
 
+# Credentials for this role are vended to the operator laptop on session join (RC Access
+# Lambda sts:AssumeRole). Access also attaches a session policy (rosa-hyperfleet-zoa
+# pkg/execcreds) that narrows ecs:ExecuteCommand to a single task ARN; the statements
+# below are the role baseline when no session policy is applied.
+#
+# SSMMessagesForExec uses Resource = "*" on purpose. Interactive ECS Exec from the
+# client requires ssmmessages:* channel APIs (session-manager-plugin) in addition to
+# ecs:ExecuteCommand. AWS does not model those channel actions with per-task ARNs, so
+# tightening Resource here would break join/exec without adding a meaningful IAM boundary
+# (task scope is enforced on the ecs:ExecuteCommand and ecs:DescribeTasks statements).
 resource "aws_iam_role_policy" "exec_scoped_base" {
   name = "ecs-exec-boundary"
   role = aws_iam_role.exec_scoped.id

@@ -17,12 +17,14 @@ Boundary **targets** (VPC, subnets, ECS ARNs, API Function URL) are registered i
 
 ## Cross-Account Access Model
 
-MC Lambdas access RC data via IAM roles with OU-scoped trust policies:
+MC Lambdas access RC data by assuming IAM roles in the RC account:
 
 - `data_access` role: MC Lambdas assume this for DynamoDB (executions, audit, sessions), S3, and KMS. Lambdas receive table names via environment variables.
 - `uploader` role: MC Lambdas assume this for scoped S3 upload credentials in async Jobs
 
-Trust policies use `aws:PrincipalOrgPaths` — no MC account IDs are hardcoded. Any new MC account within the OU automatically gets access on first execution.
+`data_access` and `uploader` trust policies enumerate each MC `{management_id}-zoa-lambda` execution role ARN from `management_clusters` (regional-cluster locals). S3/KMS key policies may still use OU paths for CloudWatch and ECR; add new MCs via config + RC apply.
+
+RC Access Lambda assumes per-MC `*-zoa-boundary-access` and `*-zoa-boundary-exec-scoped` roles using the same fleet list (`module.zoa-access`).
 
 ## Image Mirroring
 

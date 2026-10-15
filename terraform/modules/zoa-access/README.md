@@ -6,10 +6,10 @@ Session control plane: Access Lambda (`HANDLER_MODE=access`), Function URL (IAM 
 
 One IAM role in AWS; two Terraform owners by design (apply order, not naming hacks):
 
-| Layer                      | Module                                                               | What it manages                                                                                                                                                                 |
-| -------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Layer                      | Module                                                         | What it manages                                                                                                                                                                 |
+| -------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Role shell**             | `zoa-lambda` (`access-trust-role.tf`, RC `target_type = "rc"`) | `aws_iam_role` with Lambda trust only. Boundary `boundary-access` / `exec-scoped` roles trust this **ARN** in the same module.                                                  |
-| **Permissions + function** | **`zoa-access`** (this module)                                       | Inline policies (DynamoDB sessions/audit, ECS RunTask, STS to boundary roles, SSM, KMS, ECR), `AWSLambdaBasicExecutionRole`, `aws_lambda_function`, Function URL, invoker role. |
+| **Permissions + function** | **`zoa-access`** (this module)                                 | Inline policies (DynamoDB sessions/audit, ECS RunTask, STS to boundary roles, SSM, KMS, ECR), `AWSLambdaBasicExecutionRole`, `aws_lambda_function`, Function URL, invoker role. |
 
 RC stack order: `module.zoa_lambda` → `module.zoa_access` (one-way; no constructed IAM ARNs).
 
@@ -17,6 +17,6 @@ Inputs **`lambda_execution_role_arn`** and **`lambda_execution_role_name`** come
 
 On **destroy**, this module is removed first (function + policies), then `zoa-lambda` removes the role shell.
 
-MC stacks do **not** call this module; MC boundary trust uses **`zoa_access_lambda_role_arn`** from RC Terraform outputs.
+MC stacks do **not** call this module; MC boundary trust uses **`zoa_access_lambda_role_arn`** from rendered MC pipeline JSON (contract ARN: `{regional_id}-zoa-access-lambda` in the RC account). RC Access STS `AssumeRole` targets explicit per-MC boundary role ARNs from `management_clusters`.
 
 See also [`../zoa-lambda/README.md`](../zoa-lambda/README.md).

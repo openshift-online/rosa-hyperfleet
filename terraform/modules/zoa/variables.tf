@@ -3,11 +3,6 @@ variable "regional_id" {
   type        = string
 }
 
-variable "eks_cluster_name" {
-  description = "Name of the RC EKS cluster"
-  type        = string
-}
-
 variable "environment" {
   description = "Deployment environment name (e.g. 'ephemeral', 'integration', 'production'). Controls DynamoDB protection settings and S3 force_destroy behavior."
   type        = string
@@ -27,6 +22,12 @@ variable "mc_ou_path" {
     condition     = length(var.mc_ou_path) > 10 && startswith(var.mc_ou_path, "o-")
     error_message = "mc_ou_path must be a valid AWS Organizations path starting with 'o-' (e.g., 'o-abc123/r-root/ou-xxxx-yyyy/')"
   }
+}
+
+variable "mc_zoa_lambda_role_arns" {
+  description = "Execution role ARNs for each MC ZOA Lambda ({management_id}-zoa-lambda). Used in data-access/uploader trust policies."
+  type        = list(string)
+  default     = []
 }
 
 variable "output_retention_days" {

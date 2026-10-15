@@ -117,6 +117,19 @@ data "aws_region" "current" {}
 locals {
   mc_entries     = var.management_clusters != "" ? split(",", var.management_clusters) : []
   mc_account_ids = [for entry in local.mc_entries : element(split(":", entry), 1)]
+  # management_clusters entries are "management_id:account_id" (see provision-infra-rc.sh).
+  mc_boundary_access_role_arns = [
+    for entry in local.mc_entries :
+    "arn:aws:iam::${element(split(":", entry), 1)}:role/${element(split(":", entry), 0)}-zoa-boundary-access"
+  ]
+  mc_boundary_exec_scoped_role_arns = [
+    for entry in local.mc_entries :
+    "arn:aws:iam::${element(split(":", entry), 1)}:role/${element(split(":", entry), 0)}-zoa-boundary-exec-scoped"
+  ]
+  mc_zoa_lambda_role_arns = [
+    for entry in local.mc_entries :
+    "arn:aws:iam::${element(split(":", entry), 1)}:role/${element(split(":", entry), 0)}-zoa-lambda"
+  ]
   api_allowed_accounts = distinct(compact(concat(
     [data.aws_caller_identity.current.account_id],
     local.mc_account_ids,
@@ -528,8 +541,8 @@ module "zoa" {
   source = "../../modules/zoa"
 
   regional_id             = var.regional_id
-  eks_cluster_name        = module.regional_cluster.cluster_name
   mc_ou_path              = var.mc_ou_path
+  mc_zoa_lambda_role_arns = local.mc_zoa_lambda_role_arns
   environment             = var.environment
   zoa_lambda_image_tag    = var.zoa_lambda_image_tag
   zoa_runner_image_tag    = var.zoa_runner_image_tag
@@ -544,7 +557,7 @@ module "zoa_lambda" {
     aws.targets_ssm = aws
   }
 
-  cluster_id        = var.regional_id
+  cluster_id  = var.regional_id
   target_type = "rc"
 
   lambda_image_uri = module.zoa.lambda_image_uri
@@ -601,7 +614,7 @@ module "zoa_access" {
   source = "../../modules/zoa-access"
 
   providers = {
-    aws                       = aws
+    aws                             = aws
     aws.central_deployments         = aws.central_deployments
     aws.central_deployments_replica = aws.central_deployments_replica
   }
@@ -613,19 +626,21 @@ module "zoa_access" {
 
   central_account_id         = data.aws_caller_identity.central.account_id
   trusted_assumer_role_names = var.zoa_access_trusted_assumer_role_names
-  mc_account_ids             = local.mc_account_ids
 
-  sessions_table_name        = module.zoa.sessions_table_name
-  audit_table_name           = module.zoa.audit_table_name
-  targets_ssm_prefix         = "/zoa/targets/${var.deployment_name}"
-  kms_key_arn                = module.zoa.kms_key_arn
-  deployment_name            = var.deployment_name
-  boundary_ecs_cluster_arn              = module.zoa_lambda.boundary_ecs_cluster_arn
-  boundary_task_definition_arn_prefix   = module.zoa_lambda.boundary_task_definition_arn_prefix
-  boundary_ecs_exec_command             = module.zoa_lambda.boundary_ecs_exec_interactive_command
-  exec_scoped_role_arn       = module.zoa_lambda.boundary_exec_scoped_role_arn
-  lambda_execution_role_arn  = module.zoa_lambda.access_lambda_role_arn
-  lambda_execution_role_name = module.zoa_lambda.access_lambda_role_name
+  mc_boundary_access_role_arns      = local.mc_boundary_access_role_arns
+  mc_boundary_exec_scoped_role_arns = local.mc_boundary_exec_scoped_role_arns
+
+  sessions_table_name                 = module.zoa.sessions_table_name
+  audit_table_name                    = module.zoa.audit_table_name
+  targets_ssm_prefix                  = "/zoa/targets/${var.deployment_name}"
+  kms_key_arn                         = module.zoa.kms_key_arn
+  deployment_name                     = var.deployment_name
+  boundary_ecs_cluster_arn            = module.zoa_lambda.boundary_ecs_cluster_arn
+  boundary_task_definition_arn_prefix = module.zoa_lambda.boundary_task_definition_arn_prefix
+  boundary_ecs_exec_command           = module.zoa_lambda.boundary_ecs_exec_interactive_command
+  exec_scoped_role_arn                = module.zoa_lambda.boundary_exec_scoped_role_arn
+  lambda_execution_role_arn           = module.zoa_lambda.access_lambda_role_arn
+  lambda_execution_role_name          = module.zoa_lambda.access_lambda_role_name
 
   session_idle_timeout_seconds = var.zoa_boundary_session_idle_timeout_seconds
   session_max_duration_hours   = var.zoa_boundary_session_max_duration_hours

@@ -10,6 +10,16 @@ config_load management
 
 RESOLVED_REGIONAL_ACCOUNT_ID="${REGIONAL_AWS_ACCOUNT_ID}"
 
+# RC Access Lambda role ARN is contract-based (rendered deploy JSON), not an RC terraform output.
+export TF_VAR_zoa_access_lambda_role_arn=$(jq -r '.zoa_access_lambda_role_arn // empty' "$DEPLOY_CONFIG_FILE")
+if [ -z "${TF_VAR_zoa_access_lambda_role_arn}" ]; then
+    _RC_REGIONAL_ID_CONTRACT=$(jq -r '.regional_id // empty' "deploy/${ENVIRONMENT}/${TARGET_REGION}/pipeline-regional-cluster-inputs/terraform.json" 2>/dev/null || true)
+    if [ -n "${_RC_REGIONAL_ID_CONTRACT}" ] && [ -n "${REGIONAL_AWS_ACCOUNT_ID}" ]; then
+        TF_VAR_zoa_access_lambda_role_arn="arn:aws:iam::${REGIONAL_AWS_ACCOUNT_ID}:role/${_RC_REGIONAL_ID_CONTRACT}-zoa-access-lambda"
+        export TF_VAR_zoa_access_lambda_role_arn
+    fi
+fi
+
 # Determine terraform action
 DELETE_FLAG=$(jq -r '.delete // false' "$DEPLOY_CONFIG_FILE")
 [ "${IS_DESTROY:-false}" == "true" ] && DELETE_FLAG="true"
@@ -73,14 +83,12 @@ else
         TF_VAR_oidc_bucket_region=$(AWS_ACCESS_KEY_ID=$(echo "$_rc_creds" | awk '{print $1}') AWS_SECRET_ACCESS_KEY=$(echo "$_rc_creds" | awk '{print $2}') AWS_SESSION_TOKEN=$(echo "$_rc_creds" | awk '{print $3}') terraform -chdir="$_RC_TF_DIR" output -raw oidc_bucket_region 2>/dev/null || true)
         TF_VAR_rhobs_api_url=$(AWS_ACCESS_KEY_ID=$(echo "$_rc_creds" | awk '{print $1}') AWS_SECRET_ACCESS_KEY=$(echo "$_rc_creds" | awk '{print $2}') AWS_SESSION_TOKEN=$(echo "$_rc_creds" | awk '{print $3}') terraform -chdir="$_RC_TF_DIR" output -raw rhobs_api_url 2>/dev/null || true)
         TF_VAR_zoa_kms_key_arn=$(AWS_ACCESS_KEY_ID=$(echo "$_rc_creds" | awk '{print $1}') AWS_SECRET_ACCESS_KEY=$(echo "$_rc_creds" | awk '{print $2}') AWS_SESSION_TOKEN=$(echo "$_rc_creds" | awk '{print $3}') terraform -chdir="$_RC_TF_DIR" output -raw zoa_kms_key_arn 2>/dev/null | grep -E '^arn:' || true)
-        TF_VAR_zoa_access_lambda_role_arn=$(AWS_ACCESS_KEY_ID=$(echo "$_rc_creds" | awk '{print $1}') AWS_SECRET_ACCESS_KEY=$(echo "$_rc_creds" | awk '{print $2}') AWS_SESSION_TOKEN=$(echo "$_rc_creds" | awk '{print $3}') terraform -chdir="$_RC_TF_DIR" output -raw zoa_access_lambda_role_arn 2>/dev/null | grep -E '^arn:' || true)
         if [ -n "${TF_VAR_oidc_cloudfront_domain}" ] && \
            [ -n "${TF_VAR_oidc_bucket_name}" ] && \
            [ -n "${TF_VAR_oidc_bucket_arn}" ] && \
            [ -n "${TF_VAR_oidc_bucket_region}" ] && \
            [ -n "${TF_VAR_rhobs_api_url}" ] && \
-           [ -n "${TF_VAR_zoa_kms_key_arn}" ] && \
-           [ -n "${TF_VAR_zoa_access_lambda_role_arn}" ]; then
+           [ -n "${TF_VAR_zoa_kms_key_arn}" ]; then
             break
         fi
         echo "RC outputs not ready (attempt ${_OIDC_RETRY_COUNT}/${_OIDC_MAX_RETRIES}), retrying in ${_OIDC_RETRY_DELAY}s..."
@@ -91,9 +99,12 @@ else
        [ -z "${TF_VAR_oidc_bucket_arn}" ] || \
        [ -z "${TF_VAR_oidc_bucket_region}" ] || \
        [ -z "${TF_VAR_rhobs_api_url}" ] || \
-       [ -z "${TF_VAR_zoa_kms_key_arn}" ] || \
-       [ -z "${TF_VAR_zoa_access_lambda_role_arn}" ]; then
-        echo "ERROR: RC outputs missing after $((_OIDC_MAX_RETRIES * _OIDC_RETRY_DELAY / 60))+ minutes (need OIDC, rhobs_api_url, zoa_kms_key_arn, zoa_access_lambda_role_arn)" >&2
+       [ -z "${TF_VAR_zoa_kms_key_arn}" ]; then
+        echo "ERROR: RC outputs missing after $((_OIDC_MAX_RETRIES * _OIDC_RETRY_DELAY / 60))+ minutes (need OIDC, rhobs_api_url, zoa_kms_key_arn)" >&2
+        exit 1
+    fi
+    if [ -z "${TF_VAR_zoa_access_lambda_role_arn}" ]; then
+        echo "ERROR: zoa_access_lambda_role_arn not set in MC deploy config and could not be derived from regional_id" >&2
         exit 1
     fi
     export TF_VAR_oidc_cloudfront_domain TF_VAR_oidc_bucket_name TF_VAR_oidc_bucket_arn TF_VAR_oidc_bucket_region TF_VAR_rhobs_api_url

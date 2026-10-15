@@ -114,9 +114,9 @@ resource "aws_iam_role" "oidc_key_reader" {
     }]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${var.regional_id}-oidc-key-reader"
-  }
+  })
 }
 
 resource "aws_iam_role_policy" "oidc_key_reader" {

@@ -7,6 +7,10 @@
 # - AWS read/write roles: Defined in zoa-lambda module (per-VPC, same account)
 # =============================================================================
 
+locals {
+  rc_zoa_lambda_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.regional_id}-zoa-lambda"
+}
+
 # =============================================================================
 # Uploader Role - Assumed by Lambda (via STS) for scoped S3 upload credentials
 # =============================================================================
@@ -23,37 +27,20 @@ resource "aws_iam_role" "uploader" {
   # 2. Cross-account: MC Lambdas assume this for MC async Jobs (S3 bucket is in RC)
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "SameAccountLambdas"
-        Effect = "Allow"
-        Principal = {
-          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
-        }
-        Action = "sts:AssumeRole"
-        Condition = {
-          ArnLike = {
-            "aws:PrincipalArn" = "arn:aws:iam::*:role/*-zoa-lambda"
-          }
-        }
-      },
-      {
-        Sid    = "CrossAccountMCLambdas"
-        Effect = "Allow"
-        Principal = {
-          AWS = "*"
-        }
-        Action = "sts:AssumeRole"
-        Condition = {
-          "ForAnyValue:StringLike" = {
-            "aws:PrincipalOrgPaths" = "${var.mc_ou_path}*"
-          }
-          ArnLike = {
-            "aws:PrincipalArn" = "arn:aws:iam::*:role/*-zoa-lambda"
-          }
-        }
-      },
-    ]
+    Statement = concat(
+      [{
+        Sid       = "SameAccountLambdas"
+        Effect    = "Allow"
+        Principal = { AWS = local.rc_zoa_lambda_role_arn }
+        Action    = "sts:AssumeRole"
+      }],
+      length(var.mc_zoa_lambda_role_arns) > 0 ? [{
+        Sid       = "CrossAccountMCLambdas"
+        Effect    = "Allow"
+        Principal = { AWS = var.mc_zoa_lambda_role_arns }
+        Action    = "sts:AssumeRole"
+      }] : [],
+    )
   })
 
   tags = merge(local.common_tags, {
@@ -112,23 +99,14 @@ resource "aws_iam_role" "data_access" {
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = {
-          AWS = "*"
-        }
-        Action = "sts:AssumeRole"
-        Condition = {
-          "ForAnyValue:StringLike" = {
-            "aws:PrincipalOrgPaths" = "${var.mc_ou_path}*"
-          }
-          ArnLike = {
-            "aws:PrincipalArn" = "arn:aws:iam::*:role/*-zoa-lambda"
-          }
-        }
-      },
-      {
+    Statement = concat(
+      length(var.mc_zoa_lambda_role_arns) > 0 ? [{
+        Sid       = "CrossAccountMCLambdas"
+        Effect    = "Allow"
+        Principal = { AWS = var.mc_zoa_lambda_role_arns }
+        Action    = "sts:AssumeRole"
+      }] : [],
+      [{
         Sid    = "AllowMCTerraformTargetRegistration"
         Effect = "Allow"
         Principal = {
@@ -143,8 +121,8 @@ resource "aws_iam_role" "data_access" {
             "aws:PrincipalArn" = "arn:aws:iam::*:role/OrganizationAccountAccessRole"
           }
         }
-      },
-    ]
+      }],
+    )
   })
 
   tags = merge(local.common_tags, {

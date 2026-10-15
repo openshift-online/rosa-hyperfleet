@@ -1594,6 +1594,10 @@ class TestMainIntegration:
         assert data["management_id"] == "mc01"
         assert data["account_id"] == "111111111111"
         assert data["regional_aws_account_id"] == "999999999999"
+        assert (
+            data["zoa_access_lambda_role_arn"]
+            == "arn:aws:iam::999999999999:role/regional-zoa-access-lambda"
+        )
         assert data["app_code"] == "infra"
 
     def test_mc_account_ids_added_to_regional_terraform(self, tmp_path):

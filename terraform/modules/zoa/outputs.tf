@@ -44,7 +44,7 @@ output "lambda_ecr_url" {
 
 output "lambda_image_uri" {
   description = "Full ECR image URI for Lambda (repo:tag). Normalized to non-FIPS endpoint for Lambda API compatibility."
-  value = var.zoa_lambda_image_tag != "" ? "${replace(aws_ecr_repository.lambda.repository_url, "ecr-fips", "ecr")}:${var.zoa_lambda_image_tag}" : ""
+  value       = var.zoa_lambda_image_tag != "" ? "${replace(aws_ecr_repository.lambda.repository_url, "ecr-fips", "ecr")}:${var.zoa_lambda_image_tag}" : ""
 
   # Ensure the image has been mirrored to ECR before any consumer uses this URI.
   # Without this, Terraform resolves the URI as soon as the ECR repository exists

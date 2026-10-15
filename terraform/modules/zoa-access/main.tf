@@ -306,26 +306,23 @@ resource "aws_iam_role_policy" "lambda_sts" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
+    Statement = concat(
+      [{
         Sid    = "AssumeExecScopedRoles"
         Effect = "Allow"
         Action = "sts:AssumeRole"
         Resource = concat(
           [var.exec_scoped_role_arn],
-          [for account_id in var.mc_account_ids : "arn:aws:iam::${account_id}:role/*-zoa-boundary-exec-scoped"],
+          var.mc_boundary_exec_scoped_role_arns,
         )
-      },
-      {
-        Sid    = "AssumeBoundaryAccessRoles"
-        Effect = "Allow"
-        Action = "sts:AssumeRole"
-        Resource = [
-          for account_id in var.mc_account_ids :
-          "arn:aws:iam::${account_id}:role/*-zoa-boundary-access"
-        ]
-      },
-    ]
+      }],
+      length(var.mc_boundary_access_role_arns) > 0 ? [{
+        Sid      = "AssumeBoundaryAccessRoles"
+        Effect   = "Allow"
+        Action   = "sts:AssumeRole"
+        Resource = var.mc_boundary_access_role_arns
+      }] : [],
+    )
   })
 }
 

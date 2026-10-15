@@ -62,8 +62,14 @@ variable "trusted_assumer_role_names" {
   }
 }
 
-variable "mc_account_ids" {
-  description = "List of MC account IDs for cross-account ECS RunTask. Empty for RC-only deployments."
+variable "mc_boundary_access_role_arns" {
+  description = "ARNs of per-MC zoa-boundary-access roles Access may assume (from management_clusters)."
+  type        = list(string)
+  default     = []
+}
+
+variable "mc_boundary_exec_scoped_role_arns" {
+  description = "ARNs of per-MC zoa-boundary-exec-scoped roles Access may assume for session join."
   type        = list(string)
   default     = []
 }
