@@ -120,8 +120,8 @@ ZOA_REPO="${ZOA_REPO:-https://github.com/openshift-online/rosa-hyperfleet-zoa.gi
 
 E2E_SKIP_PLATFORM_API="${E2E_SKIP_PLATFORM_API:-false}"  # Set to "true" to skip
 E2E_SKIP_ZOA="${E2E_SKIP_ZOA:-false}"                    # Set to "true" to skip
-E2E_SKIP_HCP="${E2E_SKIP_HCP:-true}"                     # Set to "true" to skip
-E2E_SKIP_ROSA_CLI="${E2E_SKIP_ROSA_CLI:-false}"          # Set to "true" to skip
+E2E_SKIP_HCP="true"
+E2E_SKIP_ROSA_CLI="false"
 E2E_SKIP_MONITORING="${E2E_SKIP_MONITORING:-false}"      # Set to "true" to skip
 
 # OCP release payload (full pullspec) for HCP creation. Empty lets the e2e /

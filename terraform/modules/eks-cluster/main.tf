@@ -235,8 +235,16 @@ resource "aws_eks_addon" "coredns" {
 resource "aws_eks_addon" "metrics_server" {
   cluster_name = aws_eks_cluster.main.name
   addon_name   = "metrics-server"
-  tags         = local.common_tags
-  depends_on   = [aws_eks_node_group.karpenter_bootstrap]
+  # Pinned to work around metrics-server#1868: v0.9.0 corrupts the aggregated
+  # /openapi/v2 schema so protobuf requests return 503 (JSON returns 200). That
+  # 503s the apiserver's merged openapi for all clients and breaks ArgoCD's
+  # cluster-cache sync (gitops-engine loads the v2 schema unconditionally for its
+  # GVKParser), leaving every Application stuck "Unknown". v0.8.1-eksbuild.10 is
+  # unaffected. Remove this pin once EKS ships an addon built on a fixed
+  # metrics-server. https://github.com/kubernetes-sigs/metrics-server/issues/1868
+  addon_version = "v0.8.1-eksbuild.10"
+  tags          = local.common_tags
+  depends_on    = [aws_eks_node_group.karpenter_bootstrap]
 }
 
 resource "aws_eks_addon" "pod_identity" {

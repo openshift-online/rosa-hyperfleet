@@ -863,6 +863,11 @@ class EphemeralEnvOrchestrator:
         log.info("==========================================")
         self._destroy_pipeline_provisioner(git)
 
+        # Delete the ephemeral branch last, once infra and pipelines are gone.
+        # Earlier phases push delete flags to this branch, so it must survive
+        # until here. Skipped in fire-and-forget mode (returns at Phase 1).
+        git.delete_eph_branch()
+
         log.info("Teardown complete.")
 
     def _destroy_pipeline_provisioner(self, git: GitManager):

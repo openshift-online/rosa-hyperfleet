@@ -22,7 +22,9 @@ class GitManager:
     """Manages git operations for ephemeral branch lifecycle.
 
     Creates an ephemeral branch from a source repo/branch, handles commits and
-    pushes. Ephemeral branches are intentionally kept for post-run troubleshooting.
+    pushes, and deletes the branch on teardown. Ephemeral branches accumulate
+    refs on the fork over time, which slows ArgoCD repo-server git operations, so
+    a successful teardown removes the branch it created.
     """
 
     def __init__(self, creds_dir: str, repo: str, branch: str,
@@ -248,6 +250,34 @@ class GitManager:
             push_cmd.insert(1, "--force")
         self._run_git(*push_cmd, auth=True)
         log.info("Pushed: %s", message)
+
+    def delete_eph_branch(self):
+        """Delete the ephemeral branch from the fork (best-effort).
+
+        Reuses the already-configured ``ci`` remote and token auth. Failures are
+        logged but never raised, so a leftover branch cannot fail an otherwise
+        successful teardown; stale branches can be pruned separately.
+        """
+        if not self.eph_branch:
+            log.warning("No ephemeral branch recorded; skipping branch deletion")
+            return
+        try:
+            result = self._run_git(
+                "push", "ci", "--delete", self.eph_branch, auth=True, check=False
+            )
+        except (subprocess.TimeoutExpired, OSError) as e:
+            log.warning(
+                "Failed to delete ephemeral branch '%s' (%s); prune it manually",
+                self.eph_branch, e,
+            )
+            return
+        if result.returncode != 0:
+            log.warning(
+                "Failed to delete ephemeral branch '%s' (exit %s); prune it manually",
+                self.eph_branch, result.returncode,
+            )
+            return
+        log.info("Deleted ephemeral branch: %s", self.eph_branch)
 
     def render_and_push(self, message: str, force: bool = False):
         """Run render.py in the work directory, then commit and push."""
