@@ -9,6 +9,34 @@
 
 locals {
   rc_zoa_lambda_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.regional_id}-zoa-lambda"
+
+  # Explicit per-MC Lambda role ARNs when management_clusters is known at apply time.
+  # When empty (parallel eph RC before MC account SSM exists), fall back to OU-scoped
+  # *-zoa-lambda trust so the role is valid; next RC apply tightens to explicit ARNs.
+  data_access_trust_statements = concat(
+    length(var.mc_zoa_lambda_role_arns) > 0 ? [{
+      Sid       = "CrossAccountMCLambdas"
+      Effect    = "Allow"
+      Principal = { AWS = var.mc_zoa_lambda_role_arns }
+      Action    = "sts:AssumeRole"
+    }] : [],
+    length(var.mc_zoa_lambda_role_arns) == 0 ? [{
+      Sid    = "CrossAccountMCLambdasOrgPath"
+      Effect = "Allow"
+      Principal = {
+        AWS = "*"
+      }
+      Action = "sts:AssumeRole"
+      Condition = {
+        "ForAnyValue:StringLike" = {
+          "aws:PrincipalOrgPaths" = "${var.mc_ou_path}*"
+        }
+        ArnLike = {
+          "aws:PrincipalArn" = "arn:aws:iam::*:role/*-zoa-lambda"
+        }
+      }
+    }] : [],
+  )
 }
 
 # =============================================================================
@@ -98,13 +126,8 @@ resource "aws_iam_role" "data_access" {
   description = "Cross-account role for MC Lambda DynamoDB+S3 access to RC data layer"
 
   assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = length(var.mc_zoa_lambda_role_arns) > 0 ? [{
-      Sid       = "CrossAccountMCLambdas"
-      Effect    = "Allow"
-      Principal = { AWS = var.mc_zoa_lambda_role_arns }
-      Action    = "sts:AssumeRole"
-    }] : []
+    Version   = "2012-10-17"
+    Statement = local.data_access_trust_statements
   })
 
   tags = merge(local.common_tags, {
