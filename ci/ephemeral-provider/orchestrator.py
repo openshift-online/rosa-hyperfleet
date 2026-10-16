@@ -119,7 +119,7 @@ class EphemeralEnvOrchestrator:
         if save_mc_state:
             self._save_mc_terraform_outputs(git, save_mc_state)
 
-    def teardown(self, fire_and_forget: bool = False):
+    def teardown(self, fire_and_forget: bool = False, with_resync: bool = False):
         """Tear down a previously provisioned ephemeral environment.
 
         Can run independently of provision() — reconnects to the existing
@@ -134,6 +134,10 @@ class EphemeralEnvOrchestrator:
                 Phase 3 (pipeline-provisioner destruction) are intentionally
                 skipped — teardown is expected to be driven to completion by
                 the in-account aws-nuke-cf janitor.
+            with_resync: If True, reset the ephemeral CI branch to the latest
+                source branch (same as resync) and re-inject config before
+                setting delete flags — destroy runs with fresh code without a
+                separate resync (which would trigger apply and clear delete).
         """
         # Check out the ephemeral branch first to discover region from its config
         git = GitManager(self.creds_dir, self.repo, self.branch,
@@ -147,6 +151,17 @@ class EphemeralEnvOrchestrator:
         log.info("Region (from ephemeral branch): %s", self.region)
 
         self._setup_aws()
+
+        if with_resync:
+            log.info("")
+            log.info("==========================================")
+            log.info("Teardown: refresh CI branch from %s@%s", self.repo, self.branch)
+            log.info("==========================================")
+            git.resync_eph_branch(self.eph_prefix)
+            self._inject_ephemeral_config(git)
+            env_config_dir = git.work_dir / "config" / TARGET_ENVIRONMENT
+            self.region = discover_region(env_config_dir)
+            log.info("Region (after resync): %s", self.region)
 
         # Purge clusters and resource bundles before infrastructure teardown.
         # Deleting bundles triggers ManifestWork removal on the MC, which is

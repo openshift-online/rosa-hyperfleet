@@ -372,14 +372,20 @@ make ephemeral-swap-branch ID=6bd2d3d7 NEW_BRANCH=my-feature NEW_REPO=my-fork/ro
 
 ## Tear Down
 
-Destroy an environment and all its resources:
-
 ```bash
 # Interactive — fzf picker for environment selection
 make ephemeral-teardown
 
 # Explicit
 make ephemeral-teardown ID=6bd2d3d7
+```
+
+Teardown destroys using whatever is already on the ephemeral CI branch; it does not pull from your feature branch.
+
+If destroy failed and you pushed a fix on your feature branch, resync the CI branch from that branch and then destroy (do not use `make ephemeral-resync` — that runs apply):
+
+```bash
+make ephemeral-teardown ID=6bd2d3d7 RESYNC=1
 ```
 
 ## Further Reading

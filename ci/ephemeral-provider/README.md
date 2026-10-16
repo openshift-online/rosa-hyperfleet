@@ -28,6 +28,9 @@ The provider also expects AWS CLI profiles `rrp-central`, `rrp-rc`, and `rrp-mc`
 # Teardown (same --id)
 ./ci/ephemeral-provider/main.py --teardown --id abc123 --repo owner/repo --branch my-feature --creds-dir /path/to/credentials
 
+# Teardown after updating the CI branch from --branch (same as make ephemeral-teardown RESYNC=1)
+./ci/ephemeral-provider/main.py --teardown --resync --id abc123 --repo owner/repo --branch my-feature --creds-dir /path/to/credentials
+
 # Resync (rebase ephemeral branch onto latest source branch, same --id)
 ./ci/ephemeral-provider/main.py --resync --id abc123 --repo owner/repo --branch my-feature --creds-dir /path/to/credentials
 ```

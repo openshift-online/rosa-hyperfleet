@@ -218,8 +218,8 @@ ephemeral-provision: ## Provision an ephemeral environment
 	@ID="$(ID)" REPO="$(REPO)" BRANCH="$(if $(filter command line,$(origin BRANCH)),$(BRANCH),)" \
 		./scripts/dev/ephemeral-env.sh provision
 
-ephemeral-teardown: ## Tear down an ephemeral environment
-	@ID="$(ID)" ./scripts/dev/ephemeral-env.sh teardown
+ephemeral-teardown: ## Tear down (RESYNC=1: update CI branch from your feature branch, then destroy — use after a failed teardown)
+	@ID="$(ID)" RESYNC="$(RESYNC)" ./scripts/dev/ephemeral-env.sh teardown
 
 ephemeral-resync: ## Resync an ephemeral environment to your branch
 	@ID="$(ID)" ./scripts/dev/ephemeral-env.sh resync
