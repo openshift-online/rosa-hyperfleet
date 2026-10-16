@@ -3,6 +3,8 @@
 # Called from: terraform/config/pipeline-management-cluster/buildspec-provision-infra.yml
 set -euo pipefail
 
+_BUILDSCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 source scripts/pipeline-common/lib.sh
 
 preflight_check
@@ -187,7 +189,7 @@ if [ -z "${TF_VAR_zoa_deployment_name}" ]; then
 fi
 
 if [ "${DELETE_FLAG}" == "true" ]; then
-    bash "${BASH_SOURCE%/*}/provision-mc-zoa-target-ssm.sh" destroy
+    bash "${_BUILDSCRIPTS_DIR}/provision-mc-zoa-target-ssm.sh" destroy
 fi
 
 # ── Phase 2: Apply/Destroy MC infrastructure ─────────────────────────────────
@@ -258,5 +260,5 @@ if [ $TERRAFORM_STATUS -ne 0 ]; then
 fi
 
 if [ "${TERRAFORM_ACTION}" == "apply" ]; then
-    bash "${BASH_SOURCE%/*}/provision-mc-zoa-target-ssm.sh" apply
+    bash "${_BUILDSCRIPTS_DIR}/provision-mc-zoa-target-ssm.sh" apply
 fi
