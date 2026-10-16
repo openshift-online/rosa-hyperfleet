@@ -815,9 +815,7 @@ resource "aws_cloudwatch_log_group" "worker" {
 # MC clusters: MC pipeline provisions RC SSM via mc-zoa-target-ssm-provisioning (see provision-mc-zoa-target-ssm.sh).
 
 resource "aws_ssm_parameter" "zoa_target" {
-  provider = aws.targets_ssm
-
-  count = var.targets_ssm_prefix != "" && var.target_type == "rc" ? 1 : 0
+  count = var.targets_ssm_prefix != "" ? 1 : 0
   name  = "${var.targets_ssm_prefix}/${var.cluster_id}"
   type  = "String"
 

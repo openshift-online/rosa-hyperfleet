@@ -553,10 +553,6 @@ module "zoa" {
 module "zoa_lambda" {
   source = "../../modules/zoa-lambda"
 
-  providers = {
-    aws.targets_ssm = aws
-  }
-
   cluster_id  = var.regional_id
   target_type = "rc"
 

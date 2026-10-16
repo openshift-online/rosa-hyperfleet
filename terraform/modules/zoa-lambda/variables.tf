@@ -228,13 +228,13 @@ variable "session_idle_timeout_seconds" {
 }
 
 variable "deployment_name" {
-  description = "Deployment name (e.g. us-east-1, us-east-1-eph-abc123). Used for SSM target registration."
+  description = "Deployment name (e.g. us-east-1, us-east-1-eph-abc123). Boundary ECS env; included in RC SSM target JSON when targets_ssm_prefix is set."
   type        = string
   default     = ""
 }
 
 variable "targets_ssm_prefix" {
-  description = "SSM prefix for target registration (e.g. /zoa/targets/us-east-1). Each cluster writes its own SSM parameter under this prefix."
+  description = "RC only: SSM prefix for target registration (e.g. /zoa/targets/us-east-1). MC targets use mc-zoa-target-ssm-provisioning; leave default empty on MC."
   type        = string
   default     = ""
 }

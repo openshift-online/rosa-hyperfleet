@@ -111,10 +111,6 @@ module "bastion" {
 module "zoa_lambda" {
   source = "../../modules/zoa-lambda"
 
-  providers = {
-    aws.targets_ssm = aws
-  }
-
   cluster_id  = var.management_id
   target_type = "mc"
 
@@ -136,10 +132,9 @@ module "zoa_lambda" {
   uploader_role_arn    = var.zoa_uploader_role_arn
   data_access_role_arn = var.zoa_data_access_role_arn
 
-  sessions_table_name    = var.zoa_sessions_table_name
-  deployment_name        = var.zoa_deployment_name
-  targets_ssm_prefix     = ""
-  vpc_id                 = module.vpc.vpc_id
+  sessions_table_name = var.zoa_sessions_table_name
+  deployment_name     = var.zoa_deployment_name
+  vpc_id              = module.vpc.vpc_id
   boundary_image         = var.zoa_boundary_image
   access_lambda_role_arn = var.zoa_access_lambda_role_arn
 

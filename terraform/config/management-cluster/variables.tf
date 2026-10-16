@@ -225,7 +225,7 @@ variable "zoa_sessions_table_name" {
 }
 
 variable "zoa_deployment_name" {
-  description = "ZOA logical deployment name (same as RC deployment_name: aws region, or region-eph_prefix for ephemeral). Used for SSM /zoa/targets/<deployment>/ and boundary config."
+  description = "ZOA logical deployment name (same as RC deployment_name). Boundary ECS env; MC SSM registration uses deploy JSON in provision-mc-zoa-target-ssm.sh."
   type        = string
   default     = ""
 }
