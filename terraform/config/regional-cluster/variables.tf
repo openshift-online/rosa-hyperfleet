@@ -539,32 +539,32 @@ variable "zoa_boundary_session_max_duration_hours" {
 }
 
 variable "zoa_lambda_api_concurrency" {
-  description = "Reserved concurrency for ZOA API Lambda (0 = unreserved). Authoritative values: config/defaults.yaml (regional_cluster); ephemeral override in config/ephemeral/defaults.yaml. Set at apply time via TF_VAR from rendered deploy JSON."
+  description = "Reserved concurrency for ZOA API Lambda (-1 = unreserved). Authoritative values: config/defaults.yaml (regional_cluster); ephemeral override in config/ephemeral/defaults.yaml. Set at apply time via TF_VAR from rendered deploy JSON."
   type        = number
 
   validation {
-    condition     = var.zoa_lambda_api_concurrency >= 0
-    error_message = "zoa_lambda_api_concurrency must be >= 0."
+    condition     = var.zoa_lambda_api_concurrency == -1 || var.zoa_lambda_api_concurrency >= 1
+    error_message = "zoa_lambda_api_concurrency must be -1 (unreserved) or >= 1; 0 disables the Lambda."
   }
 }
 
 variable "zoa_lambda_worker_concurrency" {
-  description = "Reserved concurrency for ZOA Worker Lambda (0 = unreserved). Authoritative values: config/defaults.yaml (regional_cluster); ephemeral override in config/ephemeral/defaults.yaml."
+  description = "Reserved concurrency for ZOA Worker Lambda (-1 = unreserved). Authoritative values: config/defaults.yaml (regional_cluster); ephemeral override in config/ephemeral/defaults.yaml."
   type        = number
 
   validation {
-    condition     = var.zoa_lambda_worker_concurrency >= 0
-    error_message = "zoa_lambda_worker_concurrency must be >= 0."
+    condition     = var.zoa_lambda_worker_concurrency == -1 || var.zoa_lambda_worker_concurrency >= 1
+    error_message = "zoa_lambda_worker_concurrency must be -1 (unreserved) or >= 1; 0 disables the Lambda."
   }
 }
 
 variable "zoa_lambda_access_concurrency" {
-  description = "Reserved concurrency for ZOA Access Lambda (RC only; must be >= 1). Authoritative values: config/defaults.yaml (regional_cluster); ephemeral override in config/ephemeral/defaults.yaml."
+  description = "Reserved concurrency for ZOA Access Lambda (RC only; -1 = unreserved or >= 1 reserved). Authoritative values: config/defaults.yaml (regional_cluster); ephemeral override in config/ephemeral/defaults.yaml."
   type        = number
 
   validation {
-    condition     = var.zoa_lambda_access_concurrency >= 1
-    error_message = "zoa_lambda_access_concurrency must be >= 1."
+    condition     = var.zoa_lambda_access_concurrency == -1 || var.zoa_lambda_access_concurrency >= 1
+    error_message = "zoa_lambda_access_concurrency must be -1 (unreserved) or >= 1; 0 disables the Lambda."
   }
 }
 

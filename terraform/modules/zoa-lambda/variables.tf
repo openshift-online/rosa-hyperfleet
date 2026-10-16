@@ -148,15 +148,25 @@ variable "lambda_worker_timeout" {
 }
 
 variable "lambda_api_concurrency" {
-  description = "Reserved concurrency for the API Lambda (0 = unreserved)"
+  description = "Reserved concurrency for the API Lambda. -1 = unreserved account pool; >= 1 reserves that many executions. 0 disables the function (do not use)."
   type        = number
   default     = 50
+
+  validation {
+    condition     = var.lambda_api_concurrency == -1 || var.lambda_api_concurrency >= 1
+    error_message = "lambda_api_concurrency must be -1 (unreserved) or >= 1; 0 disables the Lambda."
+  }
 }
 
 variable "lambda_worker_concurrency" {
-  description = "Reserved concurrency for the Worker Lambda. Must be >1 to allow reconciler + concurrent TA executions. Recommended: 10 (1 for scheduled + 9 for TAs)."
+  description = "Reserved concurrency for the Worker Lambda. -1 = unreserved; >= 1 recommended 10 (1 reconciler tick + concurrent TAs). 0 disables the function (do not use)."
   type        = number
   default     = 10
+
+  validation {
+    condition     = var.lambda_worker_concurrency == -1 || var.lambda_worker_concurrency >= 1
+    error_message = "lambda_worker_concurrency must be -1 (unreserved) or >= 1; 0 disables the Lambda."
+  }
 }
 
 # --- Code-level deadlines (passed as env vars, tunable without code change) ---

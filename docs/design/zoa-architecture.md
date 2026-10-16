@@ -293,8 +293,8 @@ All configuration is via Terraform variables that map to Lambda environment vari
 | ----------------------------------- | ------- | ----------------------------------- | --------------- | -------------------------------------------------------------------------------------------------- |
 | `lambda_api_timeout`                | 300     | Lambda timeout config               | API Lambda      | Hard ceiling (seconds) for sync TA execution + streaming                                           |
 | `lambda_worker_timeout`             | 300     | Lambda timeout config               | Worker Lambda   | Hard ceiling — real deadlines via env vars below                                                   |
-| `lambda_api_concurrency`            | 50      | Reserved concurrency                | API Lambda      | Max concurrent API invocations                                                                     |
-| `lambda_worker_concurrency`         | 10      | Reserved concurrency                | Worker Lambda   | Max concurrent (1 reconciler + N TAs)                                                              |
+| `lambda_api_concurrency`            | 50      | Reserved concurrency                | API Lambda      | **-1** unreserved or **≥ 1** reserved; **0** disables. Ephemeral: **-1**.                          |
+| `lambda_worker_concurrency`         | 10      | Reserved concurrency                | Worker Lambda   | Same as API. Ephemeral: **-1**.                                                                     |
 | `lambda_memory_size`                | 512     | Lambda memory config                | API + Worker    | Memory in MB (CPU scales proportionally)                                                           |
 | `reconciler_deadline_seconds`       | 55      | `RECONCILER_DEADLINE_SECONDS`       | Worker Lambda   | Code-level deadline for reconciler/GC ticks                                                        |
 | `max_batch_per_tick`                | 30      | `MAX_BATCH_PER_TICK`                | Worker Lambda   | Items processed per scheduled phase per tick                                                       |
@@ -312,7 +312,7 @@ All configuration is via Terraform variables that map to Lambda environment vari
 
 | Variable                       | Default | Lambda Env Var / Config        | Purpose                                                                                                                 |
 | ------------------------------ | ------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| `lambda_access_concurrency`    | 10      | Reserved concurrency           | Max concurrent Access invocations (session plane); must be ≥ 1 (same pattern as Worker).                                |
+| `lambda_access_concurrency`    | 10      | Reserved concurrency           | Max concurrent Access invocations (session plane). Use **-1** for unreserved pool or **≥ 1** reserved; **0** disables the Lambda. Ephemeral: **-1** (see `config/ephemeral/defaults.yaml`). |
 | _(Lambda timeout)_             | 30      | Lambda timeout config          | Hard ceiling per Access HTTP request (not session length). Not yet a Terraform variable.                                |
 | `session_max_duration_hours`   | 4       | `SESSION_MAX_DURATION_HOURS`   | Default and max session deadline (hours)                                                                                |
 | `session_idle_timeout_seconds` | 3600    | `SESSION_IDLE_TIMEOUT_SECONDS` | Access Lambda env; same value as Worker (reaper). RunTask sets `ZOA_SESSION_IDLE_TIMEOUT_SECONDS` on the boundary task. |

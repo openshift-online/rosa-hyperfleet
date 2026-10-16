@@ -199,22 +199,22 @@ variable "zoa_boundary_session_idle_timeout_seconds" {
 }
 
 variable "zoa_lambda_api_concurrency" {
-  description = "Reserved concurrency for ZOA API Lambda on MC (0 = unreserved). Same deploy key as RC (regional_cluster in config hierarchy); see config/defaults.yaml."
+  description = "Reserved concurrency for ZOA API Lambda on MC (-1 = unreserved). Same deploy key as RC (regional_cluster in config hierarchy); see config/defaults.yaml."
   type        = number
 
   validation {
-    condition     = var.zoa_lambda_api_concurrency >= 0
-    error_message = "zoa_lambda_api_concurrency must be >= 0."
+    condition     = var.zoa_lambda_api_concurrency == -1 || var.zoa_lambda_api_concurrency >= 1
+    error_message = "zoa_lambda_api_concurrency must be -1 (unreserved) or >= 1; 0 disables the Lambda."
   }
 }
 
 variable "zoa_lambda_worker_concurrency" {
-  description = "Reserved concurrency for ZOA Worker Lambda on MC (0 = unreserved). Same deploy key as RC (regional_cluster in config hierarchy); see config/defaults.yaml."
+  description = "Reserved concurrency for ZOA Worker Lambda on MC (-1 = unreserved). Same deploy key as RC (regional_cluster in config hierarchy); see config/defaults.yaml."
   type        = number
 
   validation {
-    condition     = var.zoa_lambda_worker_concurrency >= 0
-    error_message = "zoa_lambda_worker_concurrency must be >= 0."
+    condition     = var.zoa_lambda_worker_concurrency == -1 || var.zoa_lambda_worker_concurrency >= 1
+    error_message = "zoa_lambda_worker_concurrency must be -1 (unreserved) or >= 1; 0 disables the Lambda."
   }
 }
 

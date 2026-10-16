@@ -91,13 +91,13 @@ variable "session_idle_timeout_seconds" {
 }
 
 variable "lambda_access_concurrency" {
-  description = "Reserved concurrency for the Access Lambda. Keeps session start/join/list callable under heavy TA load. Must be >= 1 (AWS treats 0 as disable)."
+  description = "Reserved concurrency for the Access Lambda. -1 = unreserved; >= 1 reserves capacity for session APIs under heavy TA load. 0 disables the function (do not use)."
   type        = number
   default     = 10
 
   validation {
-    condition     = var.lambda_access_concurrency >= 1
-    error_message = "lambda_access_concurrency must be >= 1."
+    condition     = var.lambda_access_concurrency == -1 || var.lambda_access_concurrency >= 1
+    error_message = "lambda_access_concurrency must be -1 (unreserved) or >= 1; 0 disables the Lambda."
   }
 }
 
