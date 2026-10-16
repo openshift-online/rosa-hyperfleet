@@ -20,6 +20,27 @@ if [ -z "${TF_VAR_zoa_access_lambda_role_arn}" ]; then
     fi
 fi
 
+# ZOA data-access role (RC account): contract in deploy JSON, same pattern as access Lambda.
+_mc_regional_id_from_deploy() {
+    jq -r '.regional_id // empty' "deploy/${ENVIRONMENT}/${TARGET_REGION}/pipeline-regional-cluster-inputs/terraform.json" 2>/dev/null || true
+}
+
+_resolve_zoa_data_access_role_arn_from_contract() {
+    local arn regional_id rc_account
+    arn=$(jq -r '.zoa_data_access_role_arn // empty' "$DEPLOY_CONFIG_FILE")
+    if [ -n "$arn" ] && [[ "$arn" =~ ^arn:aws:iam::[0-9]{12}:role/ ]]; then
+        echo "$arn"
+        return 0
+    fi
+    regional_id=$(_mc_regional_id_from_deploy)
+    [ -n "$regional_id" ] || regional_id="regional"
+    _resolve_rc_account
+    rc_account="${_RESOLVED_RC_ACCOUNT_ID:-${REGIONAL_AWS_ACCOUNT_ID}}"
+    if [ -n "$rc_account" ]; then
+        echo "arn:aws:iam::${rc_account}:role/${regional_id}-zoa-data-access"
+    fi
+}
+
 # Determine terraform action
 DELETE_FLAG=$(jq -r '.delete // false' "$DEPLOY_CONFIG_FILE")
 [ "${IS_DESTROY:-false}" == "true" ] && DELETE_FLAG="true"
@@ -36,8 +57,9 @@ if [ "${DELETE_FLAG}" == "true" ]; then
     export TF_VAR_oidc_bucket_name="placeholder"
     export TF_VAR_oidc_bucket_arn="arn:aws:s3:::placeholder"
     export TF_VAR_oidc_bucket_region="us-east-1"
-    # ZOA variables are required on apply; destroy does not read RC state (see Phase 1b).
     export TF_VAR_zoa_lambda_ecr_url="000000000000.dkr.ecr.us-east-1.amazonaws.com/placeholder"
+    TF_VAR_zoa_data_access_role_arn=$(_resolve_zoa_data_access_role_arn_from_contract)
+    export TF_VAR_zoa_data_access_role_arn
 else
     # Assume child admin role in RC account to access state bucket (scoped access instead of org-wide).
     _resolve_rc_account
@@ -123,7 +145,11 @@ else
     export TF_VAR_zoa_audit_table_name=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_audit_table_name 2>/dev/null || echo "")
     export TF_VAR_zoa_sessions_table_name=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_sessions_table_name 2>/dev/null || echo "")
     export TF_VAR_zoa_uploader_role_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_uploader_role_arn 2>/dev/null | grep -E '^arn:' || echo "")
-    export TF_VAR_zoa_data_access_role_arn=$(AWS_ACCESS_KEY_ID=$(echo "$_rc_creds" | awk '{print $1}') AWS_SECRET_ACCESS_KEY=$(echo "$_rc_creds" | awk '{print $2}') AWS_SESSION_TOKEN=$(echo "$_rc_creds" | awk '{print $3}') terraform -chdir="$_RC_TF_DIR" output -raw zoa_data_access_role_arn 2>/dev/null | grep -E '^arn:' || echo "")
+    TF_VAR_zoa_data_access_role_arn=$(_resolve_zoa_data_access_role_arn_from_contract)
+    if [ -z "${TF_VAR_zoa_data_access_role_arn}" ]; then
+        TF_VAR_zoa_data_access_role_arn=$(AWS_ACCESS_KEY_ID=$(echo "$_rc_creds" | awk '{print $1}') AWS_SECRET_ACCESS_KEY=$(echo "$_rc_creds" | awk '{print $2}') AWS_SESSION_TOKEN=$(echo "$_rc_creds" | awk '{print $3}') terraform -chdir="$_RC_TF_DIR" output -raw zoa_data_access_role_arn 2>/dev/null | grep -E '^arn:' || echo "")
+    fi
+    export TF_VAR_zoa_data_access_role_arn
 fi
 
 # ── Phase 1b: ZOA Lambda image reference ──────────────────────────────────────
@@ -158,6 +184,25 @@ fi
 if [ -z "${TF_VAR_zoa_deployment_name}" ]; then
     echo "ERROR: zoa_deployment_name not set in MC deploy config or RC deployment_name" >&2
     exit 1
+fi
+
+# ── Destroy: drop cross-account ZOA target SSM before MC terraform (kube-applier pattern: use_rc_account).
+# Does not depend on the zoa-data-access role or RC/M destroy ordering.
+if [ "${DELETE_FLAG}" == "true" ]; then
+    _zoa_target_ssm="/zoa/targets/${TF_VAR_zoa_deployment_name}/${MANAGEMENT_ID}"
+    echo "Removing ZOA target SSM parameters (best-effort): ${_zoa_target_ssm}"
+    use_rc_account
+    if aws ssm delete-parameter --name "$_zoa_target_ssm" --region "${TARGET_REGION}" 2>/dev/null; then
+        echo "  deleted in RC account"
+    else
+        echo "  not found in RC account (ok)"
+    fi
+    use_mc_account
+    if aws ssm delete-parameter --name "$_zoa_target_ssm" --region "${TARGET_REGION}" 2>/dev/null; then
+        echo "  deleted in MC account"
+    else
+        echo "  not found in MC account (ok)"
+    fi
 fi
 
 # ── Phase 2: Apply/Destroy MC infrastructure ─────────────────────────────────
