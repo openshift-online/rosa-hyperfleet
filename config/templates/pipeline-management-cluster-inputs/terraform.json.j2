@@ -12,6 +12,12 @@
   "zoa_lambda_image_tag": {{ regional_cluster.zoa_lambda_image_tag | default('') | tojson }},
   "zoa_runner_image_tag": {{ regional_cluster.zoa_runner_image_tag | default('') | tojson }},
   "zoa_runner_source_image": {{ regional_cluster.zoa_runner_source_image | default('') | tojson }},
+  "zoa_boundary_image_tag": {{ regional_cluster.zoa_boundary_image_tag | tojson }},
+  "zoa_boundary_source_image": {{ regional_cluster.zoa_boundary_source_image | tojson }},
+  "zoa_boundary_session_idle_timeout_seconds": {{ regional_cluster.zoa_boundary_session_idle_timeout_seconds | default(3600) | tojson }},
+  "zoa_lambda_api_concurrency": {{ regional_cluster.zoa_lambda_api_concurrency | tojson }},
+  "zoa_lambda_worker_concurrency": {{ regional_cluster.zoa_lambda_worker_concurrency | tojson }},
+  "zoa_deployment_name": {{ deployment_name | tojson }},
   "worker_node_ami_id": {% if worker_node_ami %}{{ worker_node_ami.id | tojson }}{% else %}""{% endif %},
   "worker_node_root_volume_size": {{ worker_node_root_volume_size | default(50) | tojson }}
 {%- if eph_prefix | default('', true) %},

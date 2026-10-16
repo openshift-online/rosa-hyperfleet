@@ -26,7 +26,6 @@ provider "aws" {
   }
 }
 
-
 # =============================================================================
 # VPC Module
 # =============================================================================
@@ -110,11 +109,10 @@ module "bastion" {
 # =============================================================================
 
 module "zoa_lambda" {
-  count  = var.zoa_lambda_ecr_url != "" ? 1 : 0
   source = "../../modules/zoa-lambda"
 
-  cluster_id        = var.management_id
-  deployment_target = "mc"
+  cluster_id  = var.management_id
+  target_type = "mc"
 
   lambda_image_uri = "${var.zoa_lambda_ecr_url}:${var.zoa_lambda_image_tag}"
   job_image_uri    = "${var.zoa_runner_source_image}:${var.zoa_runner_image_tag}"
@@ -127,14 +125,32 @@ module "zoa_lambda" {
   eks_cluster_name     = module.management_cluster.cluster_name
 
   dynamodb_table_name  = var.zoa_table_name
-  dynamodb_table_arn   = var.zoa_table_arn
   audit_table_name     = var.zoa_audit_table_name
-  audit_table_arn      = var.zoa_audit_table_arn
   artifact_bucket_name = try(split(":", var.zoa_outputs_bucket_arn)[5], "")
   artifact_bucket_arn  = var.zoa_outputs_bucket_arn
   kms_key_arn          = var.zoa_kms_key_arn
   uploader_role_arn    = var.zoa_uploader_role_arn
   data_access_role_arn = var.zoa_data_access_role_arn
+
+  sessions_table_name = var.zoa_sessions_table_name
+  deployment_name     = var.zoa_deployment_name
+  vpc_id              = module.vpc.vpc_id
+  boundary_image         = var.zoa_boundary_image
+  access_lambda_role_arn = var.zoa_access_lambda_role_arn
+
+  session_idle_timeout_seconds = var.zoa_boundary_session_idle_timeout_seconds
+
+  lambda_api_concurrency    = var.zoa_lambda_api_concurrency
+  lambda_worker_concurrency = var.zoa_lambda_worker_concurrency
+}
+
+# =============================================================================
+# Bedrock account primitives (agreements, budget)
+# =============================================================================
+
+module "bedrock" {
+  source      = "../../modules/bedrock"
+  environment = var.environment
 }
 
 # =============================================================================

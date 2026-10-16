@@ -13,13 +13,13 @@ variable "cluster_id" {
   type        = string
 }
 
-variable "deployment_target" {
-  description = "ZOA deployment target for this Lambda: rc (regional cluster) or mc (management cluster). Passed to the runtime as ZOA_DEPLOYMENT_TARGET."
+variable "target_type" {
+  description = "ZOA target type for this Lambda: rc (regional cluster) or mc (management cluster). Passed to the runtime as ZOA_TARGET_TYPE."
   type        = string
 
   validation {
-    condition     = contains(["rc", "mc"], var.deployment_target)
-    error_message = "deployment_target must be \"rc\" or \"mc\"."
+    condition     = contains(["rc", "mc"], var.target_type)
+    error_message = "target_type must be \"rc\" or \"mc\"."
   }
 }
 
@@ -71,18 +71,8 @@ variable "dynamodb_table_name" {
   type        = string
 }
 
-variable "dynamodb_table_arn" {
-  description = "ARN of the DynamoDB executions table (for IAM policy)"
-  type        = string
-}
-
 variable "audit_table_name" {
   description = "Name of the DynamoDB audit table"
-  type        = string
-}
-
-variable "audit_table_arn" {
-  description = "ARN of the DynamoDB audit table (for IAM policy)"
   type        = string
 }
 
@@ -158,15 +148,25 @@ variable "lambda_worker_timeout" {
 }
 
 variable "lambda_api_concurrency" {
-  description = "Reserved concurrency for the API Lambda (0 = unreserved)"
+  description = "Reserved concurrency for the API Lambda. -1 = unreserved account pool; >= 1 reserves that many executions. 0 disables the function (do not use)."
   type        = number
   default     = 50
+
+  validation {
+    condition     = var.lambda_api_concurrency == -1 || var.lambda_api_concurrency >= 1
+    error_message = "lambda_api_concurrency must be -1 (unreserved) or >= 1; 0 disables the Lambda."
+  }
 }
 
 variable "lambda_worker_concurrency" {
-  description = "Reserved concurrency for the Worker Lambda. Must be >1 to allow reconciler + concurrent TA executions. Recommended: 10 (1 for scheduled + 9 for TAs)."
+  description = "Reserved concurrency for the Worker Lambda. -1 = unreserved; >= 1 recommended 10 (1 reconciler tick + concurrent TAs). 0 disables the function (do not use)."
   type        = number
   default     = 10
+
+  validation {
+    condition     = var.lambda_worker_concurrency == -1 || var.lambda_worker_concurrency >= 1
+    error_message = "lambda_worker_concurrency must be -1 (unreserved) or >= 1; 0 disables the Lambda."
+  }
 }
 
 # --- Code-level deadlines (passed as env vars, tunable without code change) ---
@@ -211,13 +211,7 @@ variable "zoa_jobs_namespace" {
   default     = "zoa-jobs"
 }
 
-# --- Feature flags ---
-
-variable "enable_reconciler" {
-  description = "Enable the EventBridge reconciler and GC schedules (disable for testing)"
-  type        = bool
-  default     = true
-}
+# --- Application tuning ---
 
 variable "log_level" {
   description = "Application log level for ZOA Lambda functions (debug, info, warn, error). Tunable without code change."
@@ -229,4 +223,99 @@ variable "dynamodb_ttl_days" {
   description = "DynamoDB record TTL in days (default 365 for FIPS compliance)"
   type        = number
   default     = 365
+}
+
+variable "sessions_table_name" {
+  description = "DynamoDB table name for ZOA boundary sessions. Set when boundary is enabled — required for the reaper (worker) and identity bridge (api)."
+  type        = string
+  default     = ""
+}
+
+variable "session_idle_timeout_seconds" {
+  description = "Terminal inactivity (seconds) before the boundary reaper stops an active session. Used when sessions_table_name is set."
+  type        = number
+  default     = 3600
+}
+
+variable "deployment_name" {
+  description = "Deployment name (e.g. us-east-1, us-east-1-eph-abc123). Boundary ECS env; included in RC SSM target JSON when targets_ssm_prefix is set."
+  type        = string
+  default     = ""
+}
+
+variable "targets_ssm_prefix" {
+  description = "RC only: SSM prefix for target registration (e.g. /zoa/targets/us-east-1). MC targets use mc-zoa-target-ssm-provisioning; leave default empty on MC."
+  type        = string
+  default     = ""
+}
+
+variable "vpc_id" {
+  description = "VPC ID for boundary ECS and SSM target metadata."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.vpc_id != ""
+    error_message = "vpc_id is required (boundary ECS and SSM target registration)."
+  }
+}
+
+variable "boundary_image" {
+  description = "Container image for the ZOA boundary ECS task (Konflux/Quay)."
+  type        = string
+
+  validation {
+    condition     = var.boundary_image != ""
+    error_message = "boundary_image must be set; HyperFleet always deploys the full ZOA stack."
+  }
+}
+
+variable "access_lambda_role_arn" {
+  description = "ARN of the RC ZOA Access Lambda execution role for boundary trust policies. Required when target_type is mc; ignored on rc (role is created in this module)."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      var.target_type == "rc" ||
+      can(regex("^arn:aws:iam::[0-9]{12}:role/", var.access_lambda_role_arn))
+    )
+    error_message = "access_lambda_role_arn must be a valid IAM role ARN when target_type is mc."
+  }
+}
+
+variable "boundary_log_retention_days" {
+  description = "CloudWatch retention for boundary logs. Terraform applies max(365, value) for FedRAMP alignment."
+  type        = number
+  default     = 365
+}
+
+variable "boundary_cpu" {
+  description = "Fargate CPU units for the boundary task (256, 512, 1024, 2048, 4096)."
+  type        = string
+  default     = "512"
+}
+
+variable "boundary_memory" {
+  description = "Fargate memory (MB) for the boundary task."
+  type        = string
+  default     = "1024"
+}
+
+variable "boundary_ecs_exec_interactive_command" {
+  description = "Shell command for ecs:ExecuteCommand on boundary tasks (ZOA_ECS_EXEC_COMMAND)."
+  type        = string
+  default     = "runuser -u sre -- /bin/bash -l"
+}
+
+variable "claude_code_bedrock_primary_model" {
+  description = "ANTHROPIC_MODEL for Claude Code in boundary tasks."
+  type        = string
+  default     = "us.anthropic.claude-sonnet-5"
+}
+
+variable "breakglass_role_arns" {
+  description = "IAM role ARNs the boundary task role may assume for break-glass access."
+  type        = list(string)
+  default     = []
 }

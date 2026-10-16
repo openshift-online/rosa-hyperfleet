@@ -23,6 +23,7 @@ locals {
   codepipeline_role_name             = "${local.name_prefix}-codepipeline-role"
   apply_project_name                 = "${local.name_prefix}-apply"
   kube_applier_dynamodb_project_name = "${local.name_prefix}-kube-applier-dynamodb"
+  mc_zoa_target_ssm_project_name     = "${local.name_prefix}-mc-zoa-target-ssm"
   bootstrap_project_name             = "${local.name_prefix}-bootstrap"
   register_project_name              = "${local.name_prefix}-register"
   pipeline_name                      = "${local.name_prefix}-pipe"
@@ -83,7 +84,9 @@ resource "aws_iam_role_policy" "codebuild_policy" {
           "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/codebuild/${aws_codebuild_project.register.name}",
           "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/codebuild/${aws_codebuild_project.register.name}:*",
           "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/codebuild/${aws_codebuild_project.kube_applier_dynamodb.name}",
-          "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/codebuild/${aws_codebuild_project.kube_applier_dynamodb.name}:*"
+          "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/codebuild/${aws_codebuild_project.kube_applier_dynamodb.name}:*",
+          "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/codebuild/${aws_codebuild_project.mc_zoa_target_ssm.name}",
+          "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/codebuild/${aws_codebuild_project.mc_zoa_target_ssm.name}:*"
         ]
       },
       {
@@ -268,6 +271,7 @@ resource "aws_iam_role_policy" "codepipeline_policy" {
         Resource = [
           aws_codebuild_project.management_apply.arn,
           aws_codebuild_project.kube_applier_dynamodb.arn,
+          aws_codebuild_project.mc_zoa_target_ssm.arn,
           aws_codebuild_project.management_bootstrap.arn,
           aws_codebuild_project.register.arn
         ]
@@ -280,6 +284,7 @@ resource "aws_iam_role_policy" "codepipeline_policy" {
         Resource = [
           "arn:aws:codebuild:*:*:project/${aws_codebuild_project.management_apply.name}",
           "arn:aws:codebuild:*:*:project/${aws_codebuild_project.kube_applier_dynamodb.name}",
+          "arn:aws:codebuild:*:*:project/${aws_codebuild_project.mc_zoa_target_ssm.name}",
           "arn:aws:codebuild:*:*:project/${aws_codebuild_project.management_bootstrap.name}",
           "arn:aws:codebuild:*:*:project/${aws_codebuild_project.register.name}"
         ]
@@ -509,6 +514,50 @@ resource "aws_codebuild_project" "register" {
   }
 }
 
+# CodeBuild Project - ZOA MC target SSM row in RC (runs in RC account)
+resource "aws_codebuild_project" "mc_zoa_target_ssm" {
+  name          = local.mc_zoa_target_ssm_project_name
+  service_role  = local.codebuild_role_arn
+  build_timeout = 15
+
+  artifacts {
+    type = "CODEPIPELINE"
+  }
+
+  environment {
+    compute_type                = "BUILD_GENERAL1_SMALL"
+    image                       = var.codebuild_image
+    type                        = "LINUX_CONTAINER"
+    image_pull_credentials_type = "CODEBUILD"
+
+    environment_variable {
+      name  = "TARGET_ACCOUNT_ID"
+      value = var.target_account_id
+    }
+    environment_variable {
+      name  = "TARGET_REGION"
+      value = var.target_region
+    }
+    environment_variable {
+      name  = "MANAGEMENT_ID"
+      value = var.management_id
+    }
+    environment_variable {
+      name  = "ENVIRONMENT"
+      value = var.target_environment
+    }
+    environment_variable {
+      name  = "CHILD_ADMIN_ROLE_NAME"
+      value = var.child_admin_role_name
+    }
+  }
+
+  source {
+    type      = "CODEPIPELINE"
+    buildspec = "terraform/config/pipeline-management-cluster/buildspec-provision-mc-zoa-target-ssm.yml"
+  }
+}
+
 # CodeBuild Project - kube-applier DynamoDB provisioning (runs in RC account)
 resource "aws_codebuild_project" "kube_applier_dynamodb" {
   name          = local.kube_applier_dynamodb_project_name
@@ -595,7 +644,7 @@ resource "aws_codepipeline" "regional_pipeline" {
           includes = [var.github_branch]
         }
         file_paths {
-          includes = ["deploy/${var.target_environment}/${var.target_region}/pipeline-management-cluster-${local.name_prefix}-inputs/terraform.json", "terraform/config/pipeline-management-cluster/**", "terraform/config/kube-applier-dynamodb-provisioning/**"]
+          includes = ["deploy/${var.target_environment}/${var.target_region}/pipeline-management-cluster-${local.name_prefix}-inputs/terraform.json", "terraform/config/pipeline-management-cluster/**", "terraform/config/kube-applier-dynamodb-provisioning/**", "terraform/config/mc-zoa-target-ssm-provisioning/**", "scripts/buildspec/provision-mc-zoa-target-ssm.sh"]
         }
       }
     }
@@ -634,6 +683,30 @@ resource "aws_codepipeline" "regional_pipeline" {
 
       configuration = {
         ProjectName = aws_codebuild_project.management_apply.name
+        EnvironmentVariables = jsonencode([
+          {
+            name  = "IS_DESTROY"
+            value = "#{variables.IS_DESTROY}"
+            type  = "PLAINTEXT"
+          }
+        ])
+      }
+    }
+  }
+
+  stage {
+    name = "Provision-McZoaTargetSSM"
+
+    action {
+      name            = "McZoaTargetSSM"
+      category        = "Build"
+      owner           = "AWS"
+      provider        = "CodeBuild"
+      input_artifacts = ["apply_output"]
+      version         = "1"
+
+      configuration = {
+        ProjectName = aws_codebuild_project.mc_zoa_target_ssm.name
         EnvironmentVariables = jsonencode([
           {
             name  = "IS_DESTROY"

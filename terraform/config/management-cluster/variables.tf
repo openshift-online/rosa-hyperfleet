@@ -116,7 +116,11 @@ variable "rhobs_api_url" {
 variable "zoa_lambda_ecr_url" {
   description = "ECR repository URL for ZOA Lambda (RC output, cross-account pull via OU policy)"
   type        = string
-  default     = ""
+
+  validation {
+    condition     = var.zoa_lambda_ecr_url != ""
+    error_message = "zoa_lambda_ecr_url must be set from regional cluster outputs; HyperFleet always deploys the full ZOA stack on MC."
+  }
 }
 
 variable "zoa_lambda_image_tag" {
@@ -155,20 +159,8 @@ variable "zoa_table_name" {
   default     = ""
 }
 
-variable "zoa_table_arn" {
-  description = "DynamoDB executions table ARN (in RC account, for IAM policy)"
-  type        = string
-  default     = ""
-}
-
 variable "zoa_audit_table_name" {
   description = "DynamoDB audit table name (in RC account)"
-  type        = string
-  default     = ""
-}
-
-variable "zoa_audit_table_arn" {
-  description = "DynamoDB audit table ARN (in RC account, for IAM policy)"
   type        = string
   default     = ""
 }
@@ -185,6 +177,69 @@ variable "zoa_data_access_role_arn" {
   default     = ""
 }
 
+variable "zoa_boundary_image" {
+  description = "Full container image reference for ZOA Boundary ECS tasks (source:tag, set by buildspec from deploy config)."
+  type        = string
+
+  validation {
+    condition     = var.zoa_boundary_image != ""
+    error_message = "zoa_boundary_image must be set; HyperFleet always deploys the full ZOA stack."
+  }
+}
+
+variable "zoa_boundary_session_idle_timeout_seconds" {
+  description = "Boundary session terminal idle timeout (seconds) for this MC worker reaper. Must match RC zoa_boundary_session_idle_timeout_seconds (same deploy config key)."
+  type        = number
+  default     = 3600
+
+  validation {
+    condition     = var.zoa_boundary_session_idle_timeout_seconds >= 60 && var.zoa_boundary_session_idle_timeout_seconds <= 86400
+    error_message = "zoa_boundary_session_idle_timeout_seconds must be between 60 and 86400."
+  }
+}
+
+variable "zoa_lambda_api_concurrency" {
+  description = "Reserved concurrency for ZOA API Lambda on MC (-1 = unreserved). Same deploy key as RC (regional_cluster in config hierarchy); see config/defaults.yaml."
+  type        = number
+
+  validation {
+    condition     = var.zoa_lambda_api_concurrency == -1 || var.zoa_lambda_api_concurrency >= 1
+    error_message = "zoa_lambda_api_concurrency must be -1 (unreserved) or >= 1; 0 disables the Lambda."
+  }
+}
+
+variable "zoa_lambda_worker_concurrency" {
+  description = "Reserved concurrency for ZOA Worker Lambda on MC (-1 = unreserved). Same deploy key as RC (regional_cluster in config hierarchy); see config/defaults.yaml."
+  type        = number
+
+  validation {
+    condition     = var.zoa_lambda_worker_concurrency == -1 || var.zoa_lambda_worker_concurrency >= 1
+    error_message = "zoa_lambda_worker_concurrency must be -1 (unreserved) or >= 1; 0 disables the Lambda."
+  }
+}
+
+variable "zoa_sessions_table_name" {
+  description = "DynamoDB table name for ZOA boundary sessions (in RC account, read from RC state)."
+  type        = string
+  default     = ""
+}
+
+variable "zoa_deployment_name" {
+  description = "ZOA logical deployment name (same as RC deployment_name). Boundary ECS env; MC SSM registration uses deploy JSON in provision-mc-zoa-target-ssm.sh."
+  type        = string
+  default     = ""
+}
+
+variable "zoa_access_lambda_role_arn" {
+  description = "ARN of the RC ZOA Access Lambda execution role (from regional cluster outputs). Required for MC boundary cross-account IAM trust."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.zoa_access_lambda_role_arn == "" || can(regex("^arn:aws:iam::[0-9]{12}:role/", var.zoa_access_lambda_role_arn))
+    error_message = "zoa_access_lambda_role_arn must be empty or a valid IAM role ARN."
+  }
+}
 
 variable "oidc_bucket_name" {
   description = "S3 bucket name for regional OIDC discovery documents (read from RC terraform state)"

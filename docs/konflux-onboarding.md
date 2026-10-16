@@ -51,7 +51,7 @@ Use [`rosa-hyperfleet-api`](https://github.com/openshift-online/rosa-hyperfleet-
 - `platform-api` — `.tekton/rosa-hyperfleet-api-*.yaml`
 - `hyperfleet-operator` — `.tekton/rosa-hyperfleet-operator-*.yaml`
 
-For step 1, copy an existing overlay (for example `rosa-boundary` or `rosa-hyperfleet-api` under `rosa-tenant`) and adjust:
+For step 1, copy an existing overlay (for example `rosa-hyperfleet-zoa` or `rosa-hyperfleet-api` under `rosa-tenant`) and adjust:
 
 - `application-patch.yaml` — Application name
 - `component-patch.yaml` — Component name, git URL, branch, `spec.build-nudges-ref` if needed

@@ -331,6 +331,9 @@ def build_context(
     ctx["child_admin_role_name"] = resolve_templates(
         aws.get("child_admin_role_name", "OrganizationAccountAccessRole"), ctx
     )
+    ctx["zoa_access_trusted_assumer_role_names"] = aws.get(
+        "zoa_access_trusted_assumer_role_names", []
+    )
     ctx["terraform_tags"] = resolve_templates(ctx.get("terraform_tags", {}), ctx)
     ctx["regional_cluster"] = resolve_templates(ctx.get("regional_cluster", {}), ctx)
     ctx["management_cluster_defaults"] = resolve_templates(ctx.get("management_cluster_defaults", {}), ctx)
@@ -372,7 +375,7 @@ def build_mc_list(
 # scan_template_variables() and do not need to be listed here.
 CONTEXT_VARS = {
     "environment", "aws_region",
-    "account_id", "child_admin_role_name", "management_clusters",
+    "account_id", "child_admin_role_name", "zoa_access_trusted_assumer_role_names", "management_clusters",
     "cluster_type",
     "application_values", "region_configs", "eph_prefix",
     "delete", "delete_pipeline", "mc_key", "region",

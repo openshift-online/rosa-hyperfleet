@@ -24,6 +24,14 @@ locals {
 
   # Repository URL constructed from github_repository variable
   repository_url = "https://github.com/${var.github_repository}.git"
+
+  # RC Terraform (zoa_access) writes deployment discovery to Central SSM in both regions.
+  zoa_central_deployments_ssm_parameter_arns = [
+    for region in distinct([
+      var.zoa_central_deployments_primary_region,
+      var.zoa_central_deployments_replica_region,
+    ]) : "arn:aws:ssm:${region}:${data.aws_caller_identity.current.account_id}:parameter/zoa/deployments/*"
+  ]
 }
 
 # Use shared GitHub Connection (passed from pipeline-provisioner)
@@ -80,6 +88,24 @@ resource "aws_iam_role_policy" "codebuild_policy" {
           "scheduler:*",
           "dynamodb:*"
         ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter",
+          "ssm:GetParameters",
+          "ssm:PutParameter",
+          "ssm:DeleteParameter",
+          "ssm:AddTagsToResource",
+          "ssm:RemoveTagsFromResource",
+          "ssm:ListTagsForResource",
+        ]
+        Resource = local.zoa_central_deployments_ssm_parameter_arns
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["ssm:DescribeParameters"]
         Resource = "*"
       },
       {
@@ -376,9 +402,10 @@ resource "aws_codepipeline" "central_pipeline" {
         file_paths {
           includes = [
             "deploy/${var.target_environment}/${var.target_region}/pipeline-regional-cluster-inputs/terraform.json",
-            "terraform/config/pipeline-regional-cluster/**",
             "terraform/config/regional-cluster/**",
             "terraform/modules/zoa/**",
+            "terraform/modules/zoa-lambda/**",
+            "terraform/modules/zoa-access/**",
             "terraform/modules/zoa-lambda/**",
             "scripts/buildspec/build-zoa-lambda.sh",
           ]

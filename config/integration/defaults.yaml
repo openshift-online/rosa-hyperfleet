@@ -1,3 +1,7 @@
+aws:
+  zoa_access_trusted_assumer_role_names:
+    - OrganizationAccountAccessRole
+
 dns:
   domain: int0.rosa.devshift.net
   create_environment_zone: true

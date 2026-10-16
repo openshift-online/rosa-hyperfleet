@@ -480,6 +480,9 @@ cmd_provision() {
 }
 
 cmd_teardown() {
+    local with_resync=false
+    [[ "${RESYNC:-}" == "1" ]] && with_resync=true
+
     # Select environment
     select_env "STATE=(provisioning|ready|provisioning-failed|deprovisioning|deprovisioning-failed)" \
         "Select environment to tear down:" \
@@ -491,6 +494,8 @@ cmd_teardown() {
     region=$(get_field "$ENV_LINE" REGION)
     eph_branch=$(get_field "$ENV_LINE" EPH_BRANCH)
 
+    setup_override_mount
+
     # Fetch credentials and write container config
     setup_aws_config
     fetch_github_token
@@ -499,6 +504,9 @@ cmd_teardown() {
     # Build --eph-branch flag if available (needed after swap-branch)
     local eph_branch_flag=""
     [[ -z "$eph_branch" ]] || eph_branch_flag="--eph-branch $eph_branch"
+
+    local with_resync_flag=""
+    [[ "$with_resync" == "true" ]] && with_resync_flag="--resync"
 
     # Set up artifacts directory for CodeBuild logs
     local artifacts_dir
@@ -510,6 +518,10 @@ cmd_teardown() {
     echo "  ID:                $BUILD_ID"
     echo "  REPO:              $repo"
     echo "  BRANCH:            $branch"
+    echo "  RESYNC:            $with_resync"
+    if [[ "$with_resync" == "true" ]]; then
+        echo "  ENV CONFIG:        $OVERRIDE_INFO"
+    fi
     echo "  REGION:            $region"
     echo "  CONTAINER_ENGINE:  $CONTAINER_ENGINE"
     echo "  IMAGE:             $CI_IMAGE"
@@ -523,6 +535,7 @@ cmd_teardown() {
     $CONTAINER_ENGINE run --rm \
         $_CONTAINER_AWS_FLAGS \
         -e "GITHUB_TOKEN=$GITHUB_TOKEN" \
+        $OVERRIDE_MOUNT \
         -v "${REPO_ROOT}:/workspace:ro,z" \
         -v "${artifacts_dir}:/artifacts:z" \
         -w /workspace \
@@ -530,7 +543,7 @@ cmd_teardown() {
         -e ARTIFACT_DIR=/artifacts \
         "$CI_IMAGE" \
         uv run --no-cache ci/ephemeral-provider/main.py \
-            --teardown --id "$BUILD_ID" --repo "$repo" --branch "$branch" \
+            --teardown $with_resync_flag --id "$BUILD_ID" --repo "$repo" --branch "$branch" \
             $eph_branch_flag \
     || rc=$?
 

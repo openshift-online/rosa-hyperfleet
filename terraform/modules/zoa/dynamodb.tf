@@ -104,41 +104,6 @@ resource "aws_dynamodb_table" "executions" {
   )
 }
 
-# Cross-account access for MC Lambda roles
-resource "aws_dynamodb_resource_policy" "executions_cross_account" {
-  resource_arn = aws_dynamodb_table.executions.arn
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid    = "AllowCrossAccountLambdaAccess"
-      Effect = "Allow"
-      Principal = {
-        AWS = "*"
-      }
-      Action = [
-        "dynamodb:GetItem",
-        "dynamodb:PutItem",
-        "dynamodb:UpdateItem",
-        "dynamodb:Query",
-        "dynamodb:DescribeTable",
-      ]
-      Resource = [
-        aws_dynamodb_table.executions.arn,
-        "${aws_dynamodb_table.executions.arn}/index/*",
-      ]
-      Condition = {
-        "ForAnyValue:StringLike" = {
-          "aws:PrincipalOrgPaths" = "${var.mc_ou_path}*"
-        }
-        StringLike = {
-          "aws:PrincipalArn" = "arn:*:iam::*:role/*-zoa-lambda"
-        }
-      }
-    }]
-  })
-}
-
 # =============================================================================
 # DynamoDB Table for ZOA Audit Log
 # =============================================================================
@@ -214,34 +179,124 @@ resource "aws_dynamodb_table" "audit_log" {
   )
 }
 
-# Cross-account access for MC Lambda roles (audit writes + cross-cluster reads)
-resource "aws_dynamodb_resource_policy" "audit_cross_account" {
-  resource_arn = aws_dynamodb_table.audit_log.arn
+# =============================================================================
+# DynamoDB Table for ZOA Boundary Sessions
+# =============================================================================
+# Stores boundary session lifecycle (creating → active → terminated).
+# PK: sessionId (UUID from Access session_start; not the ECS task id)
+# TTL: attribute ttl, set from DYNAMODB_TTL_DAYS on write (default 365; same as executions/audit)
+#
+# Operation → Index mapping:
+#
+#   | Operation (code path)                          | Index                 | Frequency          |
+#   |------------------------------------------------|-----------------------|--------------------|
+#   | API: ResolveIdentity → GetByTaskID             | task-id-index         | Per boundary TA    |
+#   | Worker reaper: ListExpired                     | status-deadline-index | EventBridge tick   |
+#   | Worker reaper: ListActiveBeforeDeadline (idle) | status-deadline-index | EventBridge tick   |
+#   | Access: GET /sessions (list/history)           | date-bucket-index     | Human-driven       |
+#   | Get by session UUID: Get                         | Table PK (sessionId)  | Join/stop/exec     |
+#
+# GSI Architecture (3 indexes):
+#
+#   task-id-index (PK=taskId)
+#     Identity bridge — only consumer is API Lambda attribution (pkg/api/identity.go).
+#     ECS sets RoleSessionName on the boundary task role to the task UUID; that value is
+#     written to taskId when the session becomes active. Each boundary zoa run does one
+#     Query (Limit 1) to map task id → human operator + sessionId. No scan.
+#     See rosa-hyperfleet-zoa docs/design/boundary-identity-and-storage.md
+#
+#   status-deadline-index (PK=status, SK=deadline)
+#     Worker Lambda session reaper (pkg/scheduler/reaper.go). Two query patterns on the
+#     same GSI: active items with deadline <= now (max duration), and active items with
+#     deadline > now (idle candidates). EventBridge schedule per VPC — not per request.
+#
+#   date-bucket-index (PK=dateBucket, SK=createdAt)
+#     Human-driven path. Access ListAll for zoa session list / session history — same
+#     day-bucket iteration as executions/audit. scope=mine adds operator FilterExpression.
+#     CLI defaults --since 24h so queries stay bounded.
 
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid    = "AllowCrossAccountLambdaAuditAccess"
-      Effect = "Allow"
-      Principal = {
-        AWS = "*"
-      }
-      Action = [
-        "dynamodb:PutItem",
-        "dynamodb:Query",
-      ]
-      Resource = [
-        aws_dynamodb_table.audit_log.arn,
-        "${aws_dynamodb_table.audit_log.arn}/index/*",
-      ]
-      Condition = {
-        "ForAnyValue:StringLike" = {
-          "aws:PrincipalOrgPaths" = "${var.mc_ou_path}*"
-        }
-        StringLike = {
-          "aws:PrincipalArn" = "arn:*:iam::*:role/*-zoa-lambda"
-        }
-      }
-    }]
-  })
+resource "aws_dynamodb_table" "boundary_sessions" {
+  name                        = local.sessions_table_name
+  billing_mode                = var.billing_mode
+  hash_key                    = "sessionId"
+  deletion_protection_enabled = var.environment != "ephemeral"
+
+  attribute {
+    name = "sessionId"
+    type = "S"
+  }
+  attribute {
+    name = "status"
+    type = "S"
+  }
+  attribute {
+    name = "createdAt"
+    type = "S"
+  }
+  attribute {
+    name = "dateBucket"
+    type = "S"
+  }
+  attribute {
+    name = "deadline"
+    type = "S"
+  }
+  attribute {
+    name = "taskId"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "date-bucket-index"
+    hash_key        = "dateBucket"
+    range_key       = "createdAt"
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name            = "status-deadline-index"
+    hash_key        = "status"
+    range_key       = "deadline"
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name            = "task-id-index"
+    hash_key        = "taskId"
+    projection_type = "ALL"
+  }
+
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+
+  point_in_time_recovery {
+    enabled = var.environment != "ephemeral"
+  }
+
+  server_side_encryption {
+    enabled     = true
+    kms_key_arn = aws_kms_key.zoa.arn
+  }
+
+  tags = merge(local.common_tags, { Name = local.sessions_table_name, Component = "zoa" })
 }
+
+# =============================================================================
+# ZOA Boundary Targets — SSM Parameter Store
+# =============================================================================
+# Target registration uses SSM Parameter Store instead of DynamoDB because
+# targets are static, Terraform-managed data:
+#   - RC cluster: RC zoa-lambda Terraform. MC clusters: mc-zoa-target-ssm-provisioning (MC pipeline, RC state).
+#   - Auto-removed on terraform destroy (no orphans, no GC)
+#   - Listed via GetParametersByPath("/zoa/targets/<deployment>/")
+#
+# SSM parameters live in the RC account (Access Lambda reads with ambient creds;
+# CLI queries through the Access API, never touches RC SSM directly).
+#
+# Path: /zoa/targets/<deployment_name>/<cluster_name>
+# Value: {"target_type": "rc|mc", "function_url": "...", "vpc_id": "..."}
+#
+# The actual SSM resources are created by each cluster's Terraform module
+# (zoa-lambda), not here. This comment documents the design decision.

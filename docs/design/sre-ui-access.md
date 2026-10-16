@@ -131,7 +131,7 @@ However, we'd prefer to avoid this path if possible:
 
 Given that this is just browser access to SRE UIs already protected by RH SSO (OIDC), and Phase 2 already restricts to specific proxy IPs, full VPN connectivity may not be justified for this use case. We will evaluate if Phase 3 is needed based on security requirements, but Phase 2 should provide sufficient defense in depth.
 
-This is the same networking problem as rosa-boundary (break-glass access to private EKS). If VPN infrastructure is ever built for that purpose, SRE UI access would ride on the same connectivity.
+This is the same networking problem as ZOA boundary break-glass access to private EKS. If VPN infrastructure is ever built for that purpose, SRE UI access would ride on the same connectivity.
 
 ## Architecture
 

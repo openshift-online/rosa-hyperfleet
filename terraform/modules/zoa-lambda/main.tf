@@ -9,10 +9,10 @@
 #   - API Lambda: Function URL with native Go streaming. Handles CLI
 #     requests and sync auto-approved TA execution.
 #   - Worker Lambda: Standard handler. Handles all scheduled work (reconciler,
-#     GC) and async TA execution via self-invocation from reconciler.
+#     GC, reaper) and async TA execution via self-invocation from reconciler.
 #
-# Data layer (DynamoDB, S3, KMS) lives in the RC account. MC deployments use
-# cross-account IAM policies on those resources.
+# Data layer (DynamoDB, S3, KMS) lives in the RC account. MC deployments assume
+# the RC data_access role (DATA_STORE_ROLE_ARN) for DynamoDB and S3.
 #
 # Design decisions:
 #   - Lambda timeout (300s) is a safety net ceiling. Real deadlines are enforced
@@ -35,7 +35,7 @@ locals {
     KMS_KEY_ARN                       = var.kms_key_arn
     JOB_IMAGE                         = var.job_image_uri
     ZOA_JOBS_NAMESPACE                = var.zoa_jobs_namespace
-    ZOA_DEPLOYMENT_TARGET             = var.deployment_target
+    ZOA_TARGET_TYPE                   = var.target_type
     DYNAMODB_TTL_DAYS                 = tostring(var.dynamodb_ttl_days)
     TARGET_CLUSTER                    = var.cluster_id
     UPLOADER_ROLE_ARN                 = var.uploader_role_arn
@@ -49,6 +49,10 @@ locals {
     ASYNC_SCHEDULING_OVERHEAD_SECONDS = tostring(var.async_scheduling_overhead_seconds)
     LOG_LEVEL                         = var.log_level
     }, var.data_access_role_arn != "" ? { DATA_STORE_ROLE_ARN = var.data_access_role_arn } : {},
+    var.sessions_table_name != "" ? {
+      SESSIONS_TABLE               = var.sessions_table_name
+      SESSION_IDLE_TIMEOUT_SECONDS = tostring(var.session_idle_timeout_seconds)
+    } : {},
     var.hyperfleet_db_endpoint != "" ? {
       HYPERFLEET_DB_ENDPOINT = var.hyperfleet_db_endpoint
       HYPERFLEET_DB_NAME     = var.hyperfleet_db_name
@@ -57,7 +61,9 @@ locals {
 
   common_tags = {
     Component = "zoa"
+    function  = "zoa"
     ManagedBy = "terraform"
+    module    = "zoa-lambda"
     Cluster   = var.cluster_id
   }
 }
@@ -100,12 +106,7 @@ resource "aws_iam_role_policy" "lambda_dynamodb" {
   name = "${local.function_prefix}-dynamodb"
   role = aws_iam_role.lambda.id
 
-  # Cross-account DynamoDB access: when calling DynamoDB with a table name,
-  # the service initially resolves the resource ARN using the CALLER's account ID.
-  # If the identity policy only allows the remote account's ARN, IAM denies the
-  # request before it reaches the resource-based policy. Using wildcard account (*)
-  # lets the IAM check pass, after which DynamoDB routes to the correct table via
-  # the resource-based policy on the target account.
+  # Table names from RC; MC callers use credentials from assumed data_access.
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -117,12 +118,18 @@ resource "aws_iam_role_policy" "lambda_dynamodb" {
         "dynamodb:Query",
         "dynamodb:DescribeTable",
       ]
-      Resource = [
-        "arn:aws:dynamodb:${data.aws_region.current.name}:*:table/${var.dynamodb_table_name}",
-        "arn:aws:dynamodb:${data.aws_region.current.name}:*:table/${var.dynamodb_table_name}/index/*",
-        "arn:aws:dynamodb:${data.aws_region.current.name}:*:table/${var.audit_table_name}",
-        "arn:aws:dynamodb:${data.aws_region.current.name}:*:table/${var.audit_table_name}/index/*",
-      ]
+      Resource = concat(
+        [
+          "arn:aws:dynamodb:${data.aws_region.current.name}:*:table/${var.dynamodb_table_name}",
+          "arn:aws:dynamodb:${data.aws_region.current.name}:*:table/${var.dynamodb_table_name}/index/*",
+          "arn:aws:dynamodb:${data.aws_region.current.name}:*:table/${var.audit_table_name}",
+          "arn:aws:dynamodb:${data.aws_region.current.name}:*:table/${var.audit_table_name}/index/*",
+        ],
+        var.sessions_table_name != "" ? [
+          "arn:aws:dynamodb:${data.aws_region.current.name}:*:table/${var.sessions_table_name}",
+          "arn:aws:dynamodb:${data.aws_region.current.name}:*:table/${var.sessions_table_name}/index/*",
+        ] : [],
+      )
     }]
   })
 }
@@ -549,7 +556,7 @@ resource "aws_scheduler_schedule" "reconciler" {
     }
   }
 
-  state = var.enable_reconciler ? "ENABLED" : "DISABLED"
+  state = "ENABLED"
 }
 
 resource "aws_scheduler_schedule" "gc" {
@@ -576,7 +583,84 @@ resource "aws_scheduler_schedule" "gc" {
     }
   }
 
-  state = var.enable_reconciler ? "ENABLED" : "DISABLED"
+  state = "ENABLED"
+}
+
+# Reaper: same per-VPC Worker schedule as reconciler/GC. Session rows live in RC
+# DynamoDB; each worker lists expired sessions and stops ECS tasks for this cluster only.
+resource "aws_scheduler_schedule" "reaper" {
+  name        = "${local.function_prefix}-reaper"
+  description = "Triggers ZOA boundary session reaper for ${var.cluster_id} every 5 minutes"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  schedule_expression = "rate(5 minutes)"
+
+  target {
+    arn      = aws_lambda_function.worker.arn
+    role_arn = aws_iam_role.scheduler.arn
+    input    = jsonencode({ route = "reaper" })
+
+    retry_policy {
+      maximum_retry_attempts = 2
+    }
+
+    dead_letter_config {
+      arn = aws_sqs_queue.dlq.arn
+    }
+  }
+
+  state = "ENABLED"
+}
+
+# Worker reaper: StopTask on boundary ECS cluster in this VPC/account only.
+resource "aws_iam_role_policy" "lambda_boundary_ecs_reaper" {
+  name = "${local.function_prefix}-boundary-ecs-reaper"
+  role = aws_iam_role.lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "ecs:StopTask",
+        "ecs:DescribeTasks",
+      ]
+      Resource = "*"
+      Condition = {
+        ArnEquals = {
+          "ecs:cluster" = aws_ecs_cluster.boundary.arn
+        }
+      }
+    }]
+  })
+}
+
+# Worker reaper idle: correlate ECS Exec sessions (SSM) and terminal activity (CloudWatch).
+resource "aws_iam_role_policy" "lambda_boundary_reaper_idle" {
+  count = var.sessions_table_name != "" ? 1 : 0
+  name  = "${local.function_prefix}-boundary-reaper-idle"
+  role  = aws_iam_role.lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["ssm:DescribeSessions"]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:DescribeLogStreams",
+        ]
+        Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${var.cluster_id}/zoa-boundary/ssm-sessions:*"
+      },
+    ]
+  })
 }
 
 
@@ -721,5 +805,36 @@ resource "aws_cloudwatch_log_group" "worker" {
 
   tags = merge(local.common_tags, {
     Name = "${local.function_prefix}-worker-logs"
+  })
+}
+
+# =============================================================================
+# SSM Target Registration — Self-registers this cluster as a ZOA target
+# =============================================================================
+# RC clusters: Terraform writes this parameter (same account as Access Lambda).
+# MC clusters: MC pipeline provisions RC SSM via mc-zoa-target-ssm-provisioning (see provision-mc-zoa-target-ssm.sh).
+
+resource "aws_ssm_parameter" "zoa_target" {
+  count = var.targets_ssm_prefix != "" ? 1 : 0
+  name  = "${var.targets_ssm_prefix}/${var.cluster_id}"
+  type  = "String"
+
+  value = jsonencode({
+    target_id           = var.cluster_id
+    deployment_name     = var.deployment_name
+    target_type         = var.target_type
+    vpc_id              = var.vpc_id
+    subnet_ids          = join(",", var.private_subnet_ids)
+    security_group_id   = aws_security_group.boundary.id
+    ecs_cluster_arn     = aws_ecs_cluster.boundary.arn
+    task_definition_arn = aws_ecs_task_definition.boundary.arn
+    function_url        = aws_lambda_function_url.api.function_url
+    account_id          = data.aws_caller_identity.current.account_id
+    region              = data.aws_region.current.name
+    status              = "ready"
+  })
+
+  tags = merge(local.common_tags, {
+    Name = "${local.function_prefix}-target-registration"
   })
 }

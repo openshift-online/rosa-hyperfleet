@@ -11,6 +11,8 @@ aws:
   # day-2 role instead of the AWS Organizations role. Pipelines assume this for
   # both state-bucket bootstrap (hop 1) and infra apply (hop 2).
   child_admin_role_name: "rosa-hyperfleet-account-admin"
+  zoa_access_trusted_assumer_role_names:
+    - OrganizationAccountAccessRole
 
 dns:
   domain: stg0.rosa.devshift.org

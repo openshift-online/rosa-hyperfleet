@@ -21,6 +21,9 @@ resource "aws_iam_role" "uploader" {
   # Two trust statements:
   # 1. Same-account: RC Lambda assumes this for RC async Jobs
   # 2. Cross-account: MC Lambdas assume this for MC async Jobs (S3 bucket is in RC)
+  # Trust uses ArnLike + OrgPath (not explicit MC role ARNs) so RC CreateRole succeeds
+  # while MC deploy runs in parallel — IAM rejects trust policies that name principals
+  # that do not exist yet.
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -154,6 +157,8 @@ resource "aws_iam_role_policy" "data_access_dynamodb" {
         "${aws_dynamodb_table.executions.arn}/index/*",
         aws_dynamodb_table.audit_log.arn,
         "${aws_dynamodb_table.audit_log.arn}/index/*",
+        aws_dynamodb_table.boundary_sessions.arn,
+        "${aws_dynamodb_table.boundary_sessions.arn}/index/*",
       ]
     }]
   })
@@ -203,3 +208,4 @@ resource "aws_iam_role_policy" "data_access_kms" {
     }]
   })
 }
+

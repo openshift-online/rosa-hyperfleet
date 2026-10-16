@@ -27,6 +27,7 @@ git:
 
 # @doc deployment_name Logical deployment identifier. Equals aws_region for normal deployments; override in ephemeral/CI to disambiguate multiple deployments in the same region (e.g. "us-east-1-xg4y"). Used for DNS zone naming and resource identification.
 # @used-by deployment_name _context
+# @used-by deployment_name pipeline-management-cluster-inputs/terraform.json.j2
 # @used-by deployment_name pipeline-regional-cluster-inputs/terraform.json.j2
 deployment_name: "{{ aws_region }}"
 
@@ -40,6 +41,11 @@ aws:
   # @doc aws.child_admin_role_name Name of the IAM role the pipelines assume in RC/MC child accounts for state-bucket bootstrap (hop 1) and infra apply (hop 2). Defaults to the AWS Organizations role; override per environment to use a scoped day-2 role.
   # @used-by aws.child_admin_role_name _context
   child_admin_role_name: "OrganizationAccountAccessRole"
+  # @doc aws.zoa_access_trusted_assumer_role_names IAM role names in the Central Account that may assume ZOA Access invoker roles in RC. No default — set explicitly per environment (e.g. ephemeral dev jump or SAML hub roles).
+  # @used-by aws.zoa_access_trusted_assumer_role_names _context
+  zoa_access_trusted_assumer_role_names:
+  - OrganizationAccountAccessRole
+
 
 dns:
   # @doc dns.domain Base domain for the environment. Must be set per environment. See config/ephemeral/defaults.yaml for how the ephemeral template selects between CI and dev account pools.
@@ -66,14 +72,14 @@ terraform_tags:
 
 # @doc worker_node_ami Pin a specific AMI for all worker nodes across both regional and management clusters. Drives both the Karpenter EC2NodeClass and the Terraform bootstrap node group. Null uses the default bottlerocket FIPS name selector (Karpenter) and the EKS-optimized AL2023 AMI (bootstrap group). When set, both family and id must be provided together (e.g. {family: AL2023, id: ami-0abc123}).
 # @used-by worker_node_ami _context
-# @used-by worker_node_ami pipeline-regional-cluster-inputs/terraform.json.j2
 # @used-by worker_node_ami pipeline-management-cluster-inputs/terraform.json.j2
+# @used-by worker_node_ami pipeline-regional-cluster-inputs/terraform.json.j2
 worker_node_ami:
 
 # @doc worker_node_root_volume_size Root EBS volume size (GiB) for worker nodes. Drives both the Karpenter EC2NodeClass and the Terraform bootstrap node group.
 # @used-by worker_node_root_volume_size _context
-# @used-by worker_node_root_volume_size pipeline-regional-cluster-inputs/terraform.json.j2
 # @used-by worker_node_root_volume_size pipeline-management-cluster-inputs/terraform.json.j2
+# @used-by worker_node_root_volume_size pipeline-regional-cluster-inputs/terraform.json.j2
   family: AL2023
   id: ami-056d5e72aa5cf51f1
 
@@ -147,11 +153,11 @@ regional_cluster:
   # @doc regional_cluster.zoa_lambda_image_tag Immutable tag for the ZOA Lambda image. Defaults to a known-good Konflux on-push build. Override via --provision-override-file for ephemeral e2e with a CI-built tag (e.g. ci-<PR>-<BUILD_ID>).
   # @used-by regional_cluster.zoa_lambda_image_tag pipeline-management-cluster-inputs/terraform.json.j2
   # @used-by regional_cluster.zoa_lambda_image_tag pipeline-regional-cluster-inputs/terraform.json.j2
-  zoa_lambda_image_tag: "9999f75"
+  zoa_lambda_image_tag: "fce9d34"
   # @doc regional_cluster.zoa_runner_image_tag Immutable tag for the ZOA Runner image. Defaults to same Konflux build as Lambda. Override independently when testing a new runner with the current Lambda (or vice versa).
   # @used-by regional_cluster.zoa_runner_image_tag pipeline-management-cluster-inputs/terraform.json.j2
   # @used-by regional_cluster.zoa_runner_image_tag pipeline-regional-cluster-inputs/terraform.json.j2
-  zoa_runner_image_tag: "9999f75"
+  zoa_runner_image_tag: "fce9d34"
   # @doc regional_cluster.zoa_lambda_source_image Source registry image for the ZOA Lambda (mirrored to ECR at deploy time). Override together with zoa_lambda_image_tag when pointing at a fork or CI registry (e.g. quay.io/rrp-dev-ci/zoa-lambda).
   # @used-by regional_cluster.zoa_lambda_source_image pipeline-regional-cluster-inputs/terraform.json.j2
   zoa_lambda_source_image: "quay.io/rrp-dev-ci/zoa-lambda"
@@ -159,6 +165,34 @@ regional_cluster:
   # @used-by regional_cluster.zoa_runner_source_image pipeline-management-cluster-inputs/terraform.json.j2
   # @used-by regional_cluster.zoa_runner_source_image pipeline-regional-cluster-inputs/terraform.json.j2
   zoa_runner_source_image: "quay.io/rrp-dev-ci/zoa-runner"
+  # @doc regional_cluster.zoa_boundary_image_tag Immutable tag for the ZOA Boundary ECS image. Required; same commit tag as Lambda/Runner when bumped together.
+  # @used-by regional_cluster.zoa_boundary_image_tag pipeline-management-cluster-inputs/terraform.json.j2
+  # @used-by regional_cluster.zoa_boundary_image_tag pipeline-regional-cluster-inputs/terraform.json.j2
+  zoa_boundary_image_tag: "fce9d34"
+  # @doc regional_cluster.zoa_boundary_source_image Source registry image for ZOA Boundary (pulled directly by ECS). Override together with zoa_boundary_image_tag when pointing at a fork or CI registry.
+  # @used-by regional_cluster.zoa_boundary_source_image pipeline-management-cluster-inputs/terraform.json.j2
+  # @used-by regional_cluster.zoa_boundary_source_image pipeline-regional-cluster-inputs/terraform.json.j2
+  zoa_boundary_source_image: "quay.io/rrp-dev-ci/zoa-boundary"
+  # @doc regional_cluster.zoa_boundary_session_idle_timeout_seconds Terminal inactivity (seconds) before the boundary reaper stops a session. Wired to RC zoa-lambda (worker reaper) and zoa-access (RunTask MOTD); MC zoa-lambda uses the same value for MC-target reaping.
+  # @used-by regional_cluster.zoa_boundary_session_idle_timeout_seconds pipeline-regional-cluster-inputs/terraform.json.j2
+  # @used-by regional_cluster.zoa_boundary_session_idle_timeout_seconds pipeline-management-cluster-inputs/terraform.json.j2
+  zoa_boundary_session_idle_timeout_seconds: 3600
+  # @doc regional_cluster.zoa_boundary_session_max_duration_hours Default/max boundary session length (hours). RC zoa-access only (deadline in Dynamo + ZOA_SESSION_DEADLINE on task).
+  # @used-by regional_cluster.zoa_boundary_session_max_duration_hours pipeline-regional-cluster-inputs/terraform.json.j2
+  zoa_boundary_session_max_duration_hours: 4
+  # Fleet defaults for ZOA Lambda reserved concurrency (SSOT for deploy). Ephemeral overrides in config/ephemeral/defaults.yaml only.
+  # Module defaults in terraform/modules/zoa-lambda|zoa-access should match these unless a stack omits TF_VAR (local module tests).
+  # @doc regional_cluster.zoa_lambda_api_concurrency Reserved concurrency for ZOA API Lambda (-1 = unreserved account pool per Terraform aws_lambda_function). Ephemeral: -1 — see config/ephemeral/.
+  # @used-by regional_cluster.zoa_lambda_api_concurrency pipeline-regional-cluster-inputs/terraform.json.j2
+  # @used-by regional_cluster.zoa_lambda_api_concurrency pipeline-management-cluster-inputs/terraform.json.j2
+  zoa_lambda_api_concurrency: 50
+  # @doc regional_cluster.zoa_lambda_worker_concurrency Reserved concurrency for ZOA Worker Lambda (-1 = unreserved). Ephemeral uses -1 for all ZOA Lambdas — see config/ephemeral/.
+  # @used-by regional_cluster.zoa_lambda_worker_concurrency pipeline-regional-cluster-inputs/terraform.json.j2
+  # @used-by regional_cluster.zoa_lambda_worker_concurrency pipeline-management-cluster-inputs/terraform.json.j2
+  zoa_lambda_worker_concurrency: 10
+  # @doc regional_cluster.zoa_lambda_access_concurrency Reserved concurrency for ZOA Access Lambda on RC only (-1 = unreserved, or >= 1 reserved). Ephemeral: -1 — see config/ephemeral/.
+  # @used-by regional_cluster.zoa_lambda_access_concurrency pipeline-regional-cluster-inputs/terraform.json.j2
+  zoa_lambda_access_concurrency: 10
 
 management_cluster_defaults:
   # @doc management_cluster_defaults.enable_bastion Default enable bastion for management clusters.

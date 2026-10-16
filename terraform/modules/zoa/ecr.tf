@@ -84,8 +84,6 @@ resource "aws_ecr_repository_policy" "lambda" {
 # --- Mirror images from source registry → ECR (skip if tag already exists) ---
 
 resource "null_resource" "mirror_lambda" {
-  count = var.zoa_lambda_image_tag != "" ? 1 : 0
-
   triggers = {
     image_tag = var.zoa_lambda_image_tag
     repo      = aws_ecr_repository.lambda.repository_url

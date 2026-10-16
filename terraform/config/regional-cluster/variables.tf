@@ -48,9 +48,20 @@ variable "target_account_id" {
 }
 
 variable "central_aws_profile" {
-  description = "AWS CLI profile for central account credentials. Set by pipeline, empty for local dev."
+  description = "AWS CLI profile for central account credentials. Pipelines set this to \"central\" (buildspec writes profile from CodeBuild home creds). Required for cross-account central SSM and ZOA Access invoker trust account ID."
   type        = string
   default     = ""
+}
+
+variable "zoa_access_trusted_assumer_role_names" {
+  description = "Central Account IAM role names allowed to assume the ZOA Access invoker role. Must be set explicitly in environment config."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = length(var.zoa_access_trusted_assumer_role_names) > 0
+    error_message = "zoa_access_trusted_assumer_role_names must be set explicitly in environment config (no implicit Central Account trust)."
+  }
 }
 
 variable "app_code" {
@@ -466,6 +477,11 @@ variable "zoa_lambda_image_tag" {
   description = "Immutable tag for the ZOA Lambda image (Quay→ECR mirroring). Override with a CI-built tag to validate a zoa PR."
   type        = string
   default     = "67ef089"
+
+  validation {
+    condition     = var.zoa_lambda_image_tag != ""
+    error_message = "zoa_lambda_image_tag must be set; HyperFleet always deploys the full ZOA stack."
+  }
 }
 
 variable "zoa_runner_image_tag" {
@@ -484,6 +500,84 @@ variable "zoa_runner_source_image" {
   description = "Source registry image for ZOA Runner (K8s pulls directly, no ECR mirror). Override together with zoa_runner_image_tag to point at a fork or CI registry."
   type        = string
   default     = "quay.io/rrp-dev-ci/zoa-runner"
+}
+
+# =============================================================================
+# ZOA Boundary Variables
+# =============================================================================
+
+variable "zoa_boundary_image" {
+  description = "Full container image reference for ZOA Boundary ECS tasks (source:tag, set by buildspec from deploy config)."
+  type        = string
+
+  validation {
+    condition     = var.zoa_boundary_image != ""
+    error_message = "zoa_boundary_image must be set; HyperFleet always deploys the full ZOA stack."
+  }
+}
+
+variable "zoa_boundary_session_idle_timeout_seconds" {
+  description = "Boundary session terminal idle timeout (seconds). Passed to module.zoa_lambda (worker reaper) and module.zoa_access (RunTask ZOA_SESSION_IDLE_TIMEOUT_SECONDS). Must stay aligned with MC zoa_lambda for MC targets."
+  type        = number
+  default     = 3600
+
+  validation {
+    condition     = var.zoa_boundary_session_idle_timeout_seconds >= 60 && var.zoa_boundary_session_idle_timeout_seconds <= 86400
+    error_message = "zoa_boundary_session_idle_timeout_seconds must be between 60 and 86400."
+  }
+}
+
+variable "zoa_boundary_session_max_duration_hours" {
+  description = "Default and maximum boundary session length (hours). Passed to module.zoa_access only (SESSION_MAX_DURATION_HOURS; deadline stored in Dynamo)."
+  type        = number
+  default     = 4
+
+  validation {
+    condition     = var.zoa_boundary_session_max_duration_hours >= 1 && var.zoa_boundary_session_max_duration_hours <= 24
+    error_message = "zoa_boundary_session_max_duration_hours must be between 1 and 24."
+  }
+}
+
+variable "zoa_lambda_api_concurrency" {
+  description = "Reserved concurrency for ZOA API Lambda (-1 = unreserved). Authoritative values: config/defaults.yaml (regional_cluster); ephemeral override in config/ephemeral/defaults.yaml. Set at apply time via TF_VAR from rendered deploy JSON."
+  type        = number
+
+  validation {
+    condition     = var.zoa_lambda_api_concurrency == -1 || var.zoa_lambda_api_concurrency >= 1
+    error_message = "zoa_lambda_api_concurrency must be -1 (unreserved) or >= 1; 0 disables the Lambda."
+  }
+}
+
+variable "zoa_lambda_worker_concurrency" {
+  description = "Reserved concurrency for ZOA Worker Lambda (-1 = unreserved). Authoritative values: config/defaults.yaml (regional_cluster); ephemeral override in config/ephemeral/defaults.yaml."
+  type        = number
+
+  validation {
+    condition     = var.zoa_lambda_worker_concurrency == -1 || var.zoa_lambda_worker_concurrency >= 1
+    error_message = "zoa_lambda_worker_concurrency must be -1 (unreserved) or >= 1; 0 disables the Lambda."
+  }
+}
+
+variable "zoa_lambda_access_concurrency" {
+  description = "Reserved concurrency for ZOA Access Lambda (RC only; -1 = unreserved or >= 1 reserved). Authoritative values: config/defaults.yaml (regional_cluster); ephemeral override in config/ephemeral/defaults.yaml."
+  type        = number
+
+  validation {
+    condition     = var.zoa_lambda_access_concurrency == -1 || var.zoa_lambda_access_concurrency >= 1
+    error_message = "zoa_lambda_access_concurrency must be -1 (unreserved) or >= 1; 0 disables the Lambda."
+  }
+}
+
+variable "zoa_central_deployments_primary_region" {
+  description = "Central account SSM region for primary /zoa/deployments/* (must match rosa-hyperfleet-zoa accessclient.DefaultDeploymentsSSMRegion)."
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "zoa_central_deployments_replica_region" {
+  description = "Central account SSM region for replica /zoa/deployments/* (must match rosa-hyperfleet-zoa accessclient.ReplicaDeploymentsSSMRegion)."
+  type        = string
+  default     = "eu-west-1"
 }
 
 variable "worker_node_ami_id" {

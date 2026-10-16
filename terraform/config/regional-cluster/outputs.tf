@@ -412,6 +412,11 @@ output "zoa_audit_table_name" {
   value       = module.zoa.audit_table_name
 }
 
+output "zoa_sessions_table_name" {
+  description = "DynamoDB table name for ZOA boundary sessions (single table in RC, all clusters)"
+  value       = module.zoa.sessions_table_name
+}
+
 output "zoa_bucket_name" {
   description = "S3 bucket name for ZOA outputs"
   value       = module.zoa.bucket_name
@@ -425,16 +430,6 @@ output "zoa_bucket_arn" {
 output "zoa_kms_key_arn" {
   description = "KMS key ARN for ZOA encryption (used by MC Pod Identity for S3 SSE-KMS)"
   value       = module.zoa.kms_key_arn
-}
-
-output "zoa_table_arn" {
-  description = "DynamoDB executions table ARN (for MC Lambda cross-account access)"
-  value       = module.zoa.table_arn
-}
-
-output "zoa_audit_table_arn" {
-  description = "DynamoDB audit table ARN (for MC Lambda cross-account access)"
-  value       = module.zoa.audit_table_arn
 }
 
 output "zoa_uploader_role_arn" {
@@ -452,7 +447,12 @@ output "zoa_lambda_ecr_url" {
   value       = module.zoa.lambda_ecr_url
 }
 
+output "zoa_access_lambda_role_arn" {
+  description = "ARN of the ZOA Access Lambda execution role (MC boundary IAM trusts this for cross-account ECS)"
+  value       = module.zoa_lambda.access_lambda_role_arn
+}
+
 output "zoa_api_function_url" {
-  description = "Function URL for the ZOA API Lambda (used by rosa-boundary CLI)"
-  value       = try(module.zoa_lambda[0].api_function_url, "")
+  description = "Function URL for the ZOA API Lambda (used by ZOA boundary tasks and CLI)"
+  value       = module.zoa_lambda.api_function_url
 }

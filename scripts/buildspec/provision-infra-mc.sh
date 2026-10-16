@@ -26,6 +26,8 @@ if [ "${DELETE_FLAG}" == "true" ]; then
     export TF_VAR_oidc_bucket_name="placeholder"
     export TF_VAR_oidc_bucket_arn="arn:aws:s3:::placeholder"
     export TF_VAR_oidc_bucket_region="us-east-1"
+    export TF_VAR_zoa_lambda_ecr_url="000000000000.dkr.ecr.us-east-1.amazonaws.com/placeholder"
+    export TF_VAR_zoa_access_lambda_role_arn="arn:aws:iam::000000000000:role/destroy-placeholder"
 else
     # Assume child admin role in RC account to access state bucket (scoped access instead of org-wide).
     _resolve_rc_account
@@ -72,11 +74,15 @@ else
         TF_VAR_oidc_bucket_arn=$(AWS_ACCESS_KEY_ID=$(echo "$_rc_creds" | awk '{print $1}') AWS_SECRET_ACCESS_KEY=$(echo "$_rc_creds" | awk '{print $2}') AWS_SESSION_TOKEN=$(echo "$_rc_creds" | awk '{print $3}') terraform -chdir="$_RC_TF_DIR" output -raw oidc_bucket_arn 2>/dev/null || true)
         TF_VAR_oidc_bucket_region=$(AWS_ACCESS_KEY_ID=$(echo "$_rc_creds" | awk '{print $1}') AWS_SECRET_ACCESS_KEY=$(echo "$_rc_creds" | awk '{print $2}') AWS_SESSION_TOKEN=$(echo "$_rc_creds" | awk '{print $3}') terraform -chdir="$_RC_TF_DIR" output -raw oidc_bucket_region 2>/dev/null || true)
         TF_VAR_rhobs_api_url=$(AWS_ACCESS_KEY_ID=$(echo "$_rc_creds" | awk '{print $1}') AWS_SECRET_ACCESS_KEY=$(echo "$_rc_creds" | awk '{print $2}') AWS_SESSION_TOKEN=$(echo "$_rc_creds" | awk '{print $3}') terraform -chdir="$_RC_TF_DIR" output -raw rhobs_api_url 2>/dev/null || true)
+        TF_VAR_zoa_kms_key_arn=$(AWS_ACCESS_KEY_ID=$(echo "$_rc_creds" | awk '{print $1}') AWS_SECRET_ACCESS_KEY=$(echo "$_rc_creds" | awk '{print $2}') AWS_SESSION_TOKEN=$(echo "$_rc_creds" | awk '{print $3}') terraform -chdir="$_RC_TF_DIR" output -raw zoa_kms_key_arn 2>/dev/null | grep -E '^arn:' || true)
+        TF_VAR_zoa_access_lambda_role_arn=$(AWS_ACCESS_KEY_ID=$(echo "$_rc_creds" | awk '{print $1}') AWS_SECRET_ACCESS_KEY=$(echo "$_rc_creds" | awk '{print $2}') AWS_SESSION_TOKEN=$(echo "$_rc_creds" | awk '{print $3}') terraform -chdir="$_RC_TF_DIR" output -raw zoa_access_lambda_role_arn 2>/dev/null | grep -E '^arn:' || true)
         if [ -n "${TF_VAR_oidc_cloudfront_domain}" ] && \
            [ -n "${TF_VAR_oidc_bucket_name}" ] && \
            [ -n "${TF_VAR_oidc_bucket_arn}" ] && \
            [ -n "${TF_VAR_oidc_bucket_region}" ] && \
-           [ -n "${TF_VAR_rhobs_api_url}" ]; then
+           [ -n "${TF_VAR_rhobs_api_url}" ] && \
+           [ -n "${TF_VAR_zoa_kms_key_arn}" ] && \
+           [ -n "${TF_VAR_zoa_access_lambda_role_arn}" ]; then
             break
         fi
         echo "RC outputs not ready (attempt ${_OIDC_RETRY_COUNT}/${_OIDC_MAX_RETRIES}), retrying in ${_OIDC_RETRY_DELAY}s..."
@@ -86,8 +92,10 @@ else
        [ -z "${TF_VAR_oidc_bucket_name}" ] || \
        [ -z "${TF_VAR_oidc_bucket_arn}" ] || \
        [ -z "${TF_VAR_oidc_bucket_region}" ] || \
-       [ -z "${TF_VAR_rhobs_api_url}" ]; then
-        echo "ERROR: RC outputs missing after $((_OIDC_MAX_RETRIES * _OIDC_RETRY_DELAY / 60))+ minutes" >&2
+       [ -z "${TF_VAR_rhobs_api_url}" ] || \
+       [ -z "${TF_VAR_zoa_kms_key_arn}" ] || \
+       [ -z "${TF_VAR_zoa_access_lambda_role_arn}" ]; then
+        echo "ERROR: RC outputs missing after $((_OIDC_MAX_RETRIES * _OIDC_RETRY_DELAY / 60))+ minutes (need OIDC, rhobs_api_url, zoa_kms_key_arn, zoa_access_lambda_role_arn)" >&2
         exit 1
     fi
     export TF_VAR_oidc_cloudfront_domain TF_VAR_oidc_bucket_name TF_VAR_oidc_bucket_arn TF_VAR_oidc_bucket_region TF_VAR_rhobs_api_url
@@ -96,30 +104,53 @@ else
     # capturing terraform warnings as the value (non-ASCII chars break IAM policies)
     export TF_VAR_zoa_outputs_bucket_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_bucket_arn 2>/dev/null | grep -E '^arn:' || echo "")
 
-    # ZOA KMS key ARN (optional — for S3 SSE-KMS cross-account access)
-    export TF_VAR_zoa_kms_key_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_kms_key_arn 2>/dev/null | grep -E '^arn:' || echo "")
+    export TF_VAR_zoa_kms_key_arn
+    export TF_VAR_zoa_access_lambda_role_arn
 
     # ZOA Lambda data-layer outputs (DynamoDB tables + uploader role in RC account)
     export TF_VAR_zoa_table_name=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_table_name 2>/dev/null || echo "")
-    export TF_VAR_zoa_table_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_table_arn 2>/dev/null | grep -E '^arn:' || echo "")
     export TF_VAR_zoa_audit_table_name=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_audit_table_name 2>/dev/null || echo "")
-    export TF_VAR_zoa_audit_table_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_audit_table_arn 2>/dev/null | grep -E '^arn:' || echo "")
+    export TF_VAR_zoa_sessions_table_name=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_sessions_table_name 2>/dev/null || echo "")
     export TF_VAR_zoa_uploader_role_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_uploader_role_arn 2>/dev/null | grep -E '^arn:' || echo "")
-    export TF_VAR_zoa_data_access_role_arn=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_data_access_role_arn 2>/dev/null | grep -E '^arn:' || echo "")
+    export TF_VAR_zoa_data_access_role_arn=$(AWS_ACCESS_KEY_ID=$(echo "$_rc_creds" | awk '{print $1}') AWS_SECRET_ACCESS_KEY=$(echo "$_rc_creds" | awk '{print $2}') AWS_SESSION_TOKEN=$(echo "$_rc_creds" | awk '{print $3}') terraform -chdir="$_RC_TF_DIR" output -raw zoa_data_access_role_arn 2>/dev/null | grep -E '^arn:' || echo "")
 fi
 
 # ── Phase 1b: ZOA Lambda image reference ──────────────────────────────────────
 # Lambda image lives in RC's ECR (cross-account pull via OU policy).
 # Runner image is pulled directly from Quay by K8s nodes.
-export TF_VAR_zoa_lambda_ecr_url=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_lambda_ecr_url 2>/dev/null || echo "")
+if [ "${DELETE_FLAG}" != "true" ]; then
+    export TF_VAR_zoa_lambda_ecr_url=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_lambda_ecr_url 2>/dev/null || echo "")
+fi
 
 # ZOA image tags and source registries — from MC deploy config (same pins as RC)
 export TF_VAR_zoa_lambda_image_tag=$(jq -r '.zoa_lambda_image_tag // ""' "$DEPLOY_CONFIG_FILE")
 export TF_VAR_zoa_runner_image_tag=$(jq -r '.zoa_runner_image_tag // ""' "$DEPLOY_CONFIG_FILE")
 export TF_VAR_zoa_runner_source_image=$(jq -r '.zoa_runner_source_image // ""' "$DEPLOY_CONFIG_FILE")
+# Boundary ECS pulls Quay directly (no RC ECR mirror); compose full ref for TF_VAR_zoa_boundary_image.
+_zoa_boundary_image_tag=$(jq -r '.zoa_boundary_image_tag // ""' "$DEPLOY_CONFIG_FILE")
+_zoa_boundary_source_image=$(jq -r '.zoa_boundary_source_image // ""' "$DEPLOY_CONFIG_FILE")
+if [ -z "${_zoa_boundary_image_tag}" ] || [ -z "${_zoa_boundary_source_image}" ]; then
+    echo "ERROR: zoa_boundary_image_tag and zoa_boundary_source_image must be set in deploy config (full ZOA stack is always deployed)" >&2
+    exit 1
+fi
+export TF_VAR_zoa_boundary_image="${_zoa_boundary_source_image}:${_zoa_boundary_image_tag}"
+export TF_VAR_zoa_boundary_session_idle_timeout_seconds=$(jq -r '.zoa_boundary_session_idle_timeout_seconds // 3600' "$DEPLOY_CONFIG_FILE")
+export TF_VAR_zoa_lambda_api_concurrency=$(jq -r '.zoa_lambda_api_concurrency' "$DEPLOY_CONFIG_FILE")
+export TF_VAR_zoa_lambda_worker_concurrency=$(jq -r '.zoa_lambda_worker_concurrency' "$DEPLOY_CONFIG_FILE")
 export TF_VAR_worker_node_ami_id=$(jq -r '.worker_node_ami_id // ""' "$DEPLOY_CONFIG_FILE")
 
+# Deployment id for /zoa/targets/<deployment>/<cluster> and central /zoa/deployments/* (rendered in deploy JSON).
+export TF_VAR_zoa_deployment_name=$(jq -r '.zoa_deployment_name // empty' "$DEPLOY_CONFIG_FILE")
+if [ -z "${TF_VAR_zoa_deployment_name}" ]; then
+    export TF_VAR_zoa_deployment_name=$(jq -r '.deployment_name // empty' "deploy/${ENVIRONMENT}/${TARGET_REGION}/pipeline-regional-cluster-inputs/terraform.json" 2>/dev/null || echo "")
+fi
+if [ -z "${TF_VAR_zoa_deployment_name}" ]; then
+    echo "ERROR: zoa_deployment_name not set in MC deploy config or RC deployment_name" >&2
+    exit 1
+fi
+
 # ── Phase 2: Apply/Destroy MC infrastructure ─────────────────────────────────
+# MC ZOA target SSM: separate pipeline stage (buildspec-provision-mc-zoa-target-ssm.yml).
 use_mc_account
 
 export TF_STATE_BUCKET="terraform-state-${TARGET_ACCOUNT_ID}-${TARGET_REGION}"
@@ -178,4 +209,3 @@ set -e
 if [ $TERRAFORM_STATUS -ne 0 ]; then
     exit $TERRAFORM_STATUS
 fi
-

@@ -25,16 +25,6 @@ output "kms_key_arn" {
 
 # Lambda outputs
 
-output "table_arn" {
-  description = "DynamoDB executions table ARN (for cross-account policies)"
-  value       = aws_dynamodb_table.executions.arn
-}
-
-output "audit_table_arn" {
-  description = "DynamoDB audit log table ARN (for cross-account policies)"
-  value       = aws_dynamodb_table.audit_log.arn
-}
-
 output "uploader_role_arn" {
   description = "ARN of the uploader IAM role (Lambda assumes this for scoped S3 creds)"
   value       = aws_iam_role.uploader.arn
@@ -65,6 +55,15 @@ output "lambda_image_uri" {
 
 output "runner_image_uri" {
   description = "Source image URI for the K8s Job runner. K8s nodes pull directly from source registry."
-  value       = var.zoa_runner_image_tag != "" ? "${var.zoa_runner_source_image}:${var.zoa_runner_image_tag}" : ""
+  value       = "${var.zoa_runner_source_image}:${var.zoa_runner_image_tag}"
 }
+
+output "sessions_table_name" {
+  description = "DynamoDB table name for ZOA boundary sessions"
+  value       = aws_dynamodb_table.boundary_sessions.name
+}
+
+# Target registration uses SSM Parameter Store, not DynamoDB.
+# Each cluster's Terraform writes /zoa/targets/<deployment>/<cluster>.
+# No table output needed — Access Lambda reads SSM with ambient creds.
 

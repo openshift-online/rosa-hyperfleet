@@ -86,8 +86,27 @@ resource "aws_vpc_endpoint" "s3" {
   tags              = merge(local.common_tags, { Name = "${var.resource_name_base}-s3-endpoint" })
 }
 
+resource "aws_vpc_endpoint" "dynamodb" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${data.aws_region.current.region}.dynamodb"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = aws_route_table.private[*].id
+  tags              = merge(local.common_tags, { Name = "${var.resource_name_base}-dynamodb-endpoint" })
+}
+
 locals {
-  services = ["ecr.api", "ecr.dkr", "sts", "logs", "ec2"]
+  services = [
+    "ecr.api",
+    "ecr.dkr",
+    "sts",
+    "logs",
+    "ec2",
+    "bedrock-runtime",
+    "kms",
+    "ssm",
+    "ssmmessages",
+    "ec2messages",
+  ]
 }
 
 resource "aws_vpc_endpoint" "interfaces" {

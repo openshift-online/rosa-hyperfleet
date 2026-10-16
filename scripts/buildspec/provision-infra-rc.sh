@@ -17,6 +17,8 @@ aws configure set aws_session_token     "$_CENTRAL_AWS_SESSION_TOKEN"     --prof
 aws configure set region                "${TARGET_REGION}"                --profile central
 export TF_VAR_central_aws_profile="central"
 
+export TF_VAR_zoa_access_trusted_assumer_role_names=$(jq -c '.zoa_access_trusted_assumer_role_names // []' "$DEPLOY_CONFIG_FILE")
+
 # Fetch PagerDuty config if enabled
 _RAW_PD=$(jq -r '.enable_pagerduty // false' "$DEPLOY_CONFIG_FILE")
 if [ "$_RAW_PD" == "true" ] || [ "$_RAW_PD" == "1" ]; then
@@ -65,6 +67,15 @@ if [[ "$_MC_INFO" != "[]" ]]; then
             _MC_PARTS+=("${_ID}:${_ACCT}")
         fi
     done
+    _MC_INFO_LEN=$(echo "$_MC_INFO" | jq 'length')
+    if [[ "$_MC_INFO_LEN" -gt 0 && ${#_MC_PARTS[@]} -eq 0 ]]; then
+        echo "ERROR: management_clusters_info lists ${_MC_INFO_LEN} cluster(s) but none resolved to id:account_id (check account_id or SSM parameters)" >&2
+        exit 1
+    fi
+    if [[ "${ENVIRONMENT:-}" == "ephemeral" ]] && echo "$_MC_INFO" | jq -e '.[].account_id | test("^ssm://")' >/dev/null 2>&1; then
+        echo "ERROR: ephemeral RC deploy must use literal MC account_id in management_clusters_info (re-render after ephemeral provider injects aws.management_cluster_account_id)" >&2
+        exit 1
+    fi
 fi
 export TF_VAR_management_clusters=$(IFS=,; echo "${_MC_PARTS[*]}")
 
@@ -173,6 +184,19 @@ export TF_VAR_zoa_lambda_image_tag=$(jq -r '.zoa_lambda_image_tag // ""' "$DEPLO
 export TF_VAR_zoa_runner_image_tag=$(jq -r '.zoa_runner_image_tag // ""' "$DEPLOY_CONFIG_FILE")
 export TF_VAR_zoa_lambda_source_image=$(jq -r '.zoa_lambda_source_image // ""' "$DEPLOY_CONFIG_FILE")
 export TF_VAR_zoa_runner_source_image=$(jq -r '.zoa_runner_source_image // ""' "$DEPLOY_CONFIG_FILE")
+# Boundary ECS pulls Quay directly (no ECR skopeo mirror); compose full ref for TF_VAR_zoa_boundary_image.
+_zoa_boundary_image_tag=$(jq -r '.zoa_boundary_image_tag // ""' "$DEPLOY_CONFIG_FILE")
+_zoa_boundary_source_image=$(jq -r '.zoa_boundary_source_image // ""' "$DEPLOY_CONFIG_FILE")
+if [ -z "${_zoa_boundary_image_tag}" ] || [ -z "${_zoa_boundary_source_image}" ]; then
+    echo "ERROR: zoa_boundary_image_tag and zoa_boundary_source_image must be set in deploy config (full ZOA stack is always deployed)" >&2
+    exit 1
+fi
+export TF_VAR_zoa_boundary_image="${_zoa_boundary_source_image}:${_zoa_boundary_image_tag}"
+export TF_VAR_zoa_boundary_session_idle_timeout_seconds=$(jq -r '.zoa_boundary_session_idle_timeout_seconds // 3600' "$DEPLOY_CONFIG_FILE")
+export TF_VAR_zoa_boundary_session_max_duration_hours=$(jq -r '.zoa_boundary_session_max_duration_hours // 4' "$DEPLOY_CONFIG_FILE")
+export TF_VAR_zoa_lambda_api_concurrency=$(jq -r '.zoa_lambda_api_concurrency' "$DEPLOY_CONFIG_FILE")
+export TF_VAR_zoa_lambda_worker_concurrency=$(jq -r '.zoa_lambda_worker_concurrency' "$DEPLOY_CONFIG_FILE")
+export TF_VAR_zoa_lambda_access_concurrency=$(jq -r '.zoa_lambda_access_concurrency' "$DEPLOY_CONFIG_FILE")
 export TF_VAR_worker_node_ami_id=$(jq -r '.worker_node_ami_id // ""' "$DEPLOY_CONFIG_FILE")
 export TF_VAR_eph_prefix=$(jq -r '.eph_prefix // ""' "$DEPLOY_CONFIG_FILE")
 export ENVIRONMENT="${ENVIRONMENT:-staging}"

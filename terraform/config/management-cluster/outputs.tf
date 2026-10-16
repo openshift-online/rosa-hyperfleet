@@ -173,5 +173,20 @@ output "kube_applier_role_arn" {
 
 output "zoa_api_function_url" {
   description = "ZOA API Lambda Function URL (per-VPC endpoint for this MC)"
-  value       = try(module.zoa_lambda[0].api_function_url, "")
+  value       = module.zoa_lambda.api_function_url
+}
+
+output "zoa_boundary_ecs_cluster_arn" {
+  description = "ECS cluster ARN for ZOA boundary tasks (MC target registration)"
+  value       = module.zoa_lambda.boundary_ecs_cluster_arn
+}
+
+output "zoa_boundary_task_definition_arn" {
+  description = "Boundary task definition ARN (MC target registration)"
+  value       = module.zoa_lambda.boundary_task_definition_arn
+}
+
+output "zoa_boundary_security_group_id" {
+  description = "Boundary ECS security group (MC target registration)"
+  value       = module.zoa_lambda.boundary_security_group_id
 }

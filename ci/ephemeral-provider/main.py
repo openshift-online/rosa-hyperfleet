@@ -72,10 +72,10 @@ def main():
         action="store_true",
         help="Start teardown and exit immediately without waiting for completion",
     )
-    teardown_group.add_argument(
+    parser.add_argument(
         "--resync",
         action="store_true",
-        help="Resync the ephemeral branch by rebasing onto the latest source branch",
+        help="With --teardown: sync CI branch from --branch then destroy. Alone: resync (apply).",
     )
     parser.add_argument(
         "--id",
@@ -149,7 +149,7 @@ def main():
     else:
         if is_teardown or args.resync:
             log.error("--id or BUILD_ID must be set for %s (needed to identify the ephemeral environment)",
-                       "resync" if args.resync else "teardown")
+                       "teardown" if is_teardown else "resync")
             sys.exit(1)
         env_id = uuid.uuid4().hex[:8]
         externally_set = False
@@ -196,17 +196,20 @@ def main():
     )
 
     try:
-        if args.resync:
+        if is_teardown:
+            env.teardown(
+                fire_and_forget=args.teardown_fire_and_forget,
+                with_resync=args.resync,
+            )
+            log.info("")
+            log.info("==========================================")
+            log.info("Teardown completed successfully!")
+            log.info("==========================================")
+        elif args.resync:
             env.resync()
             log.info("")
             log.info("==========================================")
             log.info("Resync completed successfully!")
-            log.info("==========================================")
-        elif is_teardown:
-            env.teardown(fire_and_forget=args.teardown_fire_and_forget)
-            log.info("")
-            log.info("==========================================")
-            log.info("Teardown completed successfully!")
             log.info("==========================================")
         else:
             env.provision(
@@ -227,8 +230,13 @@ def main():
             log.info("    ./ci/ephemeral-provider/main.py --teardown --id %s", env_id)
             log.info("")
     except Exception:
-        log.exception("Ephemeral environment %s failed",
-                       "resync" if args.resync else "teardown" if is_teardown else "provision")
+        if is_teardown:
+            op = "teardown"
+        elif args.resync:
+            op = "resync"
+        else:
+            op = "provision"
+        log.exception("Ephemeral environment %s failed", op)
         sys.exit(1)
 
 

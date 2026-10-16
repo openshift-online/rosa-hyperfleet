@@ -104,6 +104,132 @@ resource "aws_kms_key_policy" "zoa" {
         ]
         Resource = "*"
       },
+      {
+        Sid    = "AllowCloudWatchLogsBoundaryExec"
+        Effect = "Allow"
+        Principal = {
+          Service = "logs.${data.aws_region.current.name}.amazonaws.com"
+        }
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey",
+        ]
+        Resource = "*"
+        Condition = {
+          ArnLike = {
+            "kms:EncryptionContext:aws:logs:arn" = [
+              "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${var.regional_id}/zoa-boundary",
+              "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${var.regional_id}/zoa-boundary:*",
+              "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${var.regional_id}/zoa-boundary/ssm-sessions",
+              "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${var.regional_id}/zoa-boundary/ssm-sessions:*",
+              "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.regional_id}-zoa-access",
+              "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.regional_id}-zoa-access:*",
+            ]
+          }
+        }
+      },
+      {
+        Sid    = "AllowCrossAccountCloudWatchLogsBoundaryExec"
+        Effect = "Allow"
+        Principal = {
+          Service = "logs.${data.aws_region.current.name}.amazonaws.com"
+        }
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey",
+        ]
+        Resource = "*"
+        Condition = {
+          ArnLike = {
+            "kms:EncryptionContext:aws:logs:arn" = [
+              "arn:aws:logs:${data.aws_region.current.name}:*:log-group:/ecs/*/zoa-boundary",
+              "arn:aws:logs:${data.aws_region.current.name}:*:log-group:/ecs/*/zoa-boundary:*",
+              "arn:aws:logs:${data.aws_region.current.name}:*:log-group:/ecs/*/zoa-boundary/ssm-sessions",
+              "arn:aws:logs:${data.aws_region.current.name}:*:log-group:/ecs/*/zoa-boundary/ssm-sessions:*",
+            ]
+          }
+        }
+      },
+      {
+        Sid    = "AllowLocalBoundaryRolesECSExecKMS"
+        Effect = "Allow"
+        Principal = {
+          AWS = "*"
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey",
+        ]
+        Resource = "*"
+        Condition = {
+          ArnLike = {
+            "aws:PrincipalArn" = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/*-zoa-boundary-*"
+          }
+        }
+      },
+      {
+        Sid    = "AllowCrossAccountBoundaryRolesECSExecKMS"
+        Effect = "Allow"
+        Principal = {
+          AWS = "*"
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey",
+        ]
+        Resource = "*"
+        Condition = {
+          "ForAnyValue:StringLike" = {
+            "aws:PrincipalOrgPaths" = "${var.mc_ou_path}*"
+          }
+          StringLike = {
+            "aws:PrincipalArn" = "arn:*:iam::*:role/*-zoa-boundary-*"
+          }
+        }
+      },
+      {
+        Sid    = "AllowCrossAccountMCCloudWatchLogsKMSDescribe"
+        Effect = "Allow"
+        Principal = {
+          AWS = "*"
+        }
+        Action = [
+          "kms:DescribeKey",
+        ]
+        Resource = "*"
+        Condition = {
+          "ForAnyValue:StringLike" = {
+            "aws:PrincipalOrgPaths" = "${var.mc_ou_path}*"
+          }
+        }
+      },
+      {
+        Sid    = "AllowCrossAccountMCCloudWatchLogsKMSCreateGrant"
+        Effect = "Allow"
+        Principal = {
+          AWS = "*"
+        }
+        Action = [
+          "kms:CreateGrant",
+        ]
+        Resource = "*"
+        Condition = {
+          "ForAnyValue:StringLike" = {
+            "aws:PrincipalOrgPaths" = "${var.mc_ou_path}*"
+          }
+          Bool = {
+            "kms:GrantIsForAWSResource" = "true"
+          }
+        }
+      },
     ]
   })
 }

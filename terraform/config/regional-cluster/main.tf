@@ -40,6 +40,62 @@ provider "aws" {
   region            = var.region
   profile           = var.central_aws_profile != "" ? var.central_aws_profile : null
   use_fips_endpoint = can(regex("^(us|us-gov)-", var.region)) ? true : false
+
+  default_tags {
+    tags = merge(
+      {
+        app-code      = var.app_code
+        service-phase = var.service_phase
+        cost-center   = var.cost_center
+        environment   = var.environment
+      },
+      var.eph_prefix != "" ? { ephemeral-prefix = var.eph_prefix } : {}
+    )
+  }
+}
+
+data "aws_caller_identity" "central" {
+  provider = aws.central
+}
+
+# Central account providers for ZOA deployment SSM (/zoa/deployments/*).
+# Primary + replica regions; CLI defaults to primary with automatic replica failover.
+provider "aws" {
+  alias             = "central_deployments"
+  region            = var.zoa_central_deployments_primary_region
+  profile           = var.central_aws_profile != "" ? var.central_aws_profile : null
+  use_fips_endpoint = can(regex("^(us|us-gov)-", var.zoa_central_deployments_primary_region)) ? true : false
+
+  default_tags {
+    tags = merge(
+      {
+        app-code      = var.app_code
+        service-phase = var.service_phase
+        cost-center   = var.cost_center
+        environment   = var.environment
+      },
+      var.eph_prefix != "" ? { ephemeral-prefix = var.eph_prefix } : {}
+    )
+  }
+}
+
+provider "aws" {
+  alias             = "central_deployments_replica"
+  region            = var.zoa_central_deployments_replica_region
+  profile           = var.central_aws_profile != "" ? var.central_aws_profile : null
+  use_fips_endpoint = can(regex("^(us|us-gov)-", var.zoa_central_deployments_replica_region)) ? true : false
+
+  default_tags {
+    tags = merge(
+      {
+        app-code      = var.app_code
+        service-phase = var.service_phase
+        cost-center   = var.cost_center
+        environment   = var.environment
+      },
+      var.eph_prefix != "" ? { ephemeral-prefix = var.eph_prefix } : {}
+    )
+  }
 }
 
 # When PagerDuty is disabled, a dummy token lets the provider initialize
@@ -61,6 +117,7 @@ data "aws_region" "current" {}
 locals {
   mc_entries     = var.management_clusters != "" ? split(",", var.management_clusters) : []
   mc_account_ids = [for entry in local.mc_entries : element(split(":", entry), 1)]
+  # management_clusters entries are "management_id:account_id" (see provision-infra-rc.sh).
   api_allowed_accounts = distinct(compact(concat(
     [data.aws_caller_identity.current.account_id],
     local.mc_account_ids,
@@ -471,10 +528,9 @@ module "authz" {
 module "zoa" {
   source = "../../modules/zoa"
 
-  regional_id             = var.regional_id
-  eks_cluster_name        = module.regional_cluster.cluster_name
-  mc_ou_path              = var.mc_ou_path
-  environment             = var.environment
+  regional_id  = var.regional_id
+  mc_ou_path   = var.mc_ou_path
+  environment  = var.environment
   zoa_lambda_image_tag    = var.zoa_lambda_image_tag
   zoa_runner_image_tag    = var.zoa_runner_image_tag
   zoa_lambda_source_image = var.zoa_lambda_source_image
@@ -482,11 +538,10 @@ module "zoa" {
 }
 
 module "zoa_lambda" {
-  count  = var.zoa_lambda_image_tag != "" ? 1 : 0
   source = "../../modules/zoa-lambda"
 
-  cluster_id        = var.regional_id
-  deployment_target = "rc"
+  cluster_id  = var.regional_id
+  target_type = "rc"
 
   lambda_image_uri = module.zoa.lambda_image_uri
   job_image_uri    = module.zoa.runner_image_uri
@@ -499,13 +554,23 @@ module "zoa_lambda" {
   eks_cluster_name     = module.regional_cluster.cluster_name
 
   dynamodb_table_name  = module.zoa.table_name
-  dynamodb_table_arn   = module.zoa.table_arn
   audit_table_name     = module.zoa.audit_table_name
-  audit_table_arn      = module.zoa.audit_table_arn
   artifact_bucket_name = module.zoa.bucket_name
   artifact_bucket_arn  = module.zoa.bucket_arn
   kms_key_arn          = module.zoa.kms_key_arn
   uploader_role_arn    = module.zoa.uploader_role_arn
+
+  # Boundary integration — use deployment_name (e.g. us-east-1-eph-xxx), not regional_id.
+  sessions_table_name = module.zoa.sessions_table_name
+  deployment_name     = var.deployment_name
+  targets_ssm_prefix  = "/zoa/targets/${var.deployment_name}"
+  vpc_id              = module.regional_cluster.vpc_id
+  boundary_image      = var.zoa_boundary_image
+
+  session_idle_timeout_seconds = var.zoa_boundary_session_idle_timeout_seconds
+
+  lambda_api_concurrency    = var.zoa_lambda_api_concurrency
+  lambda_worker_concurrency = var.zoa_lambda_worker_concurrency
 
   hyperfleet_db_resource_arn = local.hyperfleet_db_iam_arn
   # RDS endpoint output is the hostname only; append the port so the value is
@@ -514,6 +579,58 @@ module "zoa_lambda" {
   hyperfleet_db_name     = module.hyperfleet_db.database_name
   # Connect as the dedicated read-only IAM role, not the master user.
   hyperfleet_db_username = local.zoa_db_reader_username
+}
+
+# =============================================================================
+# Bedrock account primitives (agreements, budget)
+# =============================================================================
+# Per-account resources; skip-if-exists for shared pool accounts. Not wired to ZOA.
+# Future: call module.bedrock from dedicated per-account Terraform only.
+
+module "bedrock" {
+  source      = "../../modules/bedrock"
+  environment = var.environment
+}
+
+# =============================================================================
+# ZOA Access Lambda (Boundary session management — RC only)
+# =============================================================================
+
+module "zoa_access" {
+  source = "../../modules/zoa-access"
+
+  providers = {
+    aws                             = aws
+    aws.central_deployments         = aws.central_deployments
+    aws.central_deployments_replica = aws.central_deployments_replica
+  }
+
+  depends_on = [module.zoa, module.zoa_lambda]
+
+  regional_id = var.regional_id
+  image_uri   = module.zoa.lambda_image_uri
+
+  central_account_id         = data.aws_caller_identity.central.account_id
+  trusted_assumer_role_names = var.zoa_access_trusted_assumer_role_names
+
+  mc_account_ids = local.mc_account_ids
+
+  sessions_table_name                 = module.zoa.sessions_table_name
+  audit_table_name                    = module.zoa.audit_table_name
+  targets_ssm_prefix                  = "/zoa/targets/${var.deployment_name}"
+  kms_key_arn                         = module.zoa.kms_key_arn
+  deployment_name                     = var.deployment_name
+  boundary_ecs_cluster_arn            = module.zoa_lambda.boundary_ecs_cluster_arn
+  boundary_task_definition_arn_prefix = module.zoa_lambda.boundary_task_definition_arn_prefix
+  boundary_ecs_exec_command           = module.zoa_lambda.boundary_ecs_exec_interactive_command
+  exec_scoped_role_arn                = module.zoa_lambda.boundary_exec_scoped_role_arn
+  lambda_execution_role_arn           = module.zoa_lambda.access_lambda_role_arn
+  lambda_execution_role_name          = module.zoa_lambda.access_lambda_role_name
+
+  session_idle_timeout_seconds = var.zoa_boundary_session_idle_timeout_seconds
+  session_max_duration_hours   = var.zoa_boundary_session_max_duration_hours
+
+  lambda_access_concurrency = var.zoa_lambda_access_concurrency
 }
 
 # =============================================================================
