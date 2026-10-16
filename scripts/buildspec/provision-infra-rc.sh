@@ -67,6 +67,15 @@ if [[ "$_MC_INFO" != "[]" ]]; then
             _MC_PARTS+=("${_ID}:${_ACCT}")
         fi
     done
+    _MC_INFO_LEN=$(echo "$_MC_INFO" | jq 'length')
+    if [[ "$_MC_INFO_LEN" -gt 0 && ${#_MC_PARTS[@]} -eq 0 ]]; then
+        echo "ERROR: management_clusters_info lists ${_MC_INFO_LEN} cluster(s) but none resolved to id:account_id (check account_id or SSM parameters)" >&2
+        exit 1
+    fi
+    if [[ "${ENVIRONMENT:-}" == "ephemeral" ]] && echo "$_MC_INFO" | jq -e '.[].account_id | test("^ssm://")' >/dev/null 2>&1; then
+        echo "ERROR: ephemeral RC deploy must use literal MC account_id in management_clusters_info (re-render after ephemeral provider injects aws.management_cluster_account_id)" >&2
+        exit 1
+    fi
 fi
 export TF_VAR_management_clusters=$(IFS=,; echo "${_MC_PARTS[*]}")
 
