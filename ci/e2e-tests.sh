@@ -53,13 +53,9 @@ else
   echo "WARNING: RHOBS_API_URL not available — observability tests will be skipped"
 fi
 
-# ZOA RC/MC API URLs, consumed further down by the rosa-hyperfleet-zoa clone
-# that runs its own `Label("smoke")` specs (see that repo's test/e2e/). Same
-# resolution order as RHOBS_API_URL above; local wrapper scripts
-# (ephemeral-env.sh) already export these directly, so this is mainly for
-# CI-triggered runs (Prow). ZOA_MC_API_URL is only absent if this environment
-# genuinely has no MC (empty provision_mcs) — ephemeral envs provision one
-# MC by default, so in the common case both resolve and both get tested.
+# Resolve ZOA RC/MC API URLs. Consumed both by the dedicated ZOA PR flow and by
+# the ZOA coverage in the standard flow below (nightlies run the full suite,
+# presubmits run smoke).
 if [[ -z "${ZOA_RC_API_URL:-}" ]]; then
   if [[ -r "${CREDS_DIR}/zoa_rc_api_url" ]]; then
     ZOA_RC_API_URL="$(cat "${CREDS_DIR}/zoa_rc_api_url")"
@@ -74,12 +70,7 @@ if [[ -z "${ZOA_MC_API_URL:-}" ]]; then
     ZOA_MC_API_URL="$(jq -r '.zoa_api_function_url.value // empty' "${SHARED_DIR}/management-terraform-outputs.json")"
   fi
 fi
-if [[ -n "${ZOA_RC_API_URL:-}" ]]; then
-  export ZOA_RC_API_URL
-  echo "ZOA RC API URL: ${ZOA_RC_API_URL}"
-else
-  echo "ZOA_RC_API_URL not available — ZOA RC tests will target MC only (if available)"
-fi
+[[ -n "${ZOA_RC_API_URL:-}" ]] && export ZOA_RC_API_URL && echo "ZOA RC API URL: ${ZOA_RC_API_URL}"
 [[ -n "${ZOA_MC_API_URL:-}" ]] && export ZOA_MC_API_URL && echo "ZOA MC API URL: ${ZOA_MC_API_URL}"
 
 # Use the regional account profile for authenticated API calls
@@ -152,7 +143,7 @@ if [[ "${REPO_NAME:-}" == "rosa-hyperfleet-zoa" ]]; then
   echo "=== ZOA PR detected — running ZOA full e2e only ==="
   echo ""
   zoa_exit=0
-  if [[ -n "${ZOA_RC_API_URL:-}" ]] || [[ -n "${ZOA_MC_API_URL:-}" ]]; then
+  if [[ -n "${ZOA_RC_API_URL:-}" && -n "${ZOA_MC_API_URL:-}" ]]; then
     if git clone --depth 1 --branch "${ZOA_REF}" "${ZOA_REPO}" "${WORK_DIR}/zoa"; then
       make -C "${WORK_DIR}/zoa" test-e2e || zoa_exit=$?
     else
@@ -160,7 +151,7 @@ if [[ "${REPO_NAME:-}" == "rosa-hyperfleet-zoa" ]]; then
       zoa_exit=1
     fi
   else
-    echo "ERROR: neither ZOA_RC_API_URL nor ZOA_MC_API_URL resolved — ZOA e2e tests cannot run" >&2
+    echo "ERROR: both ZOA_RC_API_URL and ZOA_MC_API_URL are required for ZOA e2e tests" >&2
     zoa_exit=1
   fi
   echo ""
@@ -176,7 +167,7 @@ if [[ "${REPO_NAME:-}" == "rosa-hyperfleet-zoa" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Standard flow: API tests + ZOA tests + HCP + monitoring
+# Standard flow: API tests + ZOA + HCP + monitoring.
 # ---------------------------------------------------------------------------
 echo ""
 echo "=== API Tests ==="
@@ -197,6 +188,7 @@ platform_rc=0
 hcp_rc=0
 monitoring_rc=0
 rosa_cli_rc=0
+zoa_exit=0
 
 if [[ "${E2E_SKIP_PLATFORM_API}" == "true" ]]; then
   echo ""
@@ -221,7 +213,6 @@ fi
 # Same "capture the exit code, don't abort" pattern used for platform_rc/
 # hcp_rc/monitoring_rc: a zoa failure does NOT stop this script or skip the
 # platform API / HCP / monitoring tests, but DOES fail the overall job.
-zoa_exit=0
 if [[ "${E2E_SKIP_ZOA}" == "true" ]]; then
   echo ""
   echo "=== ZOA Tests ==="
