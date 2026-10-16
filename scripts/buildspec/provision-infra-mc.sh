@@ -58,8 +58,8 @@ if [ "${DELETE_FLAG}" == "true" ]; then
     export TF_VAR_oidc_bucket_arn="arn:aws:s3:::placeholder"
     export TF_VAR_oidc_bucket_region="us-east-1"
     export TF_VAR_zoa_lambda_ecr_url="000000000000.dkr.ecr.us-east-1.amazonaws.com/placeholder"
-    TF_VAR_zoa_data_access_role_arn=$(_resolve_zoa_data_access_role_arn_from_contract)
-    export TF_VAR_zoa_data_access_role_arn
+    # Leave zoa_data_access_role_arn unset: RC may already have destroyed the role; SSM target
+    # is removed below via child-admin. Avoid configuring aws.zoa_targets assume_role on destroy.
 else
     # Assume child admin role in RC account to access state bucket (scoped access instead of org-wide).
     _resolve_rc_account
@@ -254,6 +254,14 @@ terraform init -reconfigure \
 
 if [ "${TERRAFORM_ACTION}" == "apply" ] && [ -f imports.sh ]; then
     source imports.sh
+fi
+
+if [ "${TERRAFORM_ACTION}" == "destroy" ]; then
+    # SSM parameter already deleted in RC/MC; drop from state so destroy does not assume
+    # zoa-data-access in RC (that role may already be gone if RC destroy finished first).
+    terraform state rm 'module.zoa_lambda.aws_ssm_parameter.zoa_target[0]' 2>/dev/null \
+        && echo "Removed zoa_target from state (SSM already deleted)" \
+        || echo "zoa_target not in state (ok)"
 fi
 
 set +e
