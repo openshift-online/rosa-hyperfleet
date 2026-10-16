@@ -57,7 +57,7 @@ After apply, wire **`module.zoa_access`** with boundary outputs and `access_lamb
 
 MC deployments set `data_access_role_arn` to assume a role in the RC account for DynamoDB and S3 access. The data layer always lives in the RC account.
 
-RC target metadata uses `aws_ssm_parameter.zoa_target` in the RC account (`targets_ssm_prefix` set, `target_type = "rc"`). MC targets use `provision-mc-zoa-target-ssm.sh` (RC Terraform from the MC Deploy buildspec).
+RC target metadata uses `aws_ssm_parameter.zoa_target` in the RC account (`targets_ssm_prefix` set, `target_type = "rc"`). MC targets use the MC pipeline **Provision-McZoaTargetSSM** stage (`provision-mc-zoa-target-ssm.sh`, RC Terraform).
 
 ## Timeout Hierarchy
 

@@ -3,8 +3,6 @@
 # Called from: terraform/config/pipeline-management-cluster/buildspec-provision-infra.yml
 set -euo pipefail
 
-_BUILDSCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 source scripts/pipeline-common/lib.sh
 
 preflight_check
@@ -188,11 +186,8 @@ if [ -z "${TF_VAR_zoa_deployment_name}" ]; then
     exit 1
 fi
 
-if [ "${DELETE_FLAG}" == "true" ]; then
-    bash "${_BUILDSCRIPTS_DIR}/provision-mc-zoa-target-ssm.sh" destroy
-fi
-
 # ── Phase 2: Apply/Destroy MC infrastructure ─────────────────────────────────
+# MC ZOA target SSM: separate pipeline stage (buildspec-provision-mc-zoa-target-ssm.yml).
 use_mc_account
 
 export TF_STATE_BUCKET="terraform-state-${TARGET_ACCOUNT_ID}-${TARGET_REGION}"
@@ -243,13 +238,6 @@ if [ "${TERRAFORM_ACTION}" == "apply" ] && [ -f imports.sh ]; then
     source imports.sh
 fi
 
-if [ "${TERRAFORM_ACTION}" == "destroy" ]; then
-    # MC module no longer manages RC SSM; drop legacy state address if present (migration).
-    terraform state rm 'module.zoa_lambda.aws_ssm_parameter.zoa_target[0]' 2>/dev/null \
-        && echo "Removed legacy zoa_target from MC state" \
-        || true
-fi
-
 set +e
 terraform "${TERRAFORM_ACTION}" -auto-approve
 TERRAFORM_STATUS=$?
@@ -257,8 +245,4 @@ set -e
 
 if [ $TERRAFORM_STATUS -ne 0 ]; then
     exit $TERRAFORM_STATUS
-fi
-
-if [ "${TERRAFORM_ACTION}" == "apply" ]; then
-    bash "${_BUILDSCRIPTS_DIR}/provision-mc-zoa-target-ssm.sh" apply
 fi
