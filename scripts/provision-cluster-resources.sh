@@ -78,21 +78,16 @@ ensure_platform_image() {
     # Determine build project name
     local project_name="${NAME_PREFIX:+${NAME_PREFIX}-}build-platform-image"
 
-    # Get current git SHA (or use HEAD if not available)
-    local git_sha
-    if git_sha=$(git rev-parse HEAD 2>/dev/null); then
-        echo "Building at git SHA: $git_sha"
-    else
-        git_sha="HEAD"
-        echo "WARNING: git not available, using sourceVersion=HEAD"
-    fi
+    # Build at the ref we were handed. Pipelines and ArgoCD only ever follow
+    # GITHUB_BRANCH; local HEAD is not necessarily that ref.
+    echo "Building at ref: $GITHUB_BRANCH"
 
     # Start the build
     echo "Starting build: $project_name"
     local build_id
     if ! build_id=$(aws codebuild start-build \
         --project-name "$project_name" \
-        --source-version "$git_sha" \
+        --source-version "$GITHUB_BRANCH" \
         --query 'build.id' \
         --output text \
         --no-cli-pager 2>&1); then
@@ -354,7 +349,6 @@ generate_pipeline_file_paths() {
             '[
                 ("deploy/" + $env + "/" + $region + "/codebuild-regional-cluster-inputs/**"),
                 ("deploy/" + $env + "/" + $region + "/argocd-{values-regional-cluster.yaml,bootstrap-regional-cluster/**}"),
-                "argocd/config/{regional-cluster,shared}/**",
                 "terraform/config/regional-cluster/**"
             ]'
     elif [ "$cluster_type" = "management" ]; then
@@ -365,7 +359,6 @@ generate_pipeline_file_paths() {
             '[
                 ("deploy/" + $env + "/" + $region + "/codebuild-management-cluster-" + $mc_id + "-inputs/**"),
                 ("deploy/" + $env + "/" + $region + "/argocd-{values-management-cluster.yaml,bootstrap-management-cluster/**}"),
-                "argocd/config/{management-cluster,shared}/**",
                 "terraform/config/{management-cluster,kube-applier-dynamodb-provisioning}/**"
             ]'
     fi
@@ -472,7 +465,7 @@ upsert_pipeline() {
     local pipeline_name
     pipeline_name=$(pipeline_name_for_project "$project_name")
     local spec
-    spec=$(generate_pipeline_spec "$cluster_type" "$pipeline_name" "$project_name" "$cluster_id" "$region_deployment")
+    spec=$(generate_pipeline_spec "$cluster_type" "$pipeline_name" "$project_name" "$cluster_id" "$region_deployment") || return 1
 
     if aws codepipeline get-pipeline --name "$pipeline_name" --query 'pipeline.name' --output text --no-cli-pager 2>/dev/null | grep -qx "$pipeline_name"; then
         local current_spec current_normalized desired_normalized active_count
@@ -485,11 +478,14 @@ upsert_pipeline() {
             return 0
         fi
 
-        active_count=$(aws codepipeline list-pipeline-executions \
+        if ! active_count=$(aws codepipeline list-pipeline-executions \
             --pipeline-name "$pipeline_name" \
             --max-results 100 \
             --output json \
-            --no-cli-pager | jq '[.pipelineExecutionSummaries[]? | select(.status == "InProgress" or .status == "Stopping" or .status == "Queued")] | length')
+            --no-cli-pager | jq -e '[.pipelineExecutionSummaries[]? | select(.status == "InProgress" or .status == "Stopping" or .status == "Queued")] | length'); then
+            echo "ERROR: Failed to list executions for $pipeline_name; cannot safely update" >&2
+            return 1
+        fi
         if (( active_count > 0 )); then
             local current_core desired_core
             current_core=$(echo "$current_spec" | jq -S 'del(.version, .triggers)')
@@ -582,26 +578,10 @@ upsert_project() {
 
             if aws codebuild create-project --cli-input-json "$spec" --tags key=DefinitionHash,value="$desired_hash" --no-cli-pager >/dev/null; then
                 echo "✓ Project created"
+                # CreatePipeline below automatically starts a Day-1 execution at
+                # the branch head, so we never start one explicitly here (a second
+                # start races the creation execution under SUPERSEDED mode).
                 upsert_pipeline "$cluster_type" "$project_name" "$cluster_id" "$region_deployment" || return 1
-
-                # Day-1 first run: start a pipeline with the current git SHA.
-                # Gated by SKIP_DAY1_BUILD — ephemeral provider owns pipeline execution.
-                if [ "${SKIP_DAY1_BUILD:-false}" != "true" ]; then
-                    local git_sha
-                    git_sha=$(git rev-parse HEAD 2>/dev/null || echo "main")
-                    echo "Starting Day-1 pipeline at SHA: $git_sha"
-
-                    if aws codepipeline start-pipeline-execution \
-                        --name "$(pipeline_name_for_project "$project_name")" \
-                        --source-revisions "actionName=Source,revisionType=COMMIT_ID,revisionValue=$git_sha" \
-                        --no-cli-pager >/dev/null; then
-                        echo "✓ Day-1 pipeline started"
-                    else
-                        echo "WARNING: Failed to start Day-1 pipeline (non-fatal)" >&2
-                    fi
-                else
-                    echo "SKIP_DAY1_BUILD=true — skipping Day-1 pipeline execution (provider will trigger)"
-                fi
             else
                 echo "ERROR: Failed to create project $project_name" >&2
                 return 1
@@ -851,12 +831,6 @@ run_cluster_action() {
     [ -n "$config_path" ] || { echo "ERROR: --config is required" >&2; return 2; }
     validate_environment || return 2
 
-    # Explicit callers own execution at a specific source revision. Do not
-    # start an arbitrary local HEAD as a side effect of resource creation.
-    if [[ "$action" == create-* || "$action" == Create* ]]; then
-        export SKIP_DAY1_BUILD=true
-    fi
-
     case "$action" in
         create-rc|CreateRC)
             [ -n "$region_deployment" ] || { echo "ERROR: --region-deployment is required" >&2; return 2; }
@@ -1020,8 +994,7 @@ for region_dir in deploy/${ENVIRONMENT}/*/; do
     if [ -f "${region_dir}codebuild-provisioner-inputs/regional-cluster.json" ]; then
         REGIONAL_CONFIG="${region_dir}codebuild-provisioner-inputs/regional-cluster.json"
 
-        DELETE_FLAG=$(jq -r '.delete_codebuild // false' "$REGIONAL_CONFIG")
-        [ "$FORCE_DELETE_ALL_PIPELINES" == "true" ] && DELETE_FLAG="true"
+        DELETE_FLAG="$FORCE_DELETE_ALL_PIPELINES"
 
         if [ "$DELETE_FLAG" == "true" ]; then
             delete_rc "$REGIONAL_CONFIG"
@@ -1044,8 +1017,7 @@ for region_dir in deploy/${ENVIRONMENT}/*/; do
             _mc_basename=$(basename "$mc_config" .json)
             CLUSTER_NAME="${_mc_basename#management-cluster-}"
 
-            DELETE_FLAG=$(jq -r '.delete_codebuild // false' "$mc_config")
-            [ "$FORCE_DELETE_ALL_PIPELINES" == "true" ] && DELETE_FLAG="true"
+            DELETE_FLAG="$FORCE_DELETE_ALL_PIPELINES"
 
             if [ "$DELETE_FLAG" == "true" ]; then
                 delete_mc "$mc_config"

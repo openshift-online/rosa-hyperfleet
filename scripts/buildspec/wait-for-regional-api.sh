@@ -8,8 +8,7 @@ source scripts/pipeline-common/lib.sh
 preflight_check
 config_load regional
 
-DELETE_FLAG=$(jq -r '.delete // false' "$DEPLOY_CONFIG_FILE")
-[ "${IS_DESTROY:-false}" == "true" ] && DELETE_FLAG="true"
+DELETE_FLAG="${IS_DESTROY:-false}"
 
 if [ "${DELETE_FLAG}" == "true" ]; then
     echo "delete=true — skipping Regional Cluster API readiness"

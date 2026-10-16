@@ -44,6 +44,5 @@
 {%- set _ = _mc_info.append({"id": mc.management_id, "account_id": mc.account_id}) %}
 {%- endfor %}
 {%- if _mc_info %},
-  "management_clusters_info": {{ _mc_info | tojson }}{% endif %}{% if delete %},
-  "delete": true{% endif %}
+  "management_clusters_info": {{ _mc_info | tojson }}{% endif %}
 }

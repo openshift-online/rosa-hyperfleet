@@ -156,8 +156,7 @@ fi
 export ENVIRONMENT="${ENVIRONMENT:-staging}"
 
 # Determine terraform action
-DELETE_FLAG=$(jq -r '.delete // false' "$DEPLOY_CONFIG_FILE")
-[ "${IS_DESTROY:-false}" == "true" ] && DELETE_FLAG="true"
+DELETE_FLAG="${IS_DESTROY:-false}"
 
 TERRAFORM_ACTION="apply"
 [ "${DELETE_FLAG}" == "true" ] && TERRAFORM_ACTION="destroy"

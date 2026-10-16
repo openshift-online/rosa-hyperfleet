@@ -54,8 +54,6 @@ resource "aws_iam_role_policy" "mc_codebuild_policy" {
           "s3:GetBucketLocation"
         ]
         Resource = [
-          "arn:aws:s3:::mc*-artifacts-*",
-          "arn:aws:s3:::mc*-artifacts-*/*",
           "arn:aws:s3:::terraform-state-*",
           "arn:aws:s3:::terraform-state-*/*"
         ]
@@ -86,16 +84,6 @@ resource "aws_iam_role_policy" "mc_codebuild_policy" {
         Resource = [
           "arn:aws:ssm:*:${data.aws_caller_identity.mc_shared.account_id}:parameter/infra/*"
         ]
-      },
-      {
-        Sid    = "CheckQueueSelfScope"
-        Effect = "Allow"
-        Action = [
-          "codebuild:ListBuildsForProject",
-          "codebuild:BatchGetBuilds",
-          "codebuild:StopBuild"
-        ]
-        Resource = "arn:aws:codebuild:${var.region}:${data.aws_caller_identity.mc_shared.account_id}:project/${local.name_prefix}mc*"
       },
       {
         # Cross-account assume role for child MC accounts. Account IDs are

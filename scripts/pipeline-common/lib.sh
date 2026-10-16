@@ -230,40 +230,22 @@ parseBool() {
     esac
 }
 
-# Resolve a rendered cluster config path.
-# CodeBuild renders codebuild-* directories; the pipeline fallback preserves
-# compatibility with environments that still have legacy rendered files.
+# Resolve a rendered cluster config path (render.py writes codebuild-* dirs).
 config_path_for_mode() {
     local mode="$1"
-    local codebuild_path pipeline_path
 
     if [[ "$mode" == "regional" ]]; then
-        codebuild_path="deploy/${ENVIRONMENT}/${TARGET_REGION}/codebuild-regional-cluster-inputs/terraform.json"
-        pipeline_path="deploy/${ENVIRONMENT}/${TARGET_REGION}/pipeline-regional-cluster-inputs/terraform.json"
+        echo "deploy/${ENVIRONMENT}/${TARGET_REGION}/codebuild-regional-cluster-inputs/terraform.json"
     elif [[ "$mode" == "management" ]]; then
-        codebuild_path="deploy/${ENVIRONMENT}/${TARGET_REGION}/codebuild-management-cluster-${MANAGEMENT_ID}-inputs/terraform.json"
-        pipeline_path="deploy/${ENVIRONMENT}/${TARGET_REGION}/pipeline-management-cluster-${MANAGEMENT_ID}-inputs/terraform.json"
+        echo "deploy/${ENVIRONMENT}/${TARGET_REGION}/codebuild-management-cluster-${MANAGEMENT_ID}-inputs/terraform.json"
     else
         echo "ERROR: config_path_for_mode: unknown mode '$mode'" >&2
         return 1
     fi
-
-    if [[ -f "$codebuild_path" ]]; then
-        echo "$codebuild_path"
-    else
-        echo "$pipeline_path"
-    fi
 }
 
 provisioner_config_path() {
-    local codebuild_path="deploy/${ENVIRONMENT}/${TARGET_REGION}/codebuild-provisioner-inputs/terraform.json"
-    local pipeline_path="deploy/${ENVIRONMENT}/${TARGET_REGION}/pipeline-provisioner-inputs/terraform.json"
-
-    if [[ -f "$codebuild_path" ]]; then
-        echo "$codebuild_path"
-    else
-        echo "$pipeline_path"
-    fi
+    echo "deploy/${ENVIRONMENT}/${TARGET_REGION}/codebuild-provisioner-inputs/terraform.json"
 }
 
 # Load terraform variables from deploy/ JSON config files.

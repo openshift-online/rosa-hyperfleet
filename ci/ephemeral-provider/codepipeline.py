@@ -1,5 +1,5 @@
-import fnmatch
 import logging
+import re
 import time
 from dataclasses import dataclass
 
@@ -10,6 +10,75 @@ from __init__ import BUILD_COMPLETION_TIMEOUT, POLL_INTERVAL
 from codebuild import BuildMonitor, BuildResult
 
 log = logging.getLogger(__name__)
+
+
+def _codepipeline_glob_to_regex(pattern: str) -> str:
+    """Translate a CodePipeline branches/filePaths glob into a regex string.
+
+    Follows AWS's documented glob semantics, which differ from Python's
+    ``fnmatch``: ``*`` matches within a single path segment (never ``/``),
+    ``**`` crosses directory boundaries (zero or more segments), ``?`` matches
+    one non-separator character, ``[...]`` is a character class, and ``{a,b}``
+    is alternation (groups cannot be nested). See
+    https://docs.aws.amazon.com/codepipeline/latest/userguide/syntax-glob.html
+    """
+    i = 0
+    n = len(pattern)
+    out: list[str] = []
+    brace_depth = 0
+    while i < n:
+        c = pattern[i]
+        if c == "*":
+            if i + 1 < n and pattern[i + 1] == "*":
+                out.append(".*")
+                i += 2
+                # Swallow an immediate '/' so '**/' also matches zero segments.
+                if i < n and pattern[i] == "/":
+                    i += 1
+                continue
+            out.append("[^/]*")
+        elif c == "?":
+            out.append("[^/]")
+        elif c == "[":
+            j = i + 1
+            if j < n and pattern[j] in "!^":
+                j += 1
+            if j < n and pattern[j] == "]":
+                j += 1
+            while j < n and pattern[j] != "]":
+                j += 1
+            if j >= n:
+                out.append(re.escape(c))
+            else:
+                inner = pattern[i + 1 : j]
+                if inner[:1] in ("!", "^"):
+                    inner = "^" + inner[1:]
+                out.append("[" + inner + "]")
+                i = j + 1
+                continue
+        elif c == "{":
+            brace_depth += 1
+            out.append("(?:")
+        elif c == "}" and brace_depth:
+            brace_depth -= 1
+            out.append(")")
+        elif c == "," and brace_depth:
+            out.append("|")
+        else:
+            out.append(re.escape(c))
+        i += 1
+    return "".join(out)
+
+
+def _codepipeline_glob_match(value: str, pattern: str) -> bool:
+    """Full-match ``value`` against a CodePipeline glob ``pattern``.
+
+    Passes the regex as a string so the stdlib ``re`` module caches the
+    compiled pattern internally (re._cache) — no cache maintained here.
+    """
+    return re.fullmatch(_codepipeline_glob_to_regex(pattern), value) is not None
+
+
 PIPELINE_LOOKUP_GRACE_PERIOD = 300
 PIPELINE_LOOKUP_NOT_FOUND_ERRORS = {
     "PipelineExecutionNotFoundException",
@@ -177,8 +246,8 @@ class PipelineMonitor:
             includes = rule.get("includes", [])
             excludes = rule.get("excludes", [])
             return (
-                (not includes or any(fnmatch.fnmatchcase(value, pattern) for pattern in includes))
-                and not any(fnmatch.fnmatchcase(value, pattern) for pattern in excludes)
+                (not includes or any(_codepipeline_glob_match(value, pattern) for pattern in includes))
+                and not any(_codepipeline_glob_match(value, pattern) for pattern in excludes)
             )
 
         for trigger in pipeline.get("triggers", []):
@@ -211,8 +280,15 @@ class PipelineMonitor:
             reverse=True,
         )
         for execution in executions:
-            if execution.get("status") != "Succeeded":
+            status = execution.get("status")
+            if status in ("InProgress", "Stopping", "Queued"):
+                # Skip non-terminal executions; only judge completed ones.
                 continue
+            if status != "Succeeded":
+                # The newest terminal execution did not succeed. Do not fall
+                # back to an older success, or a failed latest apply would be
+                # reported as a retained success.
+                return None
             execution_id = execution.get("pipelineExecutionId")
             source_sha = next(
                 (
@@ -358,6 +434,62 @@ class PipelineMonitor:
                         f"{pipeline_name}:{execution.get('pipelineExecutionId', 'unknown')}"
                     )
         return active
+
+    def disable_push_triggers(self, pipeline_name: str) -> None:
+        """Remove push triggers from a pipeline.
+
+        Used before teardown: under SUPERSEDED execution mode a push to the
+        branch during or after a destroy would otherwise queue an apply that
+        recreates the cluster. Idempotent and safe if the pipeline is missing.
+        """
+        try:
+            response = self.client.get_pipeline(name=pipeline_name)
+        except self.client.exceptions.PipelineNotFoundException:
+            return
+        pipeline = response.get("pipeline", {})
+        if not pipeline.get("triggers"):
+            return
+        pipeline["triggers"] = []
+        self.client.update_pipeline(pipeline=pipeline)
+        log.info("Removed push triggers from pipeline %s", pipeline_name)
+
+    def stop_active_executions(self, pipeline_names: list[str]) -> None:
+        """Abandon any in-progress/queued executions on the given pipelines.
+
+        Lets a teardown proceed instead of erroring out when a provision step
+        timed out with its apply still running. Safe if a pipeline is missing.
+        """
+        for pipeline_name in pipeline_names:
+            try:
+                response = self.client.list_pipeline_executions(
+                    pipelineName=pipeline_name,
+                    maxResults=100,
+                )
+            except self.client.exceptions.PipelineNotFoundException:
+                continue
+            for execution in response.get("pipelineExecutionSummaries", []):
+                if execution.get("status") not in ("InProgress", "Queued"):
+                    continue
+                execution_id = execution.get("pipelineExecutionId")
+                if not execution_id:
+                    continue
+                try:
+                    self.client.stop_pipeline_execution(
+                        pipelineName=pipeline_name,
+                        pipelineExecutionId=execution_id,
+                        abandon=True,
+                        reason="Teardown requested; abandoning active execution",
+                    )
+                    log.info(
+                        "Stopped active execution %s on %s", execution_id, pipeline_name
+                    )
+                except ClientError as exc:
+                    log.warning(
+                        "Could not stop execution %s on %s: %s",
+                        execution_id,
+                        pipeline_name,
+                        exc,
+                    )
 
     def _build_execution_id(self, pipeline_name: str, pipeline_execution_id: str) -> str | None:
         response = self.client.list_action_executions(

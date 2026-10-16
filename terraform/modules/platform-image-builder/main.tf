@@ -12,6 +12,12 @@ data "aws_region" "current" {}
 locals {
   # When name_prefix is set (e.g., "abc123"), platform-image resources use that prefix.
   name_prefix = var.name_prefix != "" ? "${var.name_prefix}-" : ""
+
+  common_tags = {
+    function  = "platform-image"
+    module    = "platform-image-builder"
+    ManagedBy = "terraform"
+  }
 }
 
 # Use shared GitHub Connection (created in central-account-bootstrap)
@@ -34,6 +40,7 @@ resource "aws_codebuild_project" "build_platform_image" {
   service_role           = aws_iam_role.build_platform_image_role.arn
   build_timeout          = 30
   concurrent_build_limit = 1 # Prevent parallel executions
+  tags                   = local.common_tags
 
   artifacts {
     type = "NO_ARTIFACTS"
@@ -55,7 +62,7 @@ resource "aws_codebuild_project" "build_platform_image" {
   source {
     type            = "GITHUB"
     location        = "https://github.com/${var.github_repository}.git"
-    git_clone_depth = 0 # Full history for check-queue.sh git merge-base
+    git_clone_depth = 0 # Full history (image tag derives from Dockerfile content hash)
     buildspec       = "terraform/modules/platform-image-builder/buildspec-build-image.yml"
 
     git_submodules_config {

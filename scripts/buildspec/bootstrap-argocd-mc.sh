@@ -15,8 +15,7 @@ validate_aws_account_id "REGIONAL_AWS_ACCOUNT_ID" "${REGIONAL_AWS_ACCOUNT_ID}"
 
 RESOLVED_REGIONAL_ACCOUNT_ID="${REGIONAL_AWS_ACCOUNT_ID}"
 
-DELETE_FLAG=$(jq -r '.delete // false' "$DEPLOY_CONFIG_FILE")
-[ "${IS_DESTROY:-false}" == "true" ] && DELETE_FLAG="true"
+DELETE_FLAG="${IS_DESTROY:-false}"
 
 if [ "${DELETE_FLAG}" == "true" ]; then
     echo "delete=true — skipping ArgoCD bootstrap"

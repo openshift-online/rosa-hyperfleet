@@ -6,9 +6,8 @@
 #   cluster-type: regional-cluster | RC | rc | management-cluster | MC | mc
 #
 # Flow:
-#   1. Source check-queue.sh (skip if stale SHA)
-#   2. Call provision-infra-<type>.sh
-#   3. Call bootstrap/register scripts per cluster type
+#   1. Call provision-infra-<type>.sh
+#   2. Call bootstrap/register scripts per cluster type
 set -euo pipefail
 
 CLUSTER_TYPE_ARG="${1:?Usage: provision-cluster.sh <regional-cluster|RC|rc|management-cluster|MC|mc>}"
@@ -28,7 +27,7 @@ case "${CLUSTER_TYPE_ARG,,}" in  # ${var,,} = lowercase
 esac
 
 # ── Phase 0: Initialize exported variables ───────────────────────────────────
-# Set APPLIED=false first so a check-queue skip or early exit reports APPLIED=false.
+# Set APPLIED=false first so an early exit/failure reports APPLIED=false.
 # 66718's CI gate reads SUCCEEDED && APPLIED==true && APPLIED_SHA==<desired> to
 # confirm the cluster reached its desired GitOps state (applied or destroyed).
 export APPLIED=false
@@ -51,22 +50,11 @@ run_timed_step() {
     fi
 }
 
-# ── Phase 1: Check queue and skip stale commits ──────────────────────────────
-# Source check-queue so its skip flag is visible in this shell.
-source scripts/pipeline-common/check-queue.sh
-
-if [ "${CHECK_QUEUE_SKIPPED:-false}" = "true" ]; then
-    echo "provision-cluster: stale build skipped; newer SHA is queued"
-    if [ "${BASH_SOURCE[0]}" = "$0" ]; then
-        exit 0
-    fi
-    return 0
-fi
-
-# If we reach here, self is the newest commit — proceed to terraform apply.
+# ── Phase 1: Provision infrastructure ────────────────────────────────────────
+# Under CodePipeline + SUPERSEDED only one execution per pipeline reaches the
+# build stage, so there is no build queue to de-duplicate here.
 echo "provision-cluster: proceeding with ${CLUSTER_TYPE} provisioning"
 
-# ── Phase 2: Provision infrastructure ────────────────────────────────────────
 case "$CLUSTER_TYPE" in
     regional-cluster)
         echo "provision-cluster: Regional Cluster (RC) pipeline"
@@ -87,12 +75,11 @@ esac
 
 echo "provision-cluster: ${CLUSTER_TYPE} provisioning complete"
 
-# ── Phase 3: Mark as applied ──────────────────────────────────────────────────
+# ── Phase 2: Mark as applied ──────────────────────────────────────────────────
 # All phase scripts succeeded (terraform apply/destroy + bootstrap/register). Set
 # APPLIED=true so the CI gate accepts this build. APPLIED_SHA is the git commit.
 # Dual meaning: for provision builds APPLIED=true means "this SHA's config was
-# applied"; for destroy builds (IS_DESTROY=true / .delete=true) it means "this
-# SHA was fully processed (infra destroyed)". The phase scripts already honor
-# IS_DESTROY (provision-infra-rc.sh:124-128, register.sh:13-17, bootstrap-argocd-*.sh).
+# applied"; for destroy builds (IS_DESTROY=true) it means "this SHA was fully
+# processed (infra destroyed)". The phase scripts already honor IS_DESTROY.
 export APPLIED=true
 export APPLIED_SHA="${CODEBUILD_RESOLVED_SOURCE_VERSION}"

@@ -9,8 +9,6 @@ from __init__ import POLL_INTERVAL, BUILD_COMPLETION_TIMEOUT
 log = logging.getLogger(__name__)
 
 BUILD_PROGRESS_LOG_INTERVAL = 300
-BUILD_DISCOVERY_ATTEMPTS = 5
-BUILD_DISCOVERY_INTERVAL = 2
 
 
 @dataclass
@@ -53,65 +51,6 @@ class BuildMonitor:
         self.session = session
         self.client = session.client("codebuild")
 
-    def start_build(
-        self,
-        project_name: str,
-        source_version: str,
-        environment_overrides: dict[str, str] | None = None,
-    ) -> str:
-        """Start a CodeBuild build for a project at a specific git SHA.
-
-        Args:
-            project_name: CodeBuild project name (e.g., "eph-abc123-regional").
-            source_version: Full git SHA to build (e.g., "a1b2c3d4...").
-
-        Returns:
-            Build ID (e.g., "project-name:uuid").
-        """
-        log.info("Starting build: %s at SHA %s", project_name, source_version[:7])
-        request = {
-            "projectName": project_name,
-            "sourceVersion": source_version,
-        }
-        if environment_overrides:
-            request["environmentVariablesOverride"] = [
-                {"name": name, "value": value, "type": "PLAINTEXT"}
-                for name, value in environment_overrides.items()
-            ]
-
-        try:
-            response = self.client.start_build(**request)
-            build_id = response["build"]["id"]
-            log.info("Build started: %s", build_id)
-            return build_id
-        except self.client.exceptions.ResourceNotFoundException:
-            raise RuntimeError(
-                f"CodeBuild project not found: {project_name}. "
-                "Ensure provision-cluster-resources.sh ran successfully."
-            )
-
-    def _find_active_build(self, project_name: str, source_version: str) -> str | None:
-        """Find an already-running build at a SHA."""
-        response = self.client.list_builds_for_project(
-            projectName=project_name,
-            sortOrder="DESCENDING",
-        )
-        build_ids = response.get("ids", [])
-        if not build_ids:
-            return None
-
-        builds = self.client.batch_get_builds(ids=build_ids).get("builds", [])
-        for build in builds:
-            if (
-                build.get("buildStatus") in ("QUEUED", "IN_PROGRESS")
-                and (
-                    build.get("resolvedSourceVersion") == source_version
-                    or build.get("sourceVersion") == source_version
-                )
-            ):
-                return build["id"]
-        return None
-
     def active_builds(self, project_names: list[str]) -> list[str]:
         """Return IDs of queued or running builds for the given projects."""
         active = []
@@ -135,30 +74,6 @@ class BuildMonitor:
                 if build.get("buildStatus") in ("QUEUED", "IN_PROGRESS")
             )
         return active
-
-    def start_or_reuse_build(
-        self,
-        project_name: str,
-        source_version: str,
-        environment_overrides: dict[str, str] | None = None,
-    ) -> str:
-        """Reuse an existing build at the requested SHA or start one explicitly."""
-        if environment_overrides:
-            log.info(
-                "Starting dedicated build at SHA %s because environment overrides are set",
-                source_version[:7],
-            )
-            return self.start_build(project_name, source_version, environment_overrides)
-
-        for attempt in range(BUILD_DISCOVERY_ATTEMPTS):
-            build_id = self._find_active_build(project_name, source_version)
-            if build_id:
-                log.info("Reusing active build at SHA %s: %s", source_version[:7], build_id)
-                return build_id
-            if attempt < BUILD_DISCOVERY_ATTEMPTS - 1:
-                time.sleep(BUILD_DISCOVERY_INTERVAL)
-
-        return self.start_build(project_name, source_version, environment_overrides)
 
     @staticmethod
     def _timestamp_seconds(value) -> float | None:
@@ -302,7 +217,6 @@ class BuildMonitor:
             "provision-step:",
             "/live returned",
             "Waiting for",
-            "check-queue:",
             "ERROR:",
         )
         for event in reversed(response.get("events") or []):
@@ -379,7 +293,7 @@ class BuildMonitor:
         requested SHA was not applied by that build.
 
         Args:
-            build_id: CodeBuild build ID (returned by start_build).
+            build_id: CodeBuild build ID (e.g., "project-name:uuid").
             desired_sha: Expected git SHA (must match sourceVersion, resolvedSourceVersion,
                 and APPLIED_SHA when those values are available).
             timeout: Max seconds to wait.
@@ -465,8 +379,7 @@ class BuildMonitor:
                             monitor_start,
                             f"Build {build_id} succeeded but APPLIED={applied!r} (not 'true'). "
                             "The CodeBuild success contract was not satisfied; the build "
-                            "may have been skipped by check-queue.sh or failed to export "
-                            "its status variables."
+                            "failed to export its status variables."
                         )
 
                     if applied_sha != desired_sha:

@@ -6,11 +6,18 @@ data "aws_caller_identity" "current" {}
 
 locals {
   name_prefix = var.name_prefix != "" ? "${var.name_prefix}-" : ""
+
+  common_tags = {
+    function  = "cluster-provisioning"
+    module    = "codepipeline-shared"
+    ManagedBy = "terraform"
+  }
 }
 
 resource "aws_s3_bucket" "artifacts" {
   bucket        = "${local.name_prefix}cluster-pipeline-artifacts-${data.aws_caller_identity.current.account_id}"
   force_destroy = true
+  tags          = local.common_tags
 }
 
 resource "aws_s3_bucket_versioning" "artifacts" {
@@ -59,6 +66,7 @@ resource "aws_s3_bucket_public_access_block" "artifacts" {
 
 resource "aws_iam_role" "pipeline" {
   name = "${local.name_prefix}cluster-codepipeline-role"
+  tags = local.common_tags
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"

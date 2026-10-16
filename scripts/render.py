@@ -441,7 +441,7 @@ CONTEXT_VARS = {
     "account_id", "child_admin_role_name", "management_clusters",
     "cluster_type",
     "application_values", "region_configs", "eph_prefix",
-    "delete", "delete_pipeline", "delete_codebuild", "mc_key", "region",
+    "mc_key", "region",
     "pinned", "mc_account_ids", "ci",
 }
 

@@ -5,6 +5,12 @@ locals {
   # Use name_prefix if provided, otherwise empty string
   resource_prefix    = var.name_prefix != "" ? "${var.name_prefix}-" : ""
   log_retention_days = 365
+
+  common_tags = {
+    function  = "cluster-provisioning"
+    module    = "codebuild-notifications"
+    ManagedBy = "terraform"
+  }
 }
 
 # Lambda function to format and send Slack notifications for CodePipeline failures
@@ -169,6 +175,7 @@ data "archive_file" "slack_notifier" {
 # IAM role for Lambda function
 resource "aws_iam_role" "slack_notifier" {
   name = "${local.resource_prefix}slack-notifier-role"
+  tags = local.common_tags
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -243,6 +250,7 @@ resource "aws_lambda_function" "slack_notifier" {
   handler          = "lambda_function.lambda_handler"
   source_code_hash = data.archive_file.slack_notifier.output_base64sha256
   runtime          = "python3.12"
+  tags             = local.common_tags
   timeout          = 30
 
   environment {
@@ -261,6 +269,7 @@ resource "aws_lambda_function" "slack_notifier" {
 resource "aws_cloudwatch_log_group" "slack_notifier" {
   name              = "/aws/lambda/${aws_lambda_function.slack_notifier.function_name}"
   retention_in_days = local.log_retention_days
+  tags              = local.common_tags
 
   lifecycle {
     ignore_changes = [tags, tags_all]
@@ -271,6 +280,7 @@ resource "aws_cloudwatch_log_group" "slack_notifier" {
 resource "aws_cloudwatch_event_rule" "pipeline_failure" {
   name        = "${local.resource_prefix}codebuild-failure-detection"
   description = "Detects when any CodeBuild build fails"
+  tags        = local.common_tags
 
   event_pattern = jsonencode({
     source      = ["aws.codebuild"]

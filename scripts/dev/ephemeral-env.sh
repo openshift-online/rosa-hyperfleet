@@ -603,7 +603,7 @@ cmd_provision_resume() {
         "$CI_IMAGE" \
         uv run --no-cache ci/ephemeral-provider/main.py \
             --resume \
-            "${resync_arg[@]}" \
+            ${resync_arg[@]+"${resync_arg[@]}"} \
             --id "$BUILD_ID" \
             --repo "$repo" --branch "$branch" \
             --eph-branch "$eph_branch" \

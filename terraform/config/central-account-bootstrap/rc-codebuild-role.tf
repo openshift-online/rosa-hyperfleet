@@ -42,16 +42,6 @@ resource "aws_iam_role_policy" "rc_codebuild_policy" {
         ]
       },
       {
-        Sid    = "CheckQueueSelfScope"
-        Effect = "Allow"
-        Action = [
-          "codebuild:ListBuildsForProject",
-          "codebuild:BatchGetBuilds",
-          "codebuild:StopBuild"
-        ]
-        Resource = "arn:aws:codebuild:${var.region}:${data.aws_caller_identity.rc_shared.account_id}:project/*regional*"
-      },
-      {
         Effect = "Allow"
         Action = [
           "s3:GetObject",

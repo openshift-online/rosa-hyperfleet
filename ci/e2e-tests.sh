@@ -53,27 +53,25 @@ else
   echo "WARNING: RHOBS_API_URL not available — observability tests will be skipped"
 fi
 
-# Resolve ZOA URLs only for the dedicated ZOA PR flow. The standard API e2e
-# flow does not require, export, or validate any ZOA parameters.
-if [[ "${REPO_NAME:-}" == "rosa-hyperfleet-zoa" ]]; then
-  if [[ -z "${ZOA_RC_API_URL:-}" ]]; then
-    if [[ -r "${CREDS_DIR}/zoa_rc_api_url" ]]; then
-      ZOA_RC_API_URL="$(cat "${CREDS_DIR}/zoa_rc_api_url")"
-    elif [[ -n "${TF_OUTPUTS:-}" && -r "${TF_OUTPUTS:-}" ]]; then
-      ZOA_RC_API_URL="$(jq -r '.zoa_api_function_url.value // empty' "${TF_OUTPUTS}")"
-    fi
+# Resolve ZOA RC/MC API URLs. Consumed both by the dedicated ZOA PR flow and by
+# the ZOA coverage in the standard flow below (nightlies run the full suite,
+# presubmits run smoke).
+if [[ -z "${ZOA_RC_API_URL:-}" ]]; then
+  if [[ -r "${CREDS_DIR}/zoa_rc_api_url" ]]; then
+    ZOA_RC_API_URL="$(cat "${CREDS_DIR}/zoa_rc_api_url")"
+  elif [[ -n "${TF_OUTPUTS:-}" && -r "${TF_OUTPUTS:-}" ]]; then
+    ZOA_RC_API_URL="$(jq -r '.zoa_api_function_url.value // empty' "${TF_OUTPUTS}")"
   fi
-  if [[ -z "${ZOA_MC_API_URL:-}" ]]; then
-    if [[ -r "${CREDS_DIR}/zoa_mc_api_url" ]]; then
-      ZOA_MC_API_URL="$(cat "${CREDS_DIR}/zoa_mc_api_url")"
-    elif [[ -n "${SHARED_DIR:-}" && -r "${SHARED_DIR}/management-terraform-outputs.json" ]]; then
-      ZOA_MC_API_URL="$(jq -r '.zoa_api_function_url.value // empty' "${SHARED_DIR}/management-terraform-outputs.json")"
-    fi
-  fi
-  export ZOA_RC_API_URL ZOA_MC_API_URL
-  echo "ZOA RC API URL: ${ZOA_RC_API_URL:-<missing>}"
-  echo "ZOA MC API URL: ${ZOA_MC_API_URL:-<missing>}"
 fi
+if [[ -z "${ZOA_MC_API_URL:-}" ]]; then
+  if [[ -r "${CREDS_DIR}/zoa_mc_api_url" ]]; then
+    ZOA_MC_API_URL="$(cat "${CREDS_DIR}/zoa_mc_api_url")"
+  elif [[ -n "${SHARED_DIR:-}" && -r "${SHARED_DIR}/management-terraform-outputs.json" ]]; then
+    ZOA_MC_API_URL="$(jq -r '.zoa_api_function_url.value // empty' "${SHARED_DIR}/management-terraform-outputs.json")"
+  fi
+fi
+[[ -n "${ZOA_RC_API_URL:-}" ]] && export ZOA_RC_API_URL && echo "ZOA RC API URL: ${ZOA_RC_API_URL}"
+[[ -n "${ZOA_MC_API_URL:-}" ]] && export ZOA_MC_API_URL && echo "ZOA MC API URL: ${ZOA_MC_API_URL}"
 
 # Use the regional account profile for authenticated API calls
 export AWS_PROFILE="rrp-rc"
@@ -112,6 +110,7 @@ ZOA_REF="${ZOA_REF:-main}"
 ZOA_REPO="${ZOA_REPO:-https://github.com/openshift-online/rosa-hyperfleet-zoa.git}"
 
 E2E_SKIP_PLATFORM_API="${E2E_SKIP_PLATFORM_API:-false}"  # Set to "true" to skip
+E2E_SKIP_ZOA="${E2E_SKIP_ZOA:-false}"                    # Set to "true" to skip
 E2E_SKIP_HCP="${E2E_SKIP_HCP:-true}"                     # Set to "true" to skip
 E2E_SKIP_ROSA_CLI="${E2E_SKIP_ROSA_CLI:-false}"          # Set to "true" to skip
 E2E_SKIP_MONITORING="${E2E_SKIP_MONITORING:-false}"      # Set to "true" to skip
@@ -168,7 +167,7 @@ if [[ "${REPO_NAME:-}" == "rosa-hyperfleet-zoa" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Standard flow: API tests + HCP + monitoring. ZOA has a dedicated target.
+# Standard flow: API tests + ZOA + HCP + monitoring.
 # ---------------------------------------------------------------------------
 echo ""
 echo "=== API Tests ==="
@@ -189,6 +188,7 @@ platform_rc=0
 hcp_rc=0
 monitoring_rc=0
 rosa_cli_rc=0
+zoa_exit=0
 
 if [[ "${E2E_SKIP_PLATFORM_API}" == "true" ]]; then
   echo ""
@@ -196,6 +196,44 @@ if [[ "${E2E_SKIP_PLATFORM_API}" == "true" ]]; then
   echo "Skipped (E2E_SKIP_PLATFORM_API=${E2E_SKIP_PLATFORM_API})"
 else
   make test-e2e-api || platform_rc=$?
+fi
+
+# ZOA e2e coverage: rosa-hyperfleet-zoa owns its own e2e suite (test/e2e/).
+#
+# - On hyperfleet/api PRs (JOB_TYPE=presubmit or unset): smoke (~2min, 6 specs per target)
+# - On nightlies (JOB_TYPE=periodic): full deep suite (~5min with parallel RC+MC)
+#
+# Both test-e2e and test-e2e-smoke auto-parallelize RC and MC when both URLs
+# are set. The test suite handles AWS_PROFILE switching per-subprocess (rrp-rc
+# for RC, rrp-mc for MC) — both profiles must exist in AWS_CONFIG_FILE.
+#
+# Runs if at least one of ZOA_RC_API_URL or ZOA_MC_API_URL is available — the
+# Makefile handles missing URLs gracefully (tests only the available targets).
+#
+# Same "capture the exit code, don't abort" pattern used for platform_rc/
+# hcp_rc/monitoring_rc: a zoa failure does NOT stop this script or skip the
+# platform API / HCP / monitoring tests, but DOES fail the overall job.
+if [[ "${E2E_SKIP_ZOA}" == "true" ]]; then
+  echo ""
+  echo "=== ZOA Tests ==="
+  echo "Skipped (E2E_SKIP_ZOA=${E2E_SKIP_ZOA})"
+else
+  if [[ -n "${ZOA_RC_API_URL:-}" ]] || [[ -n "${ZOA_MC_API_URL:-}" ]]; then
+    if git clone --depth 1 --branch "${ZOA_REF}" "${ZOA_REPO}" "${WORK_DIR}/zoa"; then
+      if [[ "${JOB_TYPE:-}" == "periodic" ]]; then
+        echo "Nightly run — executing full ZOA e2e suite"
+        make -C "${WORK_DIR}/zoa" test-e2e || zoa_exit=$?
+      else
+        make -C "${WORK_DIR}/zoa" test-e2e-smoke || zoa_exit=$?
+      fi
+    else
+      echo "WARNING: failed to clone zoa from ${ZOA_REPO}@${ZOA_REF} — ZOA e2e tests skipped" >&2
+      zoa_exit=1
+    fi
+  else
+    echo "ERROR: neither ZOA_RC_API_URL nor ZOA_MC_API_URL resolved — ZOA e2e tests cannot run" >&2
+    zoa_exit=1
+  fi
 fi
 
 # Get regional account ID for CLI tests
@@ -316,7 +354,7 @@ fi
 
 # HCP test failures collect logs via PRE_CLEANUP_HOOK in the test's DeferCleanup
 # (before HCP deletion). Only collect here for non-HCP failures.
-if [[ $platform_rc -ne 0 ]] || [[ $monitoring_rc -ne 0 ]] || [[ $rosa_cli_rc -ne 0 ]]; then
+if [[ $platform_rc -ne 0 ]] || [[ $monitoring_rc -ne 0 ]] || [[ $rosa_cli_rc -ne 0 ]] || [[ $zoa_exit -ne 0 ]]; then
     # Logs are left in S3 rather than added to public CI artifacts because
     # they may contain sensitive data that cannot be reliably redacted.
     # The S3 URIs are printed below for manual retrieval.
@@ -332,9 +370,9 @@ print_suite_result "Platform API"       "$platform_rc"  "$([[ "${E2E_SKIP_PLATFO
 print_suite_result "HCP Creation"       "$hcp_rc"       "$([[ "${E2E_SKIP_HCP}" == "true" ]] && echo true)"
 print_suite_result "ROSA CLI"           "$rosa_cli_rc"  "$([[ "${E2E_SKIP_ROSA_CLI}" != "false" ]] && echo true)"
 print_suite_result "Platform Monitoring" "$monitoring_rc" "$([[ "${E2E_SKIP_MONITORING}" == "true" ]] && echo true)"
-print_suite_result "ZOA"                "0"             "true"
+print_suite_result "ZOA"                "$zoa_exit"     "$([[ "${E2E_SKIP_ZOA}" == "true" ]] && echo true)"
 
-if [[ $platform_rc -ne 0 ]] || [[ $hcp_rc -ne 0 ]] || [[ $monitoring_rc -ne 0 ]] || [[ $rosa_cli_rc -ne 0 ]]; then
+if [[ $platform_rc -ne 0 ]] || [[ $hcp_rc -ne 0 ]] || [[ $monitoring_rc -ne 0 ]] || [[ $rosa_cli_rc -ne 0 ]] || [[ $zoa_exit -ne 0 ]]; then
     echo ""
     echo "Result: FAILED"
     exit 1

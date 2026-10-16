@@ -175,13 +175,11 @@ check-docs: ## Check documentation formatting
 	@npx --no-install prettier --check '**/*.md'
 	@echo "✅ Documentation formatting check complete"
 
-# Pipeline config roots and modules are excluded from tag enforcement (pipelines are being removed).
+# central-account-bootstrap (shared connection/state/ECR) and the platform-image
+# source module are excluded from tag enforcement; the CodePipeline modules are
+# tagged and linted normally.
 TFLINT_EXCLUDE_DIRS := \
-	./terraform/config/pipeline-management-cluster \
-	./terraform/config/pipeline-regional-cluster \
 	./terraform/config/central-account-bootstrap \
-	./terraform/modules/pipeline-notifications \
-	./terraform/modules/pipeline-provisioner \
 	./terraform/modules/platform-image
 
 TFLINT_DIRS := $(filter-out $(TFLINT_EXCLUDE_DIRS),$(TERRAFORM_DIRS))

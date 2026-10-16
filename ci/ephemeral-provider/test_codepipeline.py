@@ -2,7 +2,11 @@ import unittest
 from unittest.mock import Mock
 
 from botocore.exceptions import ClientError
-from codepipeline import PipelineFailure, PipelineMonitor
+from codepipeline import (
+    PipelineFailure,
+    PipelineMonitor,
+    _codepipeline_glob_match,
+)
 
 
 class PipelineMonitorTest(unittest.TestCase):
@@ -160,6 +164,116 @@ class PipelineMonitorTest(unittest.TestCase):
                 desired_sha="a" * 40,
                 timeout=1,
             )
+
+
+class CodePipelineGlobTest(unittest.TestCase):
+    def test_brace_alternation_matches_each_branch(self):
+        pattern = "terraform/config/{management-cluster,kube-applier-dynamodb-provisioning}/**"
+        self.assertTrue(
+            _codepipeline_glob_match(
+                "terraform/config/management-cluster/main.tf", pattern
+            )
+        )
+        self.assertTrue(
+            _codepipeline_glob_match(
+                "terraform/config/kube-applier-dynamodb-provisioning/x/y.tf", pattern
+            )
+        )
+        self.assertFalse(
+            _codepipeline_glob_match("terraform/config/regional-cluster/main.tf", pattern)
+        )
+
+    def test_single_star_does_not_cross_separator(self):
+        self.assertFalse(_codepipeline_glob_match("a/b/c.txt", "a/*"))
+        self.assertTrue(_codepipeline_glob_match("a/b.txt", "a/*"))
+
+    def test_globstar_matches_zero_or_more_segments(self):
+        self.assertTrue(_codepipeline_glob_match("a/b", "a/**/b"))
+        self.assertTrue(_codepipeline_glob_match("a/x/y/b", "a/**/b"))
+        self.assertTrue(_codepipeline_glob_match("a/file", "a/**"))
+
+    def test_push_trigger_matches_real_rc_filter(self):
+        pipeline = {
+            "triggers": [
+                {
+                    "providerType": "CodeStarSourceConnection",
+                    "gitConfiguration": {
+                        "push": [
+                            {
+                                "branches": {"includes": ["eph-abc"]},
+                                "filePaths": {
+                                    "includes": [
+                                        "terraform/config/regional-cluster/**"
+                                    ]
+                                },
+                            }
+                        ]
+                    },
+                }
+            ]
+        }
+        self.assertTrue(
+            PipelineMonitor.push_trigger_matches(
+                pipeline, "eph-abc", ["terraform/config/regional-cluster/main.tf"]
+            )
+        )
+        self.assertFalse(
+            PipelineMonitor.push_trigger_matches(
+                pipeline, "eph-abc", ["docs/README.md"]
+            )
+        )
+
+
+class HasSuccessfulExecutionTest(unittest.TestCase):
+    def _monitor(self, summaries):
+        client = Mock()
+        client.list_pipeline_executions.return_value = {
+            "pipelineExecutionSummaries": summaries
+        }
+        session = Mock()
+        session.client.return_value = client
+        return PipelineMonitor(session)
+
+    def test_newest_failed_does_not_fall_back_to_older_success(self):
+        monitor = self._monitor(
+            [
+                {
+                    "pipelineExecutionId": "newer",
+                    "status": "Failed",
+                    "startTime": "2026-02-02",
+                    "sourceRevisions": [{"actionName": "Source", "revisionId": "b" * 40}],
+                },
+                {
+                    "pipelineExecutionId": "older",
+                    "status": "Succeeded",
+                    "startTime": "2026-01-01",
+                    "sourceRevisions": [{"actionName": "Source", "revisionId": "a" * 40}],
+                },
+            ]
+        )
+        self.assertIsNone(monitor.has_successful_execution("cluster-pipeline"))
+
+    def test_skips_nonterminal_then_returns_newest_success(self):
+        monitor = self._monitor(
+            [
+                {
+                    "pipelineExecutionId": "running",
+                    "status": "InProgress",
+                    "startTime": "2026-03-03",
+                    "sourceRevisions": [{"actionName": "Source", "revisionId": "c" * 40}],
+                },
+                {
+                    "pipelineExecutionId": "newest-success",
+                    "status": "Succeeded",
+                    "startTime": "2026-02-02",
+                    "sourceRevisions": [{"actionName": "Source", "revisionId": "b" * 40}],
+                },
+            ]
+        )
+        self.assertEqual(
+            monitor.has_successful_execution("cluster-pipeline"),
+            ("newest-success", "b" * 40),
+        )
 
 
 if __name__ == "__main__":

@@ -68,11 +68,6 @@ module "platform_image_builder" {
   name_prefix           = var.name_prefix
 }
 
-moved {
-  from = module.codebuild_provisioner
-  to   = module.platform_image_builder
-}
-
 # CodeBuild Failure Notifications
 # Gated by an explicit feature flag (see var.enable_slack_notifications).
 # Currently only monitors the build-platform-image project.

@@ -6,6 +6,7 @@
 # Scoped to minimum permissions for building and pushing container images
 resource "aws_iam_role" "build_platform_image_role" {
   name = "${local.name_prefix}build-image-role"
+  tags = local.common_tags
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"

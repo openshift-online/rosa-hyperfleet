@@ -344,11 +344,11 @@ class EphemeralEnvOrchestrator:
         so teardown always matches the provisioned environment.
 
         Args:
-            fire_and_forget: If True, waits for MC teardown, starts RC teardown,
-                and exits without waiting for RC completion. Phase 2 (delete_codebuild flags) and
-                Phase 3 (provisioner destruction) are intentionally
-                skipped — teardown is expected to be driven to completion by
-                the in-account aws-nuke-cf janitor.
+            fire_and_forget: If True, starts the RC and all MC destroy executions
+                together and exits immediately without waiting for them. Phase 2
+                (delete pipelines/projects) and Phase 3 (provisioner destruction)
+                are intentionally skipped — teardown is expected to be driven to
+                completion by the in-account aws-nuke-cf janitor.
         """
         # Check out the ephemeral branch first to discover region from its config
         git = GitManager(self.creds_dir, self.repo, self.branch,
@@ -368,18 +368,6 @@ class EphemeralEnvOrchestrator:
 
         # Read RC/MC project names from rendered config before any teardown side effects.
         self._read_project_names(git)
-        if fire_and_forget:
-            pipeline_names = [
-                self.target_monitor.pipeline_name(name)
-                for name in [self.rc_project, *self.mc_projects]
-                if name
-            ]
-            active_pipelines = self.target_monitor.active_pipelines(pipeline_names)
-            if active_pipelines:
-                raise RuntimeError(
-                    "Cannot start fire-and-forget teardown while CodePipeline executions "
-                    f"are active: {', '.join(active_pipelines)}. Wait for them to finish and retry."
-                )
 
         # Purge clusters and resource bundles before infrastructure teardown.
         # Deleting bundles triggers ManifestWork removal on the MC, which is
@@ -463,7 +451,6 @@ class EphemeralEnvOrchestrator:
             return
 
         artifact_path = Path(artifact_dir) / "codebuild-logs"
-        self._codebuild_logs_collected = True
         # Both sessions use the central account in the current setup; they only
         # differ by region. Avoid downloading the same account/region twice when
         # the target region is also us-east-1.
@@ -489,6 +476,9 @@ class EphemeralEnvOrchestrator:
             content = _redact_sensitive(content)
             f.write_text(content)
 
+        # Only mark collection complete once downloads and redaction succeed, so
+        # a failure above leaves the flag false and a later call can retry.
+        self._codebuild_logs_collected = True
         log.info("CodeBuild artifact directory: %s", artifact_path)
         return artifact_path
 
@@ -553,14 +543,6 @@ class EphemeralEnvOrchestrator:
                 f"Region config {region_file.name} must define 'provision_mcs'. "
                 "Example:\n  provision_mcs:\n    mc01: {}"
             )
-
-        # Reject lifecycle flags that are managed by the provisioner
-        for forbidden in ("delete", "delete_codebuild"):
-            if forbidden in region_config:
-                raise ValueError(
-                    f"Region config must not set '{forbidden}' — "
-                    "this is managed by the provisioner lifecycle."
-                )
 
         # Inject runtime AWS account IDs
         regional_account_id = self.aws.get_target_account_id("regional")
@@ -634,7 +616,6 @@ class EphemeralEnvOrchestrator:
         env["GITHUB_BRANCH"] = git.eph_branch
         env["TARGET_ENVIRONMENT"] = TARGET_ENVIRONMENT
         env["NAME_PREFIX"] = git.eph_prefix
-        env["SKIP_DAY1_BUILD"] = "true"  # Provider owns RC/MC pipeline execution
         env["ENABLE_CODEPIPELINE_PUSH_TRIGGERS"] = "true"
 
         log.info("Executing: %s", bootstrap_script)
@@ -1497,7 +1478,7 @@ class EphemeralEnvOrchestrator:
             return None
 
     def _run_teardown(self, git: GitManager, fire_and_forget: bool = False):
-        """Tear down infrastructure via GitOps and destroy the pipeline-provisioner."""
+        """Tear down infrastructure via GitOps and destroy the bootstrap infrastructure."""
 
         # Phase 1: Infrastructure teardown
         log.info("")
@@ -1505,79 +1486,55 @@ class EphemeralEnvOrchestrator:
         log.info("Teardown: Infrastructure Destroy")
         log.info("==========================================")
 
-        if fire_and_forget:
-            desired_sha = git.current_sha()
-            destroy_overrides = {"IS_DESTROY": "true"}
-            mc_builds = []
-            for mc_project in self.mc_projects:
-                mc_pipeline = self.target_monitor.pipeline_name(mc_project)
-                execution_id = self.target_monitor.start_pipeline(
-                    mc_pipeline,
-                    desired_sha,
-                    environment_variables=destroy_overrides,
-                )
-                mc_builds.append((mc_project, execution_id))
-
-            log.info(
-                "Started %d MC teardown pipeline(s) at SHA %s",
-                len(mc_builds),
-                desired_sha[:7],
-            )
-            failed = self._wait_for_teardown_builds(mc_builds, desired_sha)
-            self._raise_teardown_failure(failed)
-
-            if not self.rc_project:
-                raise RuntimeError("Cannot start RC teardown: RC project name is unavailable")
-            rc_pipeline = self.target_monitor.pipeline_name(self.rc_project)
-            execution_id = self.target_monitor.start_pipeline(
-                rc_pipeline,
-                desired_sha,
-                environment_variables=destroy_overrides,
-            )
-
-            log.info(
-                "Fire-and-forget mode: MC teardown succeeded; RC teardown execution %s "
-                "started at SHA %s and will continue asynchronously. Phases 2 "
-                "(delete projects) and 3 (terraform destroy) will NOT run.",
-                execution_id,
-                desired_sha[:7],
-            )
-            return
-
         # Use the existing branch revision without pushing delete flags. The
         # IS_DESTROY pipeline variable makes every build phase honor teardown
         # semantics without requiring a source-triggered execution.
         desired_sha = git.current_sha()
         destroy_overrides = {"IS_DESTROY": "true"}
 
-        # Start and complete all MC destroys before touching the RC. MC teardown
-        # can still depend on resources owned by the RC account.
-        mc_builds = []
-        for mc_project in self.mc_projects:
-            mc_pipeline = self.target_monitor.pipeline_name(mc_project)
-            mc_execution_id = self.target_monitor.start_pipeline(
-                mc_pipeline,
+        if not self.rc_project:
+            raise RuntimeError("Cannot start RC teardown: RC project name is unavailable")
+
+        # The MC destroy path doesn't depend on RC outputs (it uses placeholders),
+        # so there's no need to serialize MC -> RC — tear them all down together.
+        destroy_projects = [p for p in [self.rc_project, *self.mc_projects] if p]
+        pipeline_names = [self.target_monitor.pipeline_name(p) for p in destroy_projects]
+
+        # Remove push triggers before starting any destroy: under SUPERSEDED a
+        # push during/after the destroy would queue an apply that recreates the
+        # cluster. Then abandon any execution still running (e.g. a provision step
+        # that timed out mid-apply) so the destroy isn't blocked.
+        for pipeline_name in pipeline_names:
+            self.target_monitor.disable_push_triggers(pipeline_name)
+        self.target_monitor.stop_active_executions(pipeline_names)
+
+        builds = []
+        for project in destroy_projects:
+            pipeline = self.target_monitor.pipeline_name(project)
+            execution_id = self.target_monitor.start_pipeline(
+                pipeline,
                 desired_sha,
                 environment_variables=destroy_overrides,
             )
-            mc_builds.append((mc_project, mc_execution_id))
+            builds.append((project, execution_id))
 
-        log.info("Started %d MC teardown pipeline(s) at SHA %s", len(mc_builds), desired_sha[:7])
-        failed = self._wait_for_teardown_builds(mc_builds, desired_sha)
-        self._raise_teardown_failure(failed)
+        log.info(
+            "Started %d teardown pipeline(s) (RC + %d MC) at SHA %s",
+            len(builds),
+            len(self.mc_projects),
+            desired_sha[:7],
+        )
 
-        # Start RC destruction only after every MC teardown has succeeded.
-        rc_pipeline = self.target_monitor.pipeline_name(self.rc_project)
-        rc_execution_id = self.target_monitor.start_pipeline(
-            rc_pipeline,
-            desired_sha,
-            environment_variables=destroy_overrides,
-        )
-        log.info("Started RC teardown pipeline at SHA %s", desired_sha[:7])
-        failed = self._wait_for_teardown_builds(
-            [(self.rc_project, rc_execution_id)],
-            desired_sha,
-        )
+        if fire_and_forget:
+            log.info(
+                "Fire-and-forget mode: RC and MC teardown executions started and "
+                "will continue asynchronously. Phases 2 (delete projects) and 3 "
+                "(terraform destroy) will NOT run."
+            )
+            return
+
+        # Wait for every RC + MC teardown to complete (in parallel).
+        failed = self._wait_for_teardown_builds(builds, desired_sha)
         self._raise_teardown_failure(failed)
 
         # Phase 2: Delete CodePipelines and CodeBuild projects through the
@@ -1599,8 +1556,8 @@ class EphemeralEnvOrchestrator:
         self._destroy_provisioner(git)
 
         # Delete the ephemeral branch last, once infra and pipelines are gone.
-        # Earlier phases push delete flags to this branch, so it must survive
-        # until here. Skipped in fire-and-forget mode (returns at Phase 1).
+        # Pipelines source config from this branch, so it must survive until the
+        # destroys and deletes above complete. Skipped in fire-and-forget mode.
         git.delete_eph_branch()
 
         log.info("Teardown complete.")
@@ -1671,8 +1628,10 @@ class EphemeralEnvOrchestrator:
                 project_name = future_to_build[future]
                 try:
                     result = future.result()
-                except (RuntimeError, TimeoutError) as e:
-                    log.error("Teardown build '%s' failed: %s", project_name, e)
+                except Exception:
+                    # Catch everything (e.g. botocore ClientError) so one failed
+                    # future doesn't abort monitoring of the remaining teardowns.
+                    log.exception("Teardown build '%s' failed", project_name)
                     failed.append(project_name)
                     continue
 
