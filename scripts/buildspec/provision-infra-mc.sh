@@ -36,6 +36,8 @@ if [ "${DELETE_FLAG}" == "true" ]; then
     export TF_VAR_oidc_bucket_name="placeholder"
     export TF_VAR_oidc_bucket_arn="arn:aws:s3:::placeholder"
     export TF_VAR_oidc_bucket_region="us-east-1"
+    # ZOA variables are required on apply; destroy does not read RC state (see Phase 1b).
+    export TF_VAR_zoa_lambda_ecr_url="000000000000.dkr.ecr.us-east-1.amazonaws.com/placeholder"
 else
     # Assume child admin role in RC account to access state bucket (scoped access instead of org-wide).
     _resolve_rc_account
@@ -127,7 +129,9 @@ fi
 # ── Phase 1b: ZOA Lambda image reference ──────────────────────────────────────
 # Lambda image lives in RC's ECR (cross-account pull via OU policy).
 # Runner image is pulled directly from Quay by K8s nodes.
-export TF_VAR_zoa_lambda_ecr_url=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_lambda_ecr_url 2>/dev/null || echo "")
+if [ "${DELETE_FLAG}" != "true" ]; then
+    export TF_VAR_zoa_lambda_ecr_url=$(cd "$_RC_TF_DIR" && terraform output -raw zoa_lambda_ecr_url 2>/dev/null || echo "")
+fi
 
 # ZOA image tags and source registries — from MC deploy config (same pins as RC)
 export TF_VAR_zoa_lambda_image_tag=$(jq -r '.zoa_lambda_image_tag // ""' "$DEPLOY_CONFIG_FILE")
