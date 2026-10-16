@@ -118,18 +118,6 @@ locals {
   mc_entries     = var.management_clusters != "" ? split(",", var.management_clusters) : []
   mc_account_ids = [for entry in local.mc_entries : element(split(":", entry), 1)]
   # management_clusters entries are "management_id:account_id" (see provision-infra-rc.sh).
-  mc_boundary_access_role_arns = [
-    for entry in local.mc_entries :
-    "arn:aws:iam::${element(split(":", entry), 1)}:role/${element(split(":", entry), 0)}-zoa-boundary-access"
-  ]
-  mc_boundary_exec_scoped_role_arns = [
-    for entry in local.mc_entries :
-    "arn:aws:iam::${element(split(":", entry), 1)}:role/${element(split(":", entry), 0)}-zoa-boundary-exec-scoped"
-  ]
-  mc_zoa_lambda_role_arns = [
-    for entry in local.mc_entries :
-    "arn:aws:iam::${element(split(":", entry), 1)}:role/${element(split(":", entry), 0)}-zoa-lambda"
-  ]
   api_allowed_accounts = distinct(compact(concat(
     [data.aws_caller_identity.current.account_id],
     local.mc_account_ids,
@@ -540,10 +528,9 @@ module "authz" {
 module "zoa" {
   source = "../../modules/zoa"
 
-  regional_id             = var.regional_id
-  mc_ou_path              = var.mc_ou_path
-  mc_zoa_lambda_role_arns = local.mc_zoa_lambda_role_arns
-  environment             = var.environment
+  regional_id  = var.regional_id
+  mc_ou_path   = var.mc_ou_path
+  environment  = var.environment
   zoa_lambda_image_tag    = var.zoa_lambda_image_tag
   zoa_runner_image_tag    = var.zoa_runner_image_tag
   zoa_lambda_source_image = var.zoa_lambda_source_image
@@ -626,8 +613,7 @@ module "zoa_access" {
   central_account_id         = data.aws_caller_identity.central.account_id
   trusted_assumer_role_names = var.zoa_access_trusted_assumer_role_names
 
-  mc_boundary_access_role_arns      = local.mc_boundary_access_role_arns
-  mc_boundary_exec_scoped_role_arns = local.mc_boundary_exec_scoped_role_arns
+  mc_account_ids = local.mc_account_ids
 
   sessions_table_name                 = module.zoa.sessions_table_name
   audit_table_name                    = module.zoa.audit_table_name

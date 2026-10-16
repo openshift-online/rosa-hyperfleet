@@ -494,9 +494,7 @@ cmd_teardown() {
     region=$(get_field "$ENV_LINE" REGION)
     eph_branch=$(get_field "$ENV_LINE" EPH_BRANCH)
 
-    if [[ "$with_resync" == "true" ]]; then
-        setup_override_mount
-    fi
+    setup_override_mount
 
     # Fetch credentials and write container config
     setup_aws_config

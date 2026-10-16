@@ -9,8 +9,6 @@
   "alias": "mc01",
   "management_id": "mc01",
   "regional_aws_account_id": "ssm:///infra/stage/us-east-1/rc/account_id",
-  "zoa_access_lambda_role_arn": "arn:aws:iam::ssm:///infra/stage/us-east-1/rc/account_id:role/regional-zoa-access-lambda",
-  "zoa_data_access_role_arn": "arn:aws:iam::ssm:///infra/stage/us-east-1/rc/account_id:role/regional-zoa-data-access",
   "zoa_lambda_image_tag": "fce9d34",
   "zoa_runner_image_tag": "fce9d34",
   "zoa_runner_source_image": "quay.io/rrp-dev-ci/zoa-runner",

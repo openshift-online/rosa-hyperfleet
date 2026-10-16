@@ -7,10 +7,6 @@
 # - AWS read/write roles: Defined in zoa-lambda module (per-VPC, same account)
 # =============================================================================
 
-locals {
-  rc_zoa_lambda_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.regional_id}-zoa-lambda"
-}
-
 # =============================================================================
 # Uploader Role - Assumed by Lambda (via STS) for scoped S3 upload credentials
 # =============================================================================
@@ -25,22 +21,42 @@ resource "aws_iam_role" "uploader" {
   # Two trust statements:
   # 1. Same-account: RC Lambda assumes this for RC async Jobs
   # 2. Cross-account: MC Lambdas assume this for MC async Jobs (S3 bucket is in RC)
+  # Trust uses ArnLike + OrgPath (not explicit MC role ARNs) so RC CreateRole succeeds
+  # while MC deploy runs in parallel — IAM rejects trust policies that name principals
+  # that do not exist yet.
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = concat(
-      [{
-        Sid       = "SameAccountLambdas"
-        Effect    = "Allow"
-        Principal = { AWS = local.rc_zoa_lambda_role_arn }
-        Action    = "sts:AssumeRole"
-      }],
-      length(var.mc_zoa_lambda_role_arns) > 0 ? [{
-        Sid       = "CrossAccountMCLambdas"
-        Effect    = "Allow"
-        Principal = { AWS = var.mc_zoa_lambda_role_arns }
-        Action    = "sts:AssumeRole"
-      }] : [],
-    )
+    Statement = [
+      {
+        Sid    = "SameAccountLambdas"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action = "sts:AssumeRole"
+        Condition = {
+          ArnLike = {
+            "aws:PrincipalArn" = "arn:aws:iam::*:role/*-zoa-lambda"
+          }
+        }
+      },
+      {
+        Sid    = "CrossAccountMCLambdas"
+        Effect = "Allow"
+        Principal = {
+          AWS = "*"
+        }
+        Action = "sts:AssumeRole"
+        Condition = {
+          "ForAnyValue:StringLike" = {
+            "aws:PrincipalOrgPaths" = "${var.mc_ou_path}*"
+          }
+          ArnLike = {
+            "aws:PrincipalArn" = "arn:aws:iam::*:role/*-zoa-lambda"
+          }
+        }
+      },
+    ]
   })
 
   tags = merge(local.common_tags, {
@@ -100,19 +116,21 @@ resource "aws_iam_role" "data_access" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid       = "CrossAccountMCLambdas"
-      Effect    = "Allow"
-      Principal = { AWS = var.mc_zoa_lambda_role_arns }
-      Action    = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        AWS = "*"
+      }
+      Action = "sts:AssumeRole"
+      Condition = {
+        "ForAnyValue:StringLike" = {
+          "aws:PrincipalOrgPaths" = "${var.mc_ou_path}*"
+        }
+        ArnLike = {
+          "aws:PrincipalArn" = "arn:aws:iam::*:role/*-zoa-lambda"
+        }
+      }
     }]
   })
-
-  lifecycle {
-    precondition {
-      condition     = length(var.mc_zoa_lambda_role_arns) > 0
-      error_message = "management_clusters must resolve to at least one MC account_id before RC ZOA apply (pipeline-regional-cluster-inputs management_clusters_info)."
-    }
-  }
 
   tags = merge(local.common_tags, {
     Name = "${var.regional_id}-zoa-data-access-role"

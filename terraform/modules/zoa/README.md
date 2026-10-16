@@ -22,9 +22,9 @@ MC Lambdas access RC data by assuming IAM roles in the RC account:
 - `data_access` role: MC Lambdas assume this for DynamoDB (executions, audit, sessions), S3, and KMS. Lambdas receive table names via environment variables.
 - `uploader` role: MC Lambdas assume this for scoped S3 upload credentials in async Jobs
 
-`data_access` and `uploader` trust policies enumerate each MC `{management_id}-zoa-lambda` execution role ARN from `management_clusters` (regional-cluster locals). RC apply requires `management_clusters` to resolve before ZOA IAM is applied (`provision-infra-rc.sh` + module precondition). S3/KMS key policies use OU paths where appropriate. MC SSM target rows are not managed here — see `mc-zoa-target-ssm-provisioning`.
+`data_access` and `uploader` trust MC `*-zoa-lambda` roles via OU path + `ArnLike` conditions (parallel RC/MC deploy — IAM does not allow explicit cross-account role ARNs in trust until those roles exist). S3/KMS key policies use the same OU model. MC SSM target rows are not managed here — see `mc-zoa-target-ssm-provisioning`.
 
-RC Access Lambda assumes per-MC `*-zoa-boundary-access` and `*-zoa-boundary-exec-scoped` roles using the same fleet list (`module.zoa-access`).
+RC Access Lambda assumes per-MC boundary roles using `management_clusters` account IDs and `*-zoa-boundary-*` role name patterns (`module.zoa-access`). MC boundary trust uses `zoa_access_lambda_role_arn` from RC Terraform outputs (polled in `provision-infra-mc.sh`).
 
 ## Image Mirroring
 

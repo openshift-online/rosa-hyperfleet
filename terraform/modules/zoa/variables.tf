@@ -24,12 +24,6 @@ variable "mc_ou_path" {
   }
 }
 
-variable "mc_zoa_lambda_role_arns" {
-  description = "Execution role ARNs for each MC ZOA Lambda ({management_id}-zoa-lambda). Used in data-access/uploader trust policies."
-  type        = list(string)
-  default     = []
-}
-
 variable "output_retention_days" {
   description = "Days to retain TA outputs in S3"
   type        = number

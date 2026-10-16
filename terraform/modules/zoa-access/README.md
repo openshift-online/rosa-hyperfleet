@@ -17,6 +17,6 @@ Inputs **`lambda_execution_role_arn`** and **`lambda_execution_role_name`** come
 
 On **destroy**, this module is removed first (function + policies), then `zoa-lambda` removes the role shell.
 
-MC stacks do **not** call this module; MC boundary trust uses **`zoa_access_lambda_role_arn`** from rendered MC pipeline JSON (contract ARN: `{regional_id}-zoa-access-lambda` in the RC account). RC Access STS `AssumeRole` targets explicit per-MC boundary role ARNs from `management_clusters`.
+MC stacks do **not** call this module; MC boundary trust uses **`zoa_access_lambda_role_arn`** from RC Terraform state (read by `provision-infra-mc.sh` after RC apply). RC Access STS `AssumeRole` uses per-MC account id + `*-zoa-boundary-*` role name patterns from `management_clusters`.
 
 See also [`../zoa-lambda/README.md`](../zoa-lambda/README.md).
