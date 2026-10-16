@@ -24,7 +24,6 @@ spec:
               and
               (1 - avg_over_time(hcp:hostedcluster_available[2m])) > (14.4 * (1 - {{ .Values.sla.hcpAvailability.target }}))
             )
-            unless on(namespace, name, cluster) (hcp:lifecycle_installing or hcp:lifecycle_deleting)
           for: 1m
           labels:
             severity: warning
@@ -48,7 +47,6 @@ spec:
               and
               (1 - avg_over_time(hcp:hostedcluster_available[5m])) > (6 * (1 - {{ .Values.sla.hcpAvailability.target }}))
             )
-            unless on(namespace, name, cluster) (hcp:lifecycle_installing or hcp:lifecycle_deleting)
           for: 2m
           labels:
             severity: warning
