@@ -303,7 +303,7 @@ class GitManager:
             )
         self.push(message, force=force)
 
-    def modify_config(self, environment: str, region: str, callback):
+    def modify_config(self, environment: str, region: str, callback, force: bool = False):
         """Load a region config file, apply callback modifications, render, and push.
 
         Args:
@@ -325,4 +325,4 @@ class GitManager:
         with open(region_file, "w") as f:
             yaml.dump(region_config, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
-        self.render_and_push(f"ci: update {environment}/{region} config")
+        self.render_and_push(f"ci: update {environment}/{region} config", force=force)

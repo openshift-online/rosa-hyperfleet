@@ -171,7 +171,11 @@ class EphemeralEnvOrchestrator:
 
         self.central_monitor = PipelineMonitor(self.aws.session)
         self.target_monitor = PipelineMonitor(self.aws.target_session)
-        self._run_teardown(git, fire_and_forget=fire_and_forget)
+        self._run_teardown(
+            git,
+            fire_and_forget=fire_and_forget,
+            force_first_push=with_resync,
+        )
 
     def resync(self):
         """Resync the ephemeral branch: rebase onto latest source, re-inject config, re-render.
@@ -785,7 +789,12 @@ class EphemeralEnvOrchestrator:
             log.warning("Failed to fetch API URL from terraform state: %s", e)
             return None
 
-    def _run_teardown(self, git: GitManager, fire_and_forget: bool = False):
+    def _run_teardown(
+        self,
+        git: GitManager,
+        fire_and_forget: bool = False,
+        force_first_push: bool = False,
+    ):
         """Tear down infrastructure via GitOps and destroy the pipeline-provisioner."""
 
         # Phase 1: Infrastructure teardown
@@ -804,7 +813,12 @@ class EphemeralEnvOrchestrator:
                     region_config["provision_mcs"][mc_name] = mc_config = {}
                 mc_config["delete"] = True
 
-        git.modify_config(TARGET_ENVIRONMENT, self.region, set_delete_flag)
+        git.modify_config(
+            TARGET_ENVIRONMENT,
+            self.region,
+            set_delete_flag,
+            force=force_first_push,
+        )
 
         if fire_and_forget:
             log.info(
