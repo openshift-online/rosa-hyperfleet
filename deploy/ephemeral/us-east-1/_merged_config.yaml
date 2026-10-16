@@ -180,6 +180,19 @@ regional_cluster:
   # @doc regional_cluster.zoa_boundary_session_max_duration_hours Default/max boundary session length (hours). RC zoa-access only (deadline in Dynamo + ZOA_SESSION_DEADLINE on task).
   # @used-by regional_cluster.zoa_boundary_session_max_duration_hours pipeline-regional-cluster-inputs/terraform.json.j2
   zoa_boundary_session_max_duration_hours: 4
+  # Fleet defaults for ZOA Lambda reserved concurrency (SSOT for deploy). Ephemeral overrides in config/ephemeral/defaults.yaml only.
+  # Module defaults in terraform/modules/zoa-lambda|zoa-access should match these unless a stack omits TF_VAR (local module tests).
+  # @doc regional_cluster.zoa_lambda_api_concurrency Reserved concurrency for ZOA API Lambda (0 = account unreserved pool). Lower in ephemeral — see config/ephemeral/.
+  # @used-by regional_cluster.zoa_lambda_api_concurrency pipeline-regional-cluster-inputs/terraform.json.j2
+  # @used-by regional_cluster.zoa_lambda_api_concurrency pipeline-management-cluster-inputs/terraform.json.j2
+  zoa_lambda_api_concurrency: 0
+  # @doc regional_cluster.zoa_lambda_worker_concurrency Reserved concurrency for ZOA Worker Lambda (0 = unreserved). Ephemeral MC accounts use 0 to avoid Lambda account quota errors.
+  # @used-by regional_cluster.zoa_lambda_worker_concurrency pipeline-regional-cluster-inputs/terraform.json.j2
+  # @used-by regional_cluster.zoa_lambda_worker_concurrency pipeline-management-cluster-inputs/terraform.json.j2
+  zoa_lambda_worker_concurrency: 0
+  # @doc regional_cluster.zoa_lambda_access_concurrency Reserved concurrency for ZOA Access Lambda on RC only (must be >= 1). Ephemeral uses 1 to minimize reservations in small accounts.
+  # @used-by regional_cluster.zoa_lambda_access_concurrency pipeline-regional-cluster-inputs/terraform.json.j2
+  zoa_lambda_access_concurrency: 1
 
 management_cluster_defaults:
   # @doc management_cluster_defaults.enable_bastion Default enable bastion for management clusters.

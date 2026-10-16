@@ -46,6 +46,11 @@ regional_cluster:
   hyperfleet_db_monitoring_interval: 0
   enable_sre_tools_gateway: true
   enable_sre_public_access: false
+  # Ephemeral member accounts often have low Lambda concurrent-execution quotas; avoid
+  # reserving 50+10 (+ Access on RC) so apply does not fail PutFunctionConcurrency.
+  zoa_lambda_api_concurrency: 0
+  zoa_lambda_worker_concurrency: 0
+  zoa_lambda_access_concurrency: 1
 
 applications:
   regional-cluster:

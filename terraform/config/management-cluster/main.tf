@@ -179,6 +179,9 @@ module "zoa_lambda" {
   access_lambda_role_arn = var.zoa_access_lambda_role_arn
 
   session_idle_timeout_seconds = var.zoa_boundary_session_idle_timeout_seconds
+
+  lambda_api_concurrency    = var.zoa_lambda_api_concurrency
+  lambda_worker_concurrency = var.zoa_lambda_worker_concurrency
 }
 
 # =============================================================================

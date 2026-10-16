@@ -146,6 +146,8 @@ if [ -z "${_zoa_boundary_image_tag}" ] || [ -z "${_zoa_boundary_source_image}" ]
 fi
 export TF_VAR_zoa_boundary_image="${_zoa_boundary_source_image}:${_zoa_boundary_image_tag}"
 export TF_VAR_zoa_boundary_session_idle_timeout_seconds=$(jq -r '.zoa_boundary_session_idle_timeout_seconds // 3600' "$DEPLOY_CONFIG_FILE")
+export TF_VAR_zoa_lambda_api_concurrency=$(jq -r '.zoa_lambda_api_concurrency' "$DEPLOY_CONFIG_FILE")
+export TF_VAR_zoa_lambda_worker_concurrency=$(jq -r '.zoa_lambda_worker_concurrency' "$DEPLOY_CONFIG_FILE")
 export TF_VAR_worker_node_ami_id=$(jq -r '.worker_node_ami_id // ""' "$DEPLOY_CONFIG_FILE")
 
 # Deployment id for /zoa/targets/<deployment>/<cluster> and central /zoa/deployments/* (rendered in deploy JSON).

@@ -586,6 +586,9 @@ module "zoa_lambda" {
 
   session_idle_timeout_seconds = var.zoa_boundary_session_idle_timeout_seconds
 
+  lambda_api_concurrency    = var.zoa_lambda_api_concurrency
+  lambda_worker_concurrency = var.zoa_lambda_worker_concurrency
+
   hyperfleet_db_resource_arn = local.hyperfleet_db_iam_arn
   # RDS endpoint output is the hostname only; append the port so the value is
   # host:port as required by RDS IAM auth token generation (BuildAuthToken).
@@ -644,6 +647,8 @@ module "zoa_access" {
 
   session_idle_timeout_seconds = var.zoa_boundary_session_idle_timeout_seconds
   session_max_duration_hours   = var.zoa_boundary_session_max_duration_hours
+
+  lambda_access_concurrency = var.zoa_lambda_access_concurrency
 }
 
 # =============================================================================
