@@ -13,7 +13,7 @@ Manages the shared ZOA data layer deployed once per region in the Regional Clust
 - **IAM** — Uploader role (for async Job S3 uploads), data-access role (for MC cross-account access)
 - **ECR** — Container image repositories for Lambda and runner images
 
-Boundary **targets** (VPC, subnets, ECS ARNs, API Function URL) are registered in SSM by `modules/zoa-lambda`, not in this module. See the comment block at the end of `dynamodb.tf`.
+Boundary **targets** are registered in RC SSM (`/zoa/targets/<deployment>/<cluster>`): RC via `zoa-lambda`; MC via `terraform/config/mc-zoa-target-ssm-provisioning/` (MC pipeline). See `dynamodb.tf`.
 
 ## Cross-Account Access Model
 

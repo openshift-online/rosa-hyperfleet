@@ -57,10 +57,7 @@ After apply, wire **`module.zoa_access`** with boundary outputs and `access_lamb
 
 MC deployments set `data_access_role_arn` to assume a role in the RC account for DynamoDB and S3 access. The data layer always lives in the RC account.
 
-Boundary target metadata (`aws_ssm_parameter.zoa_target`) must live in the **RC account** under `/zoa/targets/<deployment>/<cluster>`. Callers must pass the `aws.targets_ssm` provider alias:
-
-- **RC** (`target_type = "rc"`): `aws.targets_ssm = aws` (same account).
-- **MC** (`target_type = "mc"`): `aws.targets_ssm = aws.zoa_targets` where that provider assumes `zoa_data_access_role_arn` in the RC account (see `terraform/config/management-cluster/main.tf`).
+RC target metadata uses `aws_ssm_parameter.zoa_target` in the RC account (`targets_ssm_prefix` set, `target_type = "rc"`). MC targets use `provision-mc-zoa-target-ssm.sh` (RC Terraform from the MC Deploy buildspec).
 
 ## Timeout Hierarchy
 

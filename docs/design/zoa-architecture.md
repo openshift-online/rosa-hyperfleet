@@ -275,7 +275,7 @@ The Access Lambda execution role (`aws_iam_role.access_lambda`) is **created** i
 - **RC** instantiates `modules/zoa`, `modules/zoa-lambda` (RC VPC API/Worker + boundary + access role shell), `modules/zoa-access`, and `modules/bedrock` (account Bedrock primitives). Enumerates MC fleet from `management_clusters` for Access Lambda STS and data-layer role trust (explicit per-MC IAM role ARNs, not account-wide wildcards). Exports data-access role ARN and ECR URL for MC.
 - **MC** instantiates `modules/zoa-lambda` only (Lambda + boundary), consuming RC Terraform outputs (ECR URL, DynamoDB, S3, KMS, data-access role, sessions table) and **`zoa_access_lambda_role_arn`** from rendered MC pipeline JSON (contract ARN for boundary trust).
 - **Cross-account access**: MC Lambdas assume RC `zoa-data-access` via STS for DynamoDB (executions, audit, sessions) and S3. The artifact bucket policy allows OU-scoped access for MC Lambda and async job roles.
-- **Targets registry**: SSM `/zoa/targets/<deployment>/<cluster>` parameters are written by each `zoa-lambda` instance (RC + MC), not by `modules/zoa`.
+- **Targets registry**: SSM `/zoa/targets/<deployment>/<cluster>` in the RC account. RC target: `zoa-lambda` on the regional cluster. MC targets: `provision-mc-zoa-target-ssm.sh` from `provision-infra-mc.sh` (RC Terraform, same pattern as kube-applier DynamoDB).
 
 ### AWS cost allocation tags (ZOA)
 

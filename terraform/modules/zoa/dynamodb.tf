@@ -288,7 +288,7 @@ resource "aws_dynamodb_table" "boundary_sessions" {
 # =============================================================================
 # Target registration uses SSM Parameter Store instead of DynamoDB because
 # targets are static, Terraform-managed data:
-#   - Written by each cluster's Terraform (RC, MC)
+#   - RC cluster: RC zoa-lambda Terraform. MC clusters: mc-zoa-target-ssm-provisioning (MC pipeline, RC state).
 #   - Auto-removed on terraform destroy (no orphans, no GC)
 #   - Listed via GetParametersByPath("/zoa/targets/<deployment>/")
 #

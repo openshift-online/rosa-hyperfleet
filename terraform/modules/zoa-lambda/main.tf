@@ -811,18 +811,13 @@ resource "aws_cloudwatch_log_group" "worker" {
 # =============================================================================
 # SSM Target Registration — Self-registers this cluster as a ZOA target
 # =============================================================================
-# Each cluster's Terraform writes its own metadata to SSM. The ZOA Access
-# Lambda reads these parameters to know where to create ECS tasks.
-# On terraform destroy, the parameter is auto-removed (no orphans, no GC).
-#
-# For RC deployments: written locally (same account as Access Lambda).
-# For MC deployments: written cross-account to the RC account via the
-#   zoa-data-access role (extended with SSM permissions).
+# RC clusters: Terraform writes this parameter (same account as Access Lambda).
+# MC clusters: MC pipeline provisions RC SSM via mc-zoa-target-ssm-provisioning (see provision-mc-zoa-target-ssm.sh).
 
 resource "aws_ssm_parameter" "zoa_target" {
   provider = aws.targets_ssm
 
-  count = var.targets_ssm_prefix != "" ? 1 : 0
+  count = var.targets_ssm_prefix != "" && var.target_type == "rc" ? 1 : 0
   name  = "${var.targets_ssm_prefix}/${var.cluster_id}"
   type  = "String"
 

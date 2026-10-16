@@ -26,40 +26,6 @@ provider "aws" {
   }
 }
 
-# RC account credentials for MC target registration in SSM (/zoa/targets/<deployment>/).
-# Ambient creds must already be the MC account (pipeline or local profile); this
-# provider assumes the RC zoa-data-access role, which may PutParameter on RC SSM.
-provider "aws" {
-  alias             = "zoa_targets"
-  region            = var.region
-  use_fips_endpoint = can(regex("^(us|us-gov)-", var.region)) ? true : false
-
-  dynamic "assume_role" {
-    for_each = var.zoa_data_access_role_arn != "" ? [1] : []
-    content {
-      role_arn     = var.zoa_data_access_role_arn
-      session_name = "zoa-target-ssm-${var.management_id}"
-    }
-  }
-
-  default_tags {
-    tags = merge(
-      {
-        app-code      = var.app_code
-        service-phase = var.service_phase
-        cost-center   = var.cost_center
-        environment   = var.environment
-      },
-      var.eph_prefix != "" ? { ephemeral-prefix = var.eph_prefix } : {}
-    )
-  }
-}
-
-locals {
-  # Empty zoa_deployment_name would produce invalid SSM paths like /zoa/targets//cluster.
-  zoa_targets_ssm_prefix = var.zoa_deployment_name != "" ? "/zoa/targets/${var.zoa_deployment_name}" : ""
-}
-
 # =============================================================================
 # VPC Module
 # =============================================================================
@@ -146,7 +112,7 @@ module "zoa_lambda" {
   source = "../../modules/zoa-lambda"
 
   providers = {
-    aws.targets_ssm = aws.zoa_targets
+    aws.targets_ssm = aws
   }
 
   cluster_id  = var.management_id
@@ -170,10 +136,9 @@ module "zoa_lambda" {
   uploader_role_arn    = var.zoa_uploader_role_arn
   data_access_role_arn = var.zoa_data_access_role_arn
 
-  # Boundary integration (MC targets register in RC's SSM via cross-account)
   sessions_table_name    = var.zoa_sessions_table_name
   deployment_name        = var.zoa_deployment_name
-  targets_ssm_prefix     = local.zoa_targets_ssm_prefix
+  targets_ssm_prefix     = ""
   vpc_id                 = module.vpc.vpc_id
   boundary_image         = var.zoa_boundary_image
   access_lambda_role_arn = var.zoa_access_lambda_role_arn

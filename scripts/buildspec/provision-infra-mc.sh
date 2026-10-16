@@ -58,8 +58,8 @@ if [ "${DELETE_FLAG}" == "true" ]; then
     export TF_VAR_oidc_bucket_arn="arn:aws:s3:::placeholder"
     export TF_VAR_oidc_bucket_region="us-east-1"
     export TF_VAR_zoa_lambda_ecr_url="000000000000.dkr.ecr.us-east-1.amazonaws.com/placeholder"
-    # Leave zoa_data_access_role_arn unset: RC may already have destroyed the role; SSM target
-    # is removed below via child-admin. Avoid configuring aws.zoa_targets assume_role on destroy.
+    TF_VAR_zoa_data_access_role_arn=$(_resolve_zoa_data_access_role_arn_from_contract)
+    export TF_VAR_zoa_data_access_role_arn
 else
     # Assume child admin role in RC account to access state bucket (scoped access instead of org-wide).
     _resolve_rc_account
@@ -186,23 +186,8 @@ if [ -z "${TF_VAR_zoa_deployment_name}" ]; then
     exit 1
 fi
 
-# ── Destroy: drop cross-account ZOA target SSM before MC terraform (kube-applier pattern: use_rc_account).
-# Does not depend on the zoa-data-access role or RC/M destroy ordering.
 if [ "${DELETE_FLAG}" == "true" ]; then
-    _zoa_target_ssm="/zoa/targets/${TF_VAR_zoa_deployment_name}/${MANAGEMENT_ID}"
-    echo "Removing ZOA target SSM parameters (best-effort): ${_zoa_target_ssm}"
-    use_rc_account
-    if aws ssm delete-parameter --name "$_zoa_target_ssm" --region "${TARGET_REGION}" 2>/dev/null; then
-        echo "  deleted in RC account"
-    else
-        echo "  not found in RC account (ok)"
-    fi
-    use_mc_account
-    if aws ssm delete-parameter --name "$_zoa_target_ssm" --region "${TARGET_REGION}" 2>/dev/null; then
-        echo "  deleted in MC account"
-    else
-        echo "  not found in MC account (ok)"
-    fi
+    bash "${BASH_SOURCE%/*}/provision-mc-zoa-target-ssm.sh" destroy
 fi
 
 # ── Phase 2: Apply/Destroy MC infrastructure ─────────────────────────────────
@@ -257,11 +242,10 @@ if [ "${TERRAFORM_ACTION}" == "apply" ] && [ -f imports.sh ]; then
 fi
 
 if [ "${TERRAFORM_ACTION}" == "destroy" ]; then
-    # SSM parameter already deleted in RC/MC; drop from state so destroy does not assume
-    # zoa-data-access in RC (that role may already be gone if RC destroy finished first).
+    # MC module no longer manages RC SSM; drop legacy state address if present (migration).
     terraform state rm 'module.zoa_lambda.aws_ssm_parameter.zoa_target[0]' 2>/dev/null \
-        && echo "Removed zoa_target from state (SSM already deleted)" \
-        || echo "zoa_target not in state (ok)"
+        && echo "Removed legacy zoa_target from MC state" \
+        || true
 fi
 
 set +e
@@ -273,3 +257,6 @@ if [ $TERRAFORM_STATUS -ne 0 ]; then
     exit $TERRAFORM_STATUS
 fi
 
+if [ "${TERRAFORM_ACTION}" == "apply" ]; then
+    bash "${BASH_SOURCE%/*}/provision-mc-zoa-target-ssm.sh" apply
+fi
