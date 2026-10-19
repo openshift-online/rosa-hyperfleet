@@ -22,6 +22,11 @@ output "public_subnet_ids" {
   value       = aws_subnet.public[*].id
 }
 
+output "control_plane_subnet_ids" {
+  description = "Private subnet IDs for the EKS control plane / VPC Links (first control_plane_az_count AZs of the span)."
+  value       = slice(aws_subnet.private[*].id, 0, local.control_plane_az_count)
+}
+
 output "nat_gateway_ids" {
   description = "IDs of NAT Gateways"
   value       = aws_nat_gateway.main[*].id

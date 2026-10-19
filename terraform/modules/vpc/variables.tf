@@ -17,3 +17,9 @@ variable "vpc_cidr" {
     error_message = "VPC CIDR must be a valid IPv4 CIDR block."
   }
 }
+
+variable "az_count" {
+  description = "Number of AZs to span. null = all in-region AZs (needed for MC PrivateLink); set to e.g. 3 to bound the span."
+  type        = number
+  default     = null
+}

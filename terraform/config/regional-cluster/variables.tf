@@ -16,6 +16,12 @@ variable "environment" {
   type        = string
 }
 
+variable "rc_az_count" {
+  description = "Number of AZs the RC VPC spans. Defaults to 3; set to null for all AZs."
+  type        = number
+  default     = 3
+}
+
 variable "region" {
   description = "AWS Region for infrastructure deployment"
   type        = string

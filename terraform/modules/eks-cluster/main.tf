@@ -107,7 +107,8 @@ resource "aws_eks_cluster" "main" {
   }
 
   vpc_config {
-    subnet_ids              = var.private_subnet_ids
+    # Control plane uses EKS-supported AZs; workers (node group below) use the full span.
+    subnet_ids              = var.control_plane_subnet_ids != null ? var.control_plane_subnet_ids : var.private_subnet_ids
     endpoint_private_access = true
     endpoint_public_access  = false
     security_group_ids      = [var.cluster_security_group_id]
