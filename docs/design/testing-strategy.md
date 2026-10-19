@@ -140,9 +140,9 @@ flowchart TB
     TEST --> TEARDOWN
 
     subgraph TEARDOWN ["Teardown"]
-        J["Push delete: true"] -->|RC/MC pipelines destroy| K[Infrastructure]
-        L["Push delete_pipeline: true"] -->|Provisioner destroys| M[RC/MC pipelines]
-        N[terraform destroy] -->|Remove| O[Pipeline-provisioner]
+        J["IS_DESTROY execution"] -->|RC/MC pipelines destroy| K[Infrastructure]
+        L["delete-rc / delete-mc"] -->|Remove| M[RC/MC pipelines & projects]
+        N[terraform destroy] -->|Remove| O[Bootstrap infrastructure]
     end
 ```
 

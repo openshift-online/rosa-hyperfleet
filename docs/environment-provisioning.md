@@ -195,7 +195,7 @@ From the Central account, extract the API Gateway endpoint from terraform output
 
 ```bash
 export AWS_PROFILE=<central-profile>
-cd terraform/config/pipeline-regional-cluster/
+cd terraform/config/regional-cluster/
 
 terraform init -reconfigure \
   -backend-config="bucket=terraform-state-<CENTRAL_ACCOUNT_ID>" \
