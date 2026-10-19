@@ -35,6 +35,7 @@ module "vpc" {
   source = "../../modules/vpc"
 
   resource_name_base = var.management_id
+  # MC keeps the full AZ span (default) for PrivateLink coverage.
 }
 
 # =============================================================================
@@ -48,6 +49,7 @@ module "management_cluster" {
   cluster_id                      = var.management_id
   vpc_id                          = module.vpc.vpc_id
   private_subnet_ids              = module.vpc.private_subnet_ids
+  control_plane_subnet_ids        = module.vpc.control_plane_subnet_ids
   cluster_security_group_id       = module.vpc.cluster_security_group_id
   vpc_endpoints_security_group_id = module.vpc.vpc_endpoints_security_group_id
 

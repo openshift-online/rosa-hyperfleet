@@ -36,6 +36,12 @@ variable "private_subnet_ids" {
   type        = list(string)
 }
 
+variable "control_plane_subnet_ids" {
+  description = "Subnet IDs for the EKS control plane (vpc_config); must span EKS-supported AZs. Defaults to private_subnet_ids when null."
+  type        = list(string)
+  default     = null
+}
+
 variable "cluster_security_group_id" {
   description = "Pre-created security group ID for EKS cluster control plane"
   type        = string

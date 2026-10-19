@@ -1,12 +1,13 @@
 locals {
-  # Span the VPC across every in-region availability zone.
-  #
-  # This is required for management clusters: the HyperShift PrivateLink endpoint
-  # service only advertises the AZs its NLB has subnets in, and a customer's
-  # worker subnets may land in ANY AZ ID of the region. Matching is done by
-  # account-independent AZ ID, so the management VPC must cover every AZ to avoid
-  # "endpoint service does not support the availability zone" errors.
-  azs = data.aws_availability_zones.available.names
+  # Sort AZ names so index-based CIDR assignment below stays stable across applies.
+  sorted_names = sort(data.aws_availability_zones.available.names)
+
+  # az_count = null: every AZ (MC PrivateLink coverage). az_count = N: first N AZs.
+  azs = var.az_count != null ? slice(local.sorted_names, 0, var.az_count) : local.sorted_names
+
+  # EKS control plane / VPC Links use the first few AZs of the span (EKS needs >=2;
+  # the first 3 avoid late-alphabet AZs that may not support these services).
+  control_plane_az_count = min(3, length(local.azs))
 
   # One subnet per AZ, carved from the VPC CIDR. Private subnets are /19 and
   # public subnets /24 for a /16 VPC, which fits up to 6 AZs without overlap.

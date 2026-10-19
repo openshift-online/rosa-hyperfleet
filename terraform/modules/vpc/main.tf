@@ -17,6 +17,13 @@ resource "aws_vpc" "main" {
   enable_dns_hostnames = true
   enable_dns_support   = true
   tags                 = merge(local.common_tags, { Name = "${var.resource_name_base}-vpc" })
+
+  lifecycle {
+    precondition {
+      condition     = local.control_plane_az_count >= 2
+      error_message = "The EKS control plane needs at least 2 AZs; the VPC span has ${length(local.azs)}."
+    }
+  }
 }
 
 resource "aws_internet_gateway" "main" {

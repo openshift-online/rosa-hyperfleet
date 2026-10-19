@@ -180,6 +180,9 @@ module "vpc" {
   source = "../../modules/vpc"
 
   resource_name_base = var.regional_id
+
+  # The RC bounds its AZ span (no customer PrivateLink to cover).
+  az_count = var.rc_az_count
 }
 
 # =============================================================================
@@ -193,6 +196,7 @@ module "regional_cluster" {
   cluster_id                      = var.regional_id
   vpc_id                          = module.vpc.vpc_id
   private_subnet_ids              = module.vpc.private_subnet_ids
+  control_plane_subnet_ids        = module.vpc.control_plane_subnet_ids
   cluster_security_group_id       = module.vpc.cluster_security_group_id
   vpc_endpoints_security_group_id = module.vpc.vpc_endpoints_security_group_id
 
