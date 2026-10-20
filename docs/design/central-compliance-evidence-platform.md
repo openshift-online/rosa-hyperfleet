@@ -91,14 +91,30 @@ compliance failure** — a silently missed run is indistinguishable to an assess
 from a lapsed control. Three alert classes are surfaced via CloudWatch alarms
 into the platform's existing alerting/notification path:
 
-- **Run liveness (dead-man's switch)**: alert on the _absence_ of a successful
-  scheduled run within its expected window, not only on explicit task failures.
+- **Run liveness and coverage (dead-man's switch)**: alert on the _absence_ of a
+  successful scheduled run within its expected window, not only on explicit task
+  failures. "Successful" means full expected coverage — a per-run manifest must
+  account for every target (KSI × account × region × provider); a task that exits
+  cleanly but silently skips targets is a collection gap and alarms like a missed
+  run.
 - **Evidence delivery**: alert on any failure (including partial writes) to
   persist evidence to the sink.
 - **Compliance regression**: alert when a KSI / assessment-requirement
-  transitions from MET to NOT MET between runs.
+  transitions from MET to NOT MET between runs. The comparison relies on stable
+  assessment-requirement identifiers and a durable record of the prior run held
+  independently of the (swappable) evidence sink, so sink migration never blinds
+  regression detection.
 
 ## Cross-Cutting Concerns
+
+### Resiliency
+
+Central collection makes the central account a single failure domain for every
+region's evidence. This is acceptable because runs are idempotent, stateless
+batch that reconstruct current-state evidence: a central scheduler, cross-account
+trust, or connectivity failure yields a _missed_ run — caught by the run-liveness
+dead-man's switch above — rather than lost or corrupted evidence, and recovery is
+a re-run or backfill, not a repair.
 
 ### Security
 
@@ -110,8 +126,11 @@ into the platform's existing alerting/notification path:
   tampering with its output. It must be enforced against all non-compliance
   principals — via a dedicated account/OU for the platform, or SCPs and permission
   boundaries that deny every other principal access to its KMS key, secrets, task
-  and execution roles, task definition, schedule, alarms, and evidence bucket. The
-  mechanism is an open implementation choice.
+  and execution roles, task definition, collector image, schedule, alarms, and
+  evidence bucket. The deployment path that maintains these resources is itself
+  distinct from the collection role and audit-logged, so CI/CD cannot silently
+  change what the platform collects or where evidence lands. The mechanism is an
+  open implementation choice.
 - Evidence integrity (FedRAMP AU-9): encryption and retention are not
   tamper-resistance. The evidence sink is write-once — S3 Object Lock (compliance
   mode) plus versioning, so neither the writer nor an admin can overwrite or delete
