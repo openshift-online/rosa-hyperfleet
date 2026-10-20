@@ -110,7 +110,7 @@ into the platform's existing alerting/notification path:
 ### Resiliency
 
 Central collection makes the central account a single failure domain for every
-region's evidence. This is acceptable because runs are idempotent, stateless
+region's evidence. This is acceptable because runs are stateless, repeatable
 batch that reconstruct current-state evidence: a central scheduler, cross-account
 trust, or connectivity failure yields a _missed_ run — caught by the run-liveness
 dead-man's switch above — rather than lost or corrupted evidence, and recovery is
@@ -124,10 +124,13 @@ a re-run or backfill, not a repair.
   compliance role: scoping the compliance role cannot stop a broad central-account
   pipeline/admin role from reading its secrets, rewriting its task definition, or
   tampering with its output. It must be enforced against all non-compliance
-  principals — via a dedicated account/OU for the platform, or SCPs and permission
-  boundaries that deny every other principal access to its KMS key, secrets, task
-  and execution roles, task definition, collector image, schedule, alarms, and
-  evidence bucket. The deployment path that maintains these resources is itself
+  principals — via a dedicated account/OU for the platform, or resource policies
+  (on its KMS key, secrets, and evidence bucket) and SCPs, which can deny
+  unrelated principals. Permission boundaries do not fit here: they only cap the
+  permissions of the principal that carries them, so they cannot fence other
+  principals away from the platform's KMS key, secrets, task and execution roles,
+  task definition, collector image, schedule, alarms, and evidence bucket. The
+  deployment path that maintains these resources is itself
   distinct from the collection role and audit-logged, so CI/CD cannot silently
   change what the platform collects or where evidence lands. The mechanism is an
   open implementation choice.
