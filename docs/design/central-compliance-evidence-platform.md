@@ -26,7 +26,9 @@ inside the Regional or Management Clusters, and not on a dedicated EKS cluster.
   collectors cross-account reach for cloud-posture evidence. `complyctl` is a
   batch engine: one run orchestrates many assessment plans/providers and exits.
   The central account has no VPC today, so the Fargate tasks require net-new
-  networking with egress to external sources (GitHub API, package registries).
+  networking — allowlisted egress to the few required external endpoints (GitHub
+  API, package registries) and VPC endpoints for AWS APIs, so a compromised
+  dependency has no open path to exfiltrate credentials.
 
 ## Alternatives Considered
 
@@ -102,36 +104,52 @@ into the platform's existing alerting/notification path:
 
 - The evidence pipeline runs under a dedicated IAM role with least-privilege,
   read-only cross-account access to the resources it inspects.
-- Separation of duties: the role must be scoped so the pipelines whose changes
-  the platform attests to cannot modify or suppress its output.
-- The evidence sink (interim S3 bucket) is KMS-encrypted and retained per the
-  audit-retention floors used elsewhere in the platform.
+- Separation of duties is a property of the _other_ principals, not of the
+  compliance role: scoping the compliance role cannot stop a broad central-account
+  pipeline/admin role from reading its secrets, rewriting its task definition, or
+  tampering with its output. It must be enforced against all non-compliance
+  principals — via a dedicated account/OU for the platform, or SCPs and permission
+  boundaries that deny every other principal access to its KMS key, secrets, task
+  and execution roles, task definition, schedule, alarms, and evidence bucket. The
+  mechanism is an open implementation choice.
+- Evidence integrity (FedRAMP AU-9): encryption and retention are not
+  tamper-resistance. The evidence sink is write-once — S3 Object Lock (compliance
+  mode) plus versioning, so neither the writer nor an admin can overwrite or delete
+  evidence within its retention period — and each run emits an integrity manifest
+  (hashes) so downstream tampering is detectable.
+- No secret material in output: collectors capture posture metadata, not raw
+  secret values, and output is scrubbed before it is written or shipped to the
+  external locker; verbose/debug logging (which can echo auth headers) is disabled.
 
 ### Secret management
 
 Secrets live in AWS Secrets Manager / SSM Parameter Store (KMS-encrypted) — the
-same backing stores the platform already uses (e.g. `seaplane-db`, PagerDuty) —
-and are injected into the Fargate task at launch via the task execution role,
-never baked into images, task definitions, or logs. RC/MC reach these stores
-through External Secrets Operator; being serverless, this platform uses native
-ECS secret injection against the same stores instead of ESO.
+same backing stores the platform already uses (e.g. `seaplane-db`, PagerDuty).
+RC/MC reach these stores through External Secrets Operator; being serverless, this
+platform fetches secrets from the same stores at runtime via the task role (AWS
+SDK) rather than through ESO. The GitHub App private key is fetched, immediately
+exchanged for a short-lived installation token, and discarded — it is not injected
+as an environment variable (env vars are inherited by every `complyctl` provider
+subprocess and leak through crash dumps), never baked into images or task
+definitions, and never written to logs or evidence output.
 
 The design minimizes long-lived secrets by preferring credentials that are
 short-lived by construction:
 
-- **GitHub access uses a GitHub App, not a personal access token.** The engine
-  mints a short-lived installation token (~1h TTL) per run from the App's private
-  key, so there is nothing to rotate between runs. (The central account's
+- **GitHub access uses a GitHub App, not a personal access token.** The App is
+  least-privilege and read-only, installed only on the required orgs/repos. The
+  engine mints a short-lived installation token (~1h TTL) per run from the App's
+  private key, so there is nothing to rotate between runs. (The central account's
   existing CodeStar connection serves CodeBuild's source checkout and is not
   usable for the engine's API calls.)
 - **Cross-account AWS access uses STS `AssumeRole`** — already how the central
   account reaches the regional/management accounts — which is ephemeral and
   stores no secret.
 
-The only durable secrets are therefore the GitHub App private key and (later) the
-Red Hat evidence-locker credential. These live in Secrets Manager with scheduled
-rotation; the GitHub App supports multiple active keys for zero-downtime
-rollover. Access is least-privilege — the task role reads only its own secret
-ARNs and decrypts only its own KMS key — and, per the separation-of-duties
-property above, the pipelines the platform attests to cannot read or modify these
-secrets.
+Durable secrets — the GitHub App private key today, the Red Hat evidence-locker
+credential later, and more as providers are added — live in Secrets Manager with
+scheduled rotation; the GitHub App supports multiple active keys for zero-downtime
+rollover. The aim is to keep this set as small as possible, not to fix it. Access
+is least-privilege (the task role reads only its own secret ARNs and decrypts only
+its own KMS key); keeping other principals away from these secrets is covered by
+the separation-of-duties isolation above.
