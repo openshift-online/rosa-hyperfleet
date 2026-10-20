@@ -106,3 +106,32 @@ into the platform's existing alerting/notification path:
   the platform attests to cannot modify or suppress its output.
 - The evidence sink (interim S3 bucket) is KMS-encrypted and retained per the
   audit-retention floors used elsewhere in the platform.
+
+### Secret management
+
+Secrets live in AWS Secrets Manager / SSM Parameter Store (KMS-encrypted) — the
+same backing stores the platform already uses (e.g. `seaplane-db`, PagerDuty) —
+and are injected into the Fargate task at launch via the task execution role,
+never baked into images, task definitions, or logs. RC/MC reach these stores
+through External Secrets Operator; being serverless, this platform uses native
+ECS secret injection against the same stores instead of ESO.
+
+The design minimizes long-lived secrets by preferring credentials that are
+short-lived by construction:
+
+- **GitHub access uses a GitHub App, not a personal access token.** The engine
+  mints a short-lived installation token (~1h TTL) per run from the App's private
+  key, so there is nothing to rotate between runs. (The central account's
+  existing CodeStar connection serves CodeBuild's source checkout and is not
+  usable for the engine's API calls.)
+- **Cross-account AWS access uses STS `AssumeRole`** — already how the central
+  account reaches the regional/management accounts — which is ephemeral and
+  stores no secret.
+
+The only durable secrets are therefore the GitHub App private key and (later) the
+Red Hat evidence-locker credential. These live in Secrets Manager with scheduled
+rotation; the GitHub App supports multiple active keys for zero-downtime
+rollover. Access is least-privilege — the task role reads only its own secret
+ARNs and decrypts only its own KMS key — and, per the separation-of-duties
+property above, the pipelines the platform attests to cannot read or modify these
+secrets.
