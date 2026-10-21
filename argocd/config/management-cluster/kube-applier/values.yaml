@@ -5,9 +5,9 @@
 kubeApplier:
   # Container image configuration
   image:
-    registry: "quay.io"
-    repository: "redhat-user-workloads/rosa-tenant/rosa-hyperfleet-kube-applier"
-    tag: "267b623f4662f5f7aed4b015ee2c756c1c495abe"
+    registry: "669421954122.dkr.ecr.us-east-1.amazonaws.com"
+    repository: "rosa-hyperfleet-kube-applier"
+    tag: "bac219147828ae6ae655c707641cef8f2b6e576b"
     pullPolicy: IfNotPresent
 
   # Deployment configuration
