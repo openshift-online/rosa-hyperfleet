@@ -268,6 +268,14 @@ applications:
     # @used-by applications.regional-cluster.baseDomain _context
     baseDomain: "{% if dns.domain %}{{ deployment_name }}.{{ dns.domain }}{% endif %}"
     platformApi:
+      authz:
+        # @doc applications.regional-cluster.platformApi.authz.config Complete serialized v1 authorization bundle. Enrolls the RC account (@@AWS_ACCOUNT_ID@@, resolved by Helm) and grants nothing. Overrides replace the entire bundle.
+        # @used-by applications.regional-cluster.platformApi.authz.config _context
+        config: |
+          formatVersion: 1
+          registeredAccounts: ["@@AWS_ACCOUNT_ID@@"]
+          policies: []
+          attachments: []
       app:
         args:
           # @doc applications.regional-cluster.platformApi.app.args.defaultClusterExpiration Maps cluster_lifecycle.default_expiration into the platform-api --default-cluster-expiration flag.

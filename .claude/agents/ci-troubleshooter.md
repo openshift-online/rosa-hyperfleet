@@ -296,7 +296,7 @@ The key question is: **did anything change between the last passing and current 
 ```
 # Map failure to relevant source paths:
 # Provision failure → terraform/, scripts/buildspec/, ci/ephemeral-provider/
-# E2E test failure → ci/e2e-tests.sh, ci/e2e-platform-api-test.sh
+# E2E test failure → ci/e2e-tests.sh
 # ArgoCD sync failure → argocd/
 # Seaplane operator failure → argocd/config/regional-cluster/seaplane*
 # kube-applier failure → argocd/config/management-cluster/kube-applier*
@@ -316,7 +316,6 @@ Use `git show <commit>:<path>` (or Read for nightly/main) to understand the fail
 | `ci/check-docs.sh`                        | Checks markdown formatting with Prettier      |
 | `ci/ephemeral-provider/main.py`           | Orchestrates ephemeral provision and teardown |
 | `ci/e2e-tests.sh`                         | Runs the e2e test suite                       |
-| `ci/e2e-platform-api-test.sh`             | Platform API specific e2e tests               |
 | `ci/ephemeral-provider/orchestrator.py`   | Ephemeral environment lifecycle               |
 | `ci/ephemeral-provider/pipeline.py`       | Pipeline provisioner management               |
 | `ci/ephemeral-provider/codebuild_logs.py` | CodeBuild log collection                      |

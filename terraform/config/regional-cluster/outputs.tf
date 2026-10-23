@@ -166,11 +166,6 @@ output "rhobs_api_url" {
   value       = module.rhobs_api_gateway.invoke_url
 }
 
-output "api_allowed_accounts" {
-  description = "Platform API allowed accounts (comma-separated account IDs, including current account)"
-  value       = join(",", local.api_allowed_accounts)
-}
-
 output "api_alb_dns_name" {
   description = "Internal ALB DNS name"
   value       = module.api_gateway.alb_dns_name
@@ -214,54 +209,6 @@ output "api_domain_name" {
 output "api_domain_regional_domain_name" {
   description = "API Gateway regional domain name — target for DNS alias/CNAME"
   value       = module.api_gateway.api_domain_regional_domain_name
-}
-
-# =============================================================================
-# Authorization Outputs
-# =============================================================================
-
-# DynamoDB Tables
-output "authz_accounts_table_name" {
-  description = "Authz accounts DynamoDB table name"
-  value       = module.authz.accounts_table_name
-}
-
-output "authz_admins_table_name" {
-  description = "Authz admins DynamoDB table name"
-  value       = module.authz.admins_table_name
-}
-
-output "authz_groups_table_name" {
-  description = "Authz groups DynamoDB table name"
-  value       = module.authz.groups_table_name
-}
-
-output "authz_members_table_name" {
-  description = "Authz group members DynamoDB table name"
-  value       = module.authz.members_table_name
-}
-
-output "authz_policies_table_name" {
-  description = "Authz policies DynamoDB table name"
-  value       = module.authz.policies_table_name
-}
-
-output "authz_attachments_table_name" {
-  description = "Authz attachments DynamoDB table name"
-  value       = module.authz.attachments_table_name
-}
-
-# IAM Role
-output "authz_frontend_api_role_arn" {
-  description = "IAM role ARN for Frontend API with authz permissions (Pod Identity)"
-  value       = module.authz.frontend_api_role_arn
-}
-
-# Configuration Summary
-output "authz_configuration_summary" {
-  description = "Complete authz configuration for use in Helm values"
-  value       = module.authz.authz_configuration_summary
-  sensitive   = false
 }
 
 # =============================================================================

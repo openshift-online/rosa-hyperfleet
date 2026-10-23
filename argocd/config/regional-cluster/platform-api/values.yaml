@@ -2,6 +2,9 @@
 
 global:
   git_revision: "unknown"
+  aws_region: ""
+  aws_account_id: ""
+  management_clusters: ""
 
 platformApi:
   # Namespace to deploy into
@@ -17,17 +20,14 @@ platformApi:
   app:
     name: platform-api
     image:
-      repository: quay.io/rrp-dev-ci/platform-api
-      tag: "f59b0034c13cf39d506e2ead73ebd0b5cd42cd1e"
+      repository: quay.io/redhat-user-workloads/rosa-tenant/rosa-seaplane-api
+      tag: "on-pr-763acba38ab8355a360f56e6dff546e83873e73a@sha256:cb1a8b57ec4c4a816d2a7309b469e17f51844af3d1e85062a2094fccc10bbd4b"
       pullPolicy: Always
 
     # Application arguments
     args:
       logLevel: info
       logFormat: json
-      allowedAccounts: "123456789012"
-      dynamodbRegion: us-east-2
-      dynamodbPrefix: rosa
       oidcIssuerBaseURL: ""
       # Auto-delete clusters this long after creation when the caller does not
       # supply an explicit spec.expirationTimestamp. Go duration (e.g. "24h").
@@ -91,6 +91,16 @@ platformApi:
     interval: 30s
     scrapeTimeout: 10s
     labels: {}
+
+  # Authorization is mandatory. Caller grants belong in environment overrides.
+  authz:
+    # Complete v1 bundle, delivered as text. Optional @@AWS_ACCOUNT_ID@@ and
+    # @@AWS_REGION@@ markers use trusted bootstrap identity without adding grants.
+    config: |
+      formatVersion: 1
+      registeredAccounts: []
+      policies: []
+      attachments: []
 
   # Rate Limiting configuration
   rateLimit:
