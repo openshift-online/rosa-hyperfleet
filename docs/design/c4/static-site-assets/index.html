@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<!--
+  Sidebar wrapper around the structurizr-cli static export (diagram.html).
+  Hand-authored (not generated) - `make static` copies this in as the site's
+  index.html and renames the exported viewer to diagram.html. It reads the
+  same workspace.js the viewer uses to list views, and drives the viewer via
+  its `#<ViewKey>` hash navigation (same-origin, so no postMessage needed).
+-->
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>ROSA Seaplane - C4 model</title>
+    <script type="text/javascript" src="./workspace.js"></script>
+    <style>
+        :root {
+            color-scheme: light dark;
+            --border: #d8dce1;
+            --bg-sidebar: #f7f8fa;
+            --text-muted: #6a7178;
+            --accent: #1f6feb;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; height: 100%; font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+        .layout { display: flex; height: 100vh; }
+        #sidebar {
+            width: 280px;
+            flex: 0 0 auto;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border);
+            background: var(--bg-sidebar);
+        }
+        #sidebar h1 {
+            font-size: 0.95rem;
+            margin: 0 1rem 0.75rem;
+            padding: 1rem 0 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+        #viewList { flex: 1 1 auto; overflow-y: auto; padding-bottom: 1rem; }
+        #sidebarFooter {
+            flex: 0 0 auto;
+            padding: 0.6rem 1rem;
+            border-top: 1px solid var(--border);
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            cursor: pointer;
+        }
+        #sidebarFooter:hover { color: inherit; }
+        #sidebarFooter kbd {
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 0 0.3rem;
+            font-family: inherit;
+        }
+        .group-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-muted);
+            margin: 1rem 1rem 0.35rem;
+        }
+        .view-link {
+            display: block;
+            padding: 0.4rem 1rem;
+            text-decoration: none;
+            color: inherit;
+            border-left: 3px solid transparent;
+            cursor: pointer;
+        }
+        .view-link:hover { background: rgba(31, 111, 235, 0.08); }
+        .view-link.active {
+            border-left-color: var(--accent);
+            background: rgba(31, 111, 235, 0.12);
+            font-weight: 600;
+        }
+        .view-link .key { font-size: 0.85rem; }
+        .view-link .description {
+            display: block;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            font-weight: normal;
+            margin-top: 0.1rem;
+        }
+        #viewer { flex: 1 1 auto; border: none; height: 100vh; }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --border: #30363d;
+                --bg-sidebar: #161b22;
+                --text-muted: #8b949e;
+            }
+            body { background: #0d1117; color: #e6edf3; }
+        }
+    </style>
+</head>
+<body>
+    <div class="layout">
+        <nav id="sidebar">
+            <h1>ROSA Seaplane - C4 model</h1>
+            <div id="viewList"></div>
+            <div id="sidebarFooter" title="Show diagram viewer help">
+                <kbd>?</kbd> for help
+            </div>
+        </nav>
+        <iframe id="viewer" title="C4 diagram viewer"></iframe>
+    </div>
+
+    <script>
+        // Friendly group labels for the view-collections found in views.*
+        // (the structurizr JSON always groups views by diagram type).
+        const GROUP_LABELS = {
+            systemLandscapeViews: 'System Landscape',
+            systemContextViews: 'System Context',
+            containerViews: 'Container',
+            componentViews: 'Component',
+            dynamicViews: 'Dynamic',
+            deploymentViews: 'Deployment',
+            filteredViews: 'Filtered',
+            customViews: 'Custom',
+            imageViews: 'Image'
+        };
+
+        function decodeBase64(str) {
+            return decodeURIComponent(atob(str).split('').map(function (c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+        }
+
+        const workspace = JSON.parse(decodeBase64(jsonAsString));
+        const views = workspace.views || {};
+        const defaultViewKey = views.configuration && views.configuration.defaultView;
+
+        const viewListEl = document.getElementById('viewList');
+        const iframe = document.getElementById('viewer');
+        let firstKey = null;
+
+        Object.keys(GROUP_LABELS).forEach(function (groupKey) {
+            const groupViews = views[groupKey];
+            if (!groupViews || groupViews.length === 0) return;
+
+            const label = document.createElement('div');
+            label.className = 'group-label';
+            label.textContent = GROUP_LABELS[groupKey];
+            viewListEl.appendChild(label);
+
+            groupViews.forEach(function (view) {
+                if (firstKey === null) firstKey = view.key;
+
+                const link = document.createElement('a');
+                link.className = 'view-link';
+                link.id = 'view-link-' + view.key;
+                link.href = '#' + view.key;
+
+                const keyEl = document.createElement('span');
+                keyEl.className = 'key';
+                keyEl.textContent = view.name || view.title || view.key;
+                link.appendChild(keyEl);
+
+                if (view.description) {
+                    const descEl = document.createElement('span');
+                    descEl.className = 'description';
+                    descEl.textContent = view.description;
+                    link.appendChild(descEl);
+                }
+
+                link.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    navigateTo(view.key);
+                });
+
+                viewListEl.appendChild(link);
+            });
+        });
+
+        function setActive(key) {
+            document.querySelectorAll('.view-link.active').forEach(function (el) {
+                el.classList.remove('active');
+            });
+            const link = document.getElementById('view-link-' + key);
+            if (link) link.classList.add('active');
+        }
+
+        function navigateTo(key) {
+            setActive(key);
+            // Mirror onto our own URL (not just the iframe's) so a reload/bookmark
+            // of this page restores the same view instead of resetting to the default.
+            history.replaceState(null, '', '#' + key);
+            try {
+                // Same-origin: jump the already-loaded viewer directly, no reload.
+                iframe.contentWindow.location.hash = '#' + key;
+            } catch (e) {
+                iframe.src = 'diagram.html#' + key;
+            }
+        }
+
+        iframe.addEventListener('load', function () {
+            try {
+                iframe.contentWindow.addEventListener('hashchange', function () {
+                    const key = decodeURIComponent(iframe.contentWindow.location.hash.replace(/^#/, ''));
+                    if (key) {
+                        setActive(key);
+                        history.replaceState(null, '', '#' + key);
+                    }
+                });
+            } catch (e) {
+                // cross-origin fallback: sidebar just won't track in-viewer navigation
+            }
+        });
+
+        const keyFromUrl = decodeURIComponent(window.location.hash.replace(/^#/, ''));
+        const initialKey = keyFromUrl || defaultViewKey || firstKey;
+        iframe.src = 'diagram.html#' + initialKey;
+        setActive(initialKey);
+
+        document.getElementById('sidebarFooter').addEventListener('click', function () {
+            try {
+                // Same-origin: trigger the viewer's own "?" help modal directly.
+                iframe.contentWindow.$('#introductionModal').modal('show');
+            } catch (e) {
+                // cross-origin fallback: nothing we can do from here
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,4 +1,10 @@
-# Builds a static review dashboard and deploys it to GitHub Pages.
+# Builds and deploys GitHub Pages: the PR review dashboard at /pr-dashboard/
+# and the ROSA Seaplane C4 model's static diagram site at /c4-model/ (see
+# docs/design/c4/Makefile's `static` target). Both live under one site
+# because GitHub Pages (Actions-based deployment) serves exactly one
+# artifact per deployment — every deploy rebuilds BOTH subpaths from
+# current source rather than trying to preserve the other's previously
+# deployed bytes, so the site is always self-consistent.
 #
 # The dashboard shows open PRs labelled "review-ready" or "discussion-needed"
 # across all ROSA Seaplane repositories.
@@ -16,6 +22,10 @@ on:
     - cron: "*/10 * * * *"
   push:
     branches: [main]
+    paths:
+      - "dashboard/**"
+      - "docs/design/c4/**"
+      - ".github/workflows/review-dashboard.yml"
   workflow_dispatch:
 
 permissions:
@@ -64,20 +74,27 @@ jobs:
             echo "Changes detected, deploying."
           fi
 
+      # Redeploy if the dashboard data changed, or if this run wasn't a routine
+      # cron tick (i.e. it's a relevant push — gated by the path filter above
+      # to dashboard/** or docs/design/c4/** — or a manual dispatch). A cron
+      # tick with no dashboard-data change and nothing else triggering it is a
+      # true no-op: no rebuild, no deployment.
       - name: Build site
-        if: steps.diff.outputs.changed == 'true'
+        if: steps.diff.outputs.changed == 'true' || github.event_name != 'schedule'
         run: |
-          mkdir -p _site/pr-dashboard
+          mkdir -p _site/pr-dashboard _site/c4-model
           cp dashboard/index.html _site/pr-dashboard/index.html
           cp dashboard/data.json _site/pr-dashboard/data.json
+          make -C docs/design/c4 ENGINE=docker static
+          cp -r docs/design/c4/static-site/. _site/c4-model/
 
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
-        if: steps.diff.outputs.changed == 'true'
+        if: steps.diff.outputs.changed == 'true' || github.event_name != 'schedule'
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
-        if: steps.diff.outputs.changed == 'true'
+        if: steps.diff.outputs.changed == 'true' || github.event_name != 'schedule'
       - id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
-        if: steps.diff.outputs.changed == 'true'
+        if: steps.diff.outputs.changed == 'true' || github.event_name != 'schedule'
 
       - name: Clean up old deployments
         env:

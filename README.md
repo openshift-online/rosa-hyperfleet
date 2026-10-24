@@ -8,6 +8,13 @@ A [PR dashboard](https://openshift-online.github.io/rosa-seaplane/pr-dashboard) 
 
 To preview locally: `./dashboard/fetch-data.sh && python3 -m http.server -d dashboard 8080`
 
+## C4 Model
+
+An interactive [C4 model](https://openshift-online.github.io/rosa-seaplane/c4-model) of the ROSA
+Seaplane architecture (System Context, Container, and Component views) is published alongside the
+PR dashboard. See [docs/design/c4/README.md](docs/design/c4/README.md) for how it's authored and
+rendered.
+
 ## Repository Structure
 
 ```

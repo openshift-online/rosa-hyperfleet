@@ -1,0 +1,13 @@
+# Generated from workspace.dsl via `make` (the DSL is the source of truth).
+# Render locally with `make` (SVG) or `make png`.
+structurizr-*.puml
+structurizr-*.mmd
+structurizr-*.svg
+structurizr-*.png
+
+# Structurizr CLI/Lite runtime state (export index, workspace.json snapshot)
+.structurizr/
+workspace.json
+
+# Generated static site (`make static`) - reproducible from the DSL
+static-site/
